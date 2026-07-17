@@ -1,5 +1,89 @@
 # Agent Evaluation Platform
 
+[中文介绍](#中文介绍) | [English Documentation](#english-documentation)
+
+## 中文介绍
+
+Agent Evaluation Platform 是一个面向第三方智能体（Agent）API 的内部评测与排行榜平台。
+平台通过统一的数据集、评分协议和运行环境，对不同厂商、不同版本的 Agent 进行可复现、
+可追踪的横向比较，并保留每次评测的完整执行记录。
+
+### 核心能力
+
+- **多 Agent 接入**：支持配置第三方 HTTP API、认证方式、请求模板、答案 JSONPath 和引用 JSONPath。
+- **异步评测任务**：API 负责创建任务，Worker 独立执行推理、评分、引用抓取和排行榜发布。
+- **综合榜与专项榜**：同时提供综合能力排行榜以及推理、检索、数据推理、指令遵循、长上下文专项榜。
+- **可信结果门禁**：认证失败、响应结构错误和大规模客户端配置错误会使整场结果失效，避免错误配置污染榜单。
+- **完整运行记录**：保存单题状态、失败类型、HTTP Attempt、Token 用量、P50/P95 延迟和评分明细。
+- **可扩展部署**：支持 PostgreSQL 多 Worker 调度、分布式请求资源槽以及本地或 S3/MinIO Artifact 存储。
+- **生产运维能力**：包含数据库迁移、自动备份、Artifact 归档、恢复演练和运行状态监控。
+
+### 评测体系
+
+当前统一评测入口为 `unified-v3`，由多个冻结数据版本按逻辑组合而成，不重复复制题目。
+综合 Profile 共 175 道不同题目，覆盖五个维度：
+
+| 维度 | 题目数 | 主要考察内容 |
+| --- | ---: | --- |
+| 推理 | 45 | 逻辑分析、知识推理和问题求解 |
+| 检索 | 35 | 信息查找、来源识别和引用能力 |
+| 数据推理 | 35 | 表格、财务和结构化数据分析 |
+| 指令遵循 | 30 | 格式约束、规则执行和精确输出 |
+| 长上下文 | 30 | 长文本理解、定位和跨段信息整合 |
+
+综合榜对五个维度使用相同权重，同时提供对应的专项 Profile。能力分按题目加权计算；
+超时、输入超限和错误答案作为能力证据计 0 分，Agent 配置故障则通过独立有效性规则处理。
+
+### 技术架构
+
+- 后端：Python 3.12、FastAPI、SQLAlchemy、Alembic
+- 前端：React、TypeScript、Vite
+- 数据库：SQLite（本地开发）或 PostgreSQL（多 Worker 部署）
+- Artifact：本地文件系统或兼容 S3 的 MinIO/对象存储
+- 任务执行：独立 Worker、Run ownership fencing、数据库租约和全局并发资源槽
+- 部署：Docker Compose、Nginx、systemd 用户级备份与监控 Timer
+
+### 数据与安全
+
+- Agent Token 使用独立加密密钥加密后存储，不以明文写入数据库。
+- 登录分为 `read_only` 和 `operator` 两种角色，密码仅保存 Argon2 哈希。
+- Agent 响应、Judge 响应和引用内容以不可变 Artifact 保存，并校验大小与 SHA-256。
+- 排行榜只接收通过有效性检查且协议一致的正式评测结果。
+- 仓库不包含真实密码、API Key、数据库、Artifact、备份或受限评测数据。
+- 部分评测来源存在不可再分发或非商业限制，使用前必须检查各数据集许可。
+
+### 快速开始
+
+安装依赖：
+
+```bash
+uv sync
+pnpm install
+```
+
+启动本地开发环境：
+
+```bash
+uv run alembic upgrade head
+uv run uvicorn agent_eval.api.main:app --reload
+uv run python -m agent_eval.worker.main
+pnpm dev:web
+```
+
+API、Worker 和 Web 需要分别运行。默认开发地址为：
+
+- Web：`http://localhost:5173`
+- API：`http://localhost:8000`
+
+首次启动前还需要配置登录密码哈希、Agent Token 加密密钥和 Judge API Key。详细命令、
+Docker Compose 部署、PostgreSQL/MinIO 切换、备份与恢复流程请继续阅读下面的英文文档及
+[`deploy/runbook.md`](deploy/runbook.md)。
+
+> **重要提示**：不要提交 `.env`、真实数据集、数据库、Artifact、备份、登录凭据、Agent Token
+> 或第三方 API Key。公开部署时必须使用 HTTPS，并且不要将 PostgreSQL 或 MinIO 端口暴露到公网。
+
+## English Documentation
+
 Internal platform for evaluating and ranking third-party Agent APIs.
 
 ## Prerequisites
