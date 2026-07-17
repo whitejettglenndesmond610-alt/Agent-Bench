@@ -1,0 +1,9 @@
+[Unit]
+Description=Agent Evaluation production operational monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/agent-eval/monitor.conf
+ExecStart=/usr/bin/env bash ${AGENT_EVAL_REPOSITORY_PATH}/deploy/monitor-production.sh ${AGENT_EVAL_ENV_FILE}

@@ -1,0 +1,81 @@
+services:
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${AGENT_EVAL_MINIO_ACCESS_KEY:?Set AGENT_EVAL_MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${AGENT_EVAL_MINIO_SECRET_KEY:?Set AGENT_EVAL_MINIO_SECRET_KEY}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  minio-init:
+    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mc alias set artifact http://minio:9000 "$${AWS_ACCESS_KEY_ID}" "$${AWS_SECRET_ACCESS_KEY}" >/dev/null
+        mc mb --ignore-existing "artifact/$${AGENT_EVAL_ARTIFACT_S3_BUCKET}" >/dev/null
+        mc anonymous set none "artifact/$${AGENT_EVAL_ARTIFACT_S3_BUCKET}" >/dev/null
+    environment:
+      AWS_ACCESS_KEY_ID: ${AGENT_EVAL_MINIO_ACCESS_KEY:?Set AGENT_EVAL_MINIO_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${AGENT_EVAL_MINIO_SECRET_KEY:?Set AGENT_EVAL_MINIO_SECRET_KEY}
+      AGENT_EVAL_ARTIFACT_S3_BUCKET: ${AGENT_EVAL_ARTIFACT_S3_BUCKET:?Set AGENT_EVAL_ARTIFACT_S3_BUCKET}
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    environment:
+      AGENT_EVAL_ARTIFACT_BACKEND: s3
+      AGENT_EVAL_ARTIFACT_S3_BUCKET: ${AGENT_EVAL_ARTIFACT_S3_BUCKET:?Set AGENT_EVAL_ARTIFACT_S3_BUCKET}
+      AGENT_EVAL_ARTIFACT_S3_PREFIX: ${AGENT_EVAL_ARTIFACT_S3_PREFIX:-}
+      AGENT_EVAL_ARTIFACT_S3_ENDPOINT_URL: http://minio:9000
+      AGENT_EVAL_ARTIFACT_S3_REGION: ${AGENT_EVAL_ARTIFACT_S3_REGION:-us-east-1}
+      AGENT_EVAL_ARTIFACT_S3_FORCE_PATH_STYLE: "true"
+      AWS_ACCESS_KEY_ID: ${AGENT_EVAL_MINIO_ACCESS_KEY:?Set AGENT_EVAL_MINIO_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${AGENT_EVAL_MINIO_SECRET_KEY:?Set AGENT_EVAL_MINIO_SECRET_KEY}
+      AWS_REGION: ${AGENT_EVAL_ARTIFACT_S3_REGION:-us-east-1}
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+
+  worker:
+    environment:
+      AGENT_EVAL_ARTIFACT_BACKEND: s3
+      AGENT_EVAL_ARTIFACT_S3_BUCKET: ${AGENT_EVAL_ARTIFACT_S3_BUCKET:?Set AGENT_EVAL_ARTIFACT_S3_BUCKET}
+      AGENT_EVAL_ARTIFACT_S3_PREFIX: ${AGENT_EVAL_ARTIFACT_S3_PREFIX:-}
+      AGENT_EVAL_ARTIFACT_S3_ENDPOINT_URL: http://minio:9000
+      AGENT_EVAL_ARTIFACT_S3_REGION: ${AGENT_EVAL_ARTIFACT_S3_REGION:-us-east-1}
+      AGENT_EVAL_ARTIFACT_S3_FORCE_PATH_STYLE: "true"
+      AWS_ACCESS_KEY_ID: ${AGENT_EVAL_MINIO_ACCESS_KEY:?Set AGENT_EVAL_MINIO_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${AGENT_EVAL_MINIO_SECRET_KEY:?Set AGENT_EVAL_MINIO_SECRET_KEY}
+      AWS_REGION: ${AGENT_EVAL_ARTIFACT_S3_REGION:-us-east-1}
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+
+  maintenance:
+    environment:
+      AGENT_EVAL_ARTIFACT_BACKEND: s3
+      AGENT_EVAL_ARTIFACT_S3_BUCKET: ${AGENT_EVAL_ARTIFACT_S3_BUCKET:?Set AGENT_EVAL_ARTIFACT_S3_BUCKET}
+      AGENT_EVAL_ARTIFACT_S3_PREFIX: ${AGENT_EVAL_ARTIFACT_S3_PREFIX:-}
+      AGENT_EVAL_ARTIFACT_S3_ENDPOINT_URL: http://minio:9000
+      AGENT_EVAL_ARTIFACT_S3_REGION: ${AGENT_EVAL_ARTIFACT_S3_REGION:-us-east-1}
+      AGENT_EVAL_ARTIFACT_S3_FORCE_PATH_STYLE: "true"
+      AWS_ACCESS_KEY_ID: ${AGENT_EVAL_MINIO_ACCESS_KEY:?Set AGENT_EVAL_MINIO_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${AGENT_EVAL_MINIO_SECRET_KEY:?Set AGENT_EVAL_MINIO_SECRET_KEY}
+      AWS_REGION: ${AGENT_EVAL_ARTIFACT_S3_REGION:-us-east-1}
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+
+volumes:
+  minio_data:

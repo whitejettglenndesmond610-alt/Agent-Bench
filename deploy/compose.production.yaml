@@ -1,0 +1,79 @@
+services:
+  migrate:
+    environment:
+      AGENT_EVAL_ENVIRONMENT: production
+    volumes:
+      - ${AGENT_EVAL_DATA_PATH:?Set AGENT_EVAL_DATA_PATH}:/data
+
+  api:
+    environment:
+      AGENT_EVAL_ENVIRONMENT: production
+      AGENT_EVAL_READ_ONLY_PASSWORD_HASH: ""
+      AGENT_EVAL_OPERATOR_PASSWORD_HASH: ""
+      AGENT_EVAL_ENCRYPTION_KEY: ""
+      AGENT_EVAL_READ_ONLY_PASSWORD_HASH_FILE: /run/secrets/read-only-password-hash
+      AGENT_EVAL_OPERATOR_PASSWORD_HASH_FILE: /run/secrets/operator-password-hash
+      AGENT_EVAL_ENCRYPTION_KEY_FILE: /run/secrets/encryption-key
+    volumes:
+      - ${AGENT_EVAL_DATA_PATH:?Set AGENT_EVAL_DATA_PATH}:/data
+      - ${AGENT_EVAL_SECRETS_PATH:?Set AGENT_EVAL_SECRETS_PATH}:/run/secrets:ro
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "5"
+
+  worker:
+    environment:
+      AGENT_EVAL_ENVIRONMENT: production
+      AGENT_EVAL_READ_ONLY_PASSWORD_HASH_FILE: /run/secrets/read-only-password-hash
+      AGENT_EVAL_OPERATOR_PASSWORD_HASH_FILE: /run/secrets/operator-password-hash
+      AGENT_EVAL_ENCRYPTION_KEY_FILE: /run/secrets/encryption-key
+      AGENT_EVAL_DEEPSEEK_API_KEY_FILE: /run/secrets/deepseek-api-key
+    volumes:
+      - ${AGENT_EVAL_DATA_PATH:?Set AGENT_EVAL_DATA_PATH}:/data
+      - ${AGENT_EVAL_SECRETS_PATH:?Set AGENT_EVAL_SECRETS_PATH}:/run/secrets:ro
+    mem_limit: 4g
+    cpus: 2.0
+    pids_limit: 512
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "5"
+
+  web:
+    ports:
+      - 127.0.0.1:${WEB_PORT:-8080}:80
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "5"
+
+  maintenance:
+    environment:
+      AGENT_EVAL_ENVIRONMENT: production
+      AGENT_EVAL_READ_ONLY_PASSWORD_HASH_FILE: /run/secrets/read-only-password-hash
+      AGENT_EVAL_OPERATOR_PASSWORD_HASH_FILE: /run/secrets/operator-password-hash
+      AGENT_EVAL_ENCRYPTION_KEY_FILE: /run/secrets/encryption-key
+      AGENT_EVAL_DEEPSEEK_API_KEY_FILE: /run/secrets/deepseek-api-key
+    volumes:
+      - ${AGENT_EVAL_DATA_PATH:?Set AGENT_EVAL_DATA_PATH}:/data
+      - ${AGENT_EVAL_SECRETS_PATH:?Set AGENT_EVAL_SECRETS_PATH}:/run/secrets:ro
+      - ${AGENT_EVAL_DATASET_PATH:?Set AGENT_EVAL_DATASET_PATH}:/datasets/demo:ro
+    security_opt:
+      - no-new-privileges:true

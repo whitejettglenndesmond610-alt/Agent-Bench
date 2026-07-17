@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-agent_eval}
+      POSTGRES_USER: ${POSTGRES_USER:-agent_eval}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  migrate:
+    environment:
+      AGENT_EVAL_DATABASE_URL: ${AGENT_EVAL_DATABASE_URL:-postgresql+asyncpg://agent_eval:${POSTGRES_PASSWORD}@postgres:5432/agent_eval}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    environment:
+      AGENT_EVAL_DATABASE_URL: ${AGENT_EVAL_DATABASE_URL:-postgresql+asyncpg://agent_eval:${POSTGRES_PASSWORD}@postgres:5432/agent_eval}
+      AGENT_EVAL_DATABASE_POOL_SIZE: ${AGENT_EVAL_DATABASE_POOL_SIZE:-5}
+      AGENT_EVAL_DATABASE_MAX_OVERFLOW: ${AGENT_EVAL_DATABASE_MAX_OVERFLOW:-5}
+      AGENT_EVAL_DATABASE_POOL_TIMEOUT_SECONDS: ${AGENT_EVAL_DATABASE_POOL_TIMEOUT_SECONDS:-30}
+
+  worker:
+    environment:
+      AGENT_EVAL_DATABASE_URL: ${AGENT_EVAL_DATABASE_URL:-postgresql+asyncpg://agent_eval:${POSTGRES_PASSWORD}@postgres:5432/agent_eval}
+      AGENT_EVAL_DATABASE_POOL_SIZE: ${AGENT_EVAL_DATABASE_POOL_SIZE:-5}
+      AGENT_EVAL_DATABASE_MAX_OVERFLOW: ${AGENT_EVAL_DATABASE_MAX_OVERFLOW:-5}
+      AGENT_EVAL_DATABASE_POOL_TIMEOUT_SECONDS: ${AGENT_EVAL_DATABASE_POOL_TIMEOUT_SECONDS:-30}
+
+  maintenance:
+    environment:
+      AGENT_EVAL_DATABASE_URL: ${AGENT_EVAL_DATABASE_URL:-postgresql+asyncpg://agent_eval:${POSTGRES_PASSWORD}@postgres:5432/agent_eval}
+      AGENT_EVAL_DATABASE_POOL_SIZE: ${AGENT_EVAL_DATABASE_POOL_SIZE:-5}
+      AGENT_EVAL_DATABASE_MAX_OVERFLOW: ${AGENT_EVAL_DATABASE_MAX_OVERFLOW:-5}
+      AGENT_EVAL_DATABASE_POOL_TIMEOUT_SECONDS: ${AGENT_EVAL_DATABASE_POOL_TIMEOUT_SECONDS:-30}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres_data:

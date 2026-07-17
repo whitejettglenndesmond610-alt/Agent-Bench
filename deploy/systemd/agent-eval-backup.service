@@ -1,0 +1,12 @@
+[Unit]
+Description=Agent Evaluation production backup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/agent-eval/backup.conf
+ExecStart=/usr/bin/env bash ${AGENT_EVAL_REPOSITORY_PATH}/deploy/backup-production.sh ${AGENT_EVAL_ENV_FILE}
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

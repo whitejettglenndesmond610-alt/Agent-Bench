@@ -1,0 +1,94 @@
+services:
+  api:
+    environment:
+      AGENT_EVAL_READ_ONLY_PASSWORD_HASH: ${AGENT_EVAL_DEMO_READ_ONLY_PASSWORD_HASH:?Set demo read-only hash}
+      AGENT_EVAL_OPERATOR_PASSWORD_HASH: ${AGENT_EVAL_DEMO_OPERATOR_PASSWORD_HASH:?Set demo operator hash}
+      AGENT_EVAL_ENCRYPTION_KEY: ${AGENT_EVAL_DEMO_ENCRYPTION_KEY:?Set demo encryption key}
+
+  worker:
+    environment:
+      AGENT_EVAL_ENCRYPTION_KEY: ${AGENT_EVAL_DEMO_ENCRYPTION_KEY:?Set demo encryption key}
+      AGENT_EVAL_DEEPSEEK_API_KEY: local-fake-key
+      AGENT_EVAL_DEEPSEEK_API_URL: http://fake-judge:9000/chat/completions
+    depends_on:
+      fake-agent-alpha:
+        condition: service_healthy
+      fake-agent-beta:
+        condition: service_healthy
+      fake-judge:
+        condition: service_healthy
+
+  maintenance:
+    environment:
+      AGENT_EVAL_ENCRYPTION_KEY: ${AGENT_EVAL_DEMO_ENCRYPTION_KEY:?Set demo encryption key}
+      AGENT_EVAL_DEEPSEEK_API_KEY: local-fake-key
+
+  fake-agent-alpha:
+    build:
+      context: ..
+      dockerfile: deploy/docker/api.Dockerfile
+    command:
+      - uvicorn
+      - agent_eval.demo.fake_services:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "9000"
+    environment:
+      FAKE_AGENT_VARIANT: alpha
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/health', timeout=3)"
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    profiles: ["demo"]
+
+  fake-agent-beta:
+    build:
+      context: ..
+      dockerfile: deploy/docker/api.Dockerfile
+    command:
+      - uvicorn
+      - agent_eval.demo.fake_services:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "9000"
+    environment:
+      FAKE_AGENT_VARIANT: beta
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/health', timeout=3)"
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    profiles: ["demo"]
+
+  fake-judge:
+    build:
+      context: ..
+      dockerfile: deploy/docker/api.Dockerfile
+    command:
+      - uvicorn
+      - agent_eval.demo.fake_services:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "9000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/health', timeout=3)"
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    profiles: ["demo"]

@@ -1,0 +1,136 @@
+name: agent-evaluation-platform
+
+services:
+  migrate:
+    build:
+      context: ..
+      dockerfile: deploy/docker/api.Dockerfile
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      AGENT_EVAL_ENVIRONMENT: ${AGENT_EVAL_ENVIRONMENT:-development}
+      AGENT_EVAL_DATABASE_URL: sqlite+aiosqlite:////data/agent-eval.db
+      AGENT_EVAL_DATA_DIR: /data
+    volumes:
+      - app_data:/data
+    restart: "no"
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/docker/api.Dockerfile
+    environment:
+      AGENT_EVAL_ENVIRONMENT: ${AGENT_EVAL_ENVIRONMENT:-development}
+      AGENT_EVAL_DATABASE_URL: sqlite+aiosqlite:////data/agent-eval.db
+      AGENT_EVAL_DATA_DIR: /data
+      AGENT_EVAL_ARTIFACT_BACKEND: ${AGENT_EVAL_ARTIFACT_BACKEND:-local}
+      AGENT_EVAL_ARTIFACT_LOCAL_DIR: ${AGENT_EVAL_ARTIFACT_LOCAL_DIR:-/data/artifacts}
+      AGENT_EVAL_LOG_LEVEL: ${AGENT_EVAL_LOG_LEVEL:-INFO}
+      AGENT_EVAL_WORKER_AGENT_CONCURRENCY: ${AGENT_EVAL_WORKER_AGENT_CONCURRENCY:-10}
+      AGENT_EVAL_RESOURCE_LEASE_SECONDS: ${AGENT_EVAL_RESOURCE_LEASE_SECONDS:-30}
+      AGENT_EVAL_RESOURCE_LEASE_POLL_SECONDS: ${AGENT_EVAL_RESOURCE_LEASE_POLL_SECONDS:-0.1}
+      AGENT_EVAL_READ_ONLY_PASSWORD_HASH: ${AGENT_EVAL_READ_ONLY_PASSWORD_HASH:-}
+      AGENT_EVAL_OPERATOR_PASSWORD_HASH: ${AGENT_EVAL_OPERATOR_PASSWORD_HASH:-}
+      AGENT_EVAL_ENCRYPTION_KEY: ${AGENT_EVAL_ENCRYPTION_KEY:-}
+    volumes:
+      - app_data:/data
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ..
+      dockerfile: deploy/docker/api.Dockerfile
+    command: ["python", "-m", "agent_eval.worker.main"]
+    environment:
+      AGENT_EVAL_ENVIRONMENT: ${AGENT_EVAL_ENVIRONMENT:-development}
+      AGENT_EVAL_DATABASE_URL: sqlite+aiosqlite:////data/agent-eval.db
+      AGENT_EVAL_DATA_DIR: /data
+      AGENT_EVAL_ARTIFACT_BACKEND: ${AGENT_EVAL_ARTIFACT_BACKEND:-local}
+      AGENT_EVAL_ARTIFACT_LOCAL_DIR: ${AGENT_EVAL_ARTIFACT_LOCAL_DIR:-/data/artifacts}
+      AGENT_EVAL_LOG_LEVEL: ${AGENT_EVAL_LOG_LEVEL:-INFO}
+      AGENT_EVAL_WORKER_POLL_SECONDS: ${AGENT_EVAL_WORKER_POLL_SECONDS:-2}
+      AGENT_EVAL_WORKER_LEASE_SECONDS: ${AGENT_EVAL_WORKER_LEASE_SECONDS:-30}
+      AGENT_EVAL_WORKER_HEARTBEAT_SECONDS: ${AGENT_EVAL_WORKER_HEARTBEAT_SECONDS:-10}
+      AGENT_EVAL_WORKER_STALE_RUN_SECONDS: ${AGENT_EVAL_WORKER_STALE_RUN_SECONDS:-60}
+      AGENT_EVAL_WORKER_MAX_ACTIVE_RUNS: ${AGENT_EVAL_WORKER_MAX_ACTIVE_RUNS:-3}
+      AGENT_EVAL_WORKER_MAX_LOCAL_RUNS: ${AGENT_EVAL_WORKER_MAX_LOCAL_RUNS:-3}
+      AGENT_EVAL_WORKER_MAX_PROVIDER_RUNS: ${AGENT_EVAL_WORKER_MAX_PROVIDER_RUNS:-2}
+      AGENT_EVAL_WORKER_AGENT_CONCURRENCY: ${AGENT_EVAL_WORKER_AGENT_CONCURRENCY:-10}
+      AGENT_EVAL_RESOURCE_LEASE_SECONDS: ${AGENT_EVAL_RESOURCE_LEASE_SECONDS:-30}
+      AGENT_EVAL_RESOURCE_LEASE_POLL_SECONDS: ${AGENT_EVAL_RESOURCE_LEASE_POLL_SECONDS:-0.1}
+      AGENT_EVAL_ARTIFACT_RETENTION_DAYS: ${AGENT_EVAL_ARTIFACT_RETENTION_DAYS:-30}
+      AGENT_EVAL_DEEPSEEK_API_KEY: ${AGENT_EVAL_DEEPSEEK_API_KEY:-}
+      AGENT_EVAL_DEEPSEEK_API_URL: ${AGENT_EVAL_DEEPSEEK_API_URL:-https://api.deepseek.com/chat/completions}
+      AGENT_EVAL_DEEPSEEK_MODEL: ${AGENT_EVAL_DEEPSEEK_MODEL:-deepseek-chat}
+      AGENT_EVAL_DEEPSEEK_TIMEOUT_SECONDS: ${AGENT_EVAL_DEEPSEEK_TIMEOUT_SECONDS:-60}
+      AGENT_EVAL_DEEPSEEK_CONCURRENCY: ${AGENT_EVAL_DEEPSEEK_CONCURRENCY:-5}
+      AGENT_EVAL_CITATION_FETCH_CONCURRENCY: ${AGENT_EVAL_CITATION_FETCH_CONCURRENCY:-10}
+      AGENT_EVAL_CITATION_DOMAIN_CONCURRENCY: ${AGENT_EVAL_CITATION_DOMAIN_CONCURRENCY:-2}
+      AGENT_EVAL_CITATION_CONNECT_TIMEOUT_SECONDS: ${AGENT_EVAL_CITATION_CONNECT_TIMEOUT_SECONDS:-5}
+      AGENT_EVAL_CITATION_READ_TIMEOUT_SECONDS: ${AGENT_EVAL_CITATION_READ_TIMEOUT_SECONDS:-15}
+      AGENT_EVAL_CITATION_MAX_REDIRECTS: ${AGENT_EVAL_CITATION_MAX_REDIRECTS:-3}
+      AGENT_EVAL_CITATION_MAX_RESPONSE_BYTES: ${AGENT_EVAL_CITATION_MAX_RESPONSE_BYTES:-2097152}
+      AGENT_EVAL_CITATION_MAX_TEXT_BYTES: ${AGENT_EVAL_CITATION_MAX_TEXT_BYTES:-204800}
+      AGENT_EVAL_ENCRYPTION_KEY: ${AGENT_EVAL_ENCRYPTION_KEY:-}
+    volumes:
+      - app_data:/data
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/docker/web.Dockerfile
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  maintenance:
+    build:
+      context: ..
+      dockerfile: deploy/docker/api.Dockerfile
+    entrypoint: ["python", "-m", "agent_eval.maintenance.main"]
+    command: ["check"]
+    environment:
+      AGENT_EVAL_ENVIRONMENT: ${AGENT_EVAL_ENVIRONMENT:-development}
+      AGENT_EVAL_DATABASE_URL: sqlite+aiosqlite:////data/agent-eval.db
+      AGENT_EVAL_DATA_DIR: /data
+      AGENT_EVAL_ARTIFACT_BACKEND: ${AGENT_EVAL_ARTIFACT_BACKEND:-local}
+      AGENT_EVAL_ARTIFACT_LOCAL_DIR: ${AGENT_EVAL_ARTIFACT_LOCAL_DIR:-/data/artifacts}
+      AGENT_EVAL_WORKER_STALE_RUN_SECONDS: ${AGENT_EVAL_WORKER_STALE_RUN_SECONDS:-60}
+      AGENT_EVAL_MONITORING_EXPECTED_WORKERS: ${AGENT_EVAL_MONITORING_EXPECTED_WORKERS:-1}
+      AGENT_EVAL_MONITORING_MAX_QUEUED_RUNS: ${AGENT_EVAL_MONITORING_MAX_QUEUED_RUNS:-10}
+      AGENT_EVAL_MONITORING_MAX_QUEUE_AGE_MINUTES: ${AGENT_EVAL_MONITORING_MAX_QUEUE_AGE_MINUTES:-30}
+      AGENT_EVAL_MONITORING_WINDOW_HOURS: ${AGENT_EVAL_MONITORING_WINDOW_HOURS:-24}
+      AGENT_EVAL_MONITORING_MAX_SYSTEM_FAILED_RUNS: ${AGENT_EVAL_MONITORING_MAX_SYSTEM_FAILED_RUNS:-0}
+      AGENT_EVAL_MONITORING_RESOURCE_LEASE_GRACE_SECONDS: ${AGENT_EVAL_MONITORING_RESOURCE_LEASE_GRACE_SECONDS:-120}
+      AGENT_EVAL_MONITORING_MAX_EXPIRED_RESOURCE_LEASES: ${AGENT_EVAL_MONITORING_MAX_EXPIRED_RESOURCE_LEASES:-0}
+    volumes:
+      - app_data:/data
+      - ${AGENT_EVAL_DATASET_PATH:-../data/demo-dataset}:/datasets/demo:ro
+    profiles: ["tools"]
+
+volumes:
+  app_data:

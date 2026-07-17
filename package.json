@@ -1,0 +1,11 @@
+{
+  "name": "agent-evaluation-platform-workspace",
+  "private": true,
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "dev:web": "pnpm --filter @agent-eval/web dev",
+    "build:web": "pnpm --filter @agent-eval/web build",
+    "test:web": "pnpm --filter @agent-eval/web test",
+    "lint:web": "pnpm --filter @agent-eval/web lint"
+  }
+}

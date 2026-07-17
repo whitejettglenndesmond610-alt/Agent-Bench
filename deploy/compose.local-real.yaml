@@ -1,0 +1,18 @@
+services:
+  api:
+    environment:
+      AGENT_EVAL_READ_ONLY_PASSWORD_HASH: ${AGENT_EVAL_LOCAL_READ_ONLY_PASSWORD_HASH:?Set local read-only hash}
+      AGENT_EVAL_OPERATOR_PASSWORD_HASH: ${AGENT_EVAL_LOCAL_OPERATOR_PASSWORD_HASH:?Set local operator hash}
+      AGENT_EVAL_ENCRYPTION_KEY: ${AGENT_EVAL_LOCAL_ENCRYPTION_KEY:?Set local encryption key}
+
+  worker:
+    environment:
+      AGENT_EVAL_ENCRYPTION_KEY: ${AGENT_EVAL_LOCAL_ENCRYPTION_KEY:?Set local encryption key}
+      AGENT_EVAL_DEEPSEEK_API_KEY: ${AGENT_EVAL_LOCAL_DEEPSEEK_API_KEY:?Set local DeepSeek API Key}
+      AGENT_EVAL_DEEPSEEK_API_URL: https://api.deepseek.com/chat/completions
+      AGENT_EVAL_DEEPSEEK_MODEL: deepseek-chat
+
+  maintenance:
+    environment:
+      AGENT_EVAL_ENCRYPTION_KEY: ${AGENT_EVAL_LOCAL_ENCRYPTION_KEY:?Set local encryption key}
+      AGENT_EVAL_DEEPSEEK_API_KEY: ${AGENT_EVAL_LOCAL_DEEPSEEK_API_KEY:?Set local DeepSeek API Key}

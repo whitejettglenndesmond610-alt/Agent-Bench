@@ -1,0 +1,7 @@
+services:
+  maintenance:
+    # The backup job spans the app-owned data volume and an operator-owned host directory.
+    # backup-production.sh returns completed archives to the configured host UID/GID.
+    user: "0:0"
+    volumes:
+      - ${AGENT_EVAL_BACKUP_PATH:?Set AGENT_EVAL_BACKUP_PATH}:/backups
