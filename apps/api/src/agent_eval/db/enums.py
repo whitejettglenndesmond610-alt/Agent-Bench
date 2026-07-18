@@ -155,6 +155,12 @@ class WorkspaceAttemptStatus(StrEnum):
     CANCELED = "canceled"
 
 
+class EvaluationCaseStatus(StrEnum):
+    DRAFT = "draft"
+    REVIEWED = "reviewed"
+    PUBLISHED = "published"
+
+
 class NotificationType(StrEnum):
     RUN_PUBLISHED = "run_published"
     RUN_FAILED = "run_failed"

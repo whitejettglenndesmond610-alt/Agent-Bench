@@ -11,10 +11,12 @@ from fastapi.responses import JSONResponse
 from agent_eval import __version__
 from agent_eval.api.routes.agents import router as agents_router
 from agent_eval.api.routes.auth import router as auth_router
+from agent_eval.api.routes.evaluation_cases import router as evaluation_cases_router
 from agent_eval.api.routes.health import router as health_router
 from agent_eval.api.routes.leaderboards import router as leaderboards_router
 from agent_eval.api.routes.runs import router as runs_router
 from agent_eval.api.routes.workspace import router as workspace_router
+from agent_eval.api.routes.workspace_comparisons import router as workspace_comparisons_router
 from agent_eval.auth.encryption import TokenCipher
 from agent_eval.auth.rate_limit import LoginRateLimiter
 from agent_eval.core.artifact_store import ArtifactStore, create_artifact_store
@@ -90,6 +92,8 @@ def create_app(
     app.include_router(runs_router)
     app.include_router(leaderboards_router)
     app.include_router(workspace_router)
+    app.include_router(workspace_comparisons_router)
+    app.include_router(evaluation_cases_router)
     return app
 
 

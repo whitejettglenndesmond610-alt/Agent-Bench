@@ -66,6 +66,7 @@ if "${compose[@]}" ps --all --services | grep -qx postgres; then
     printf '%s\n' 'Rehearsal project already exists; choose a new project name' >&2
     exit 1
 fi
+"${compose[@]}" --profile tools build migrate maintenance
 "${compose[@]}" up -d --wait postgres
 if [[ "$uses_minio" == true ]]; then
     "${compose[@]}" up -d --wait minio

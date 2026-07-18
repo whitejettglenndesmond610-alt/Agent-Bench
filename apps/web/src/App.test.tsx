@@ -77,6 +77,7 @@ test("shows the live platform baseline for an operator", async () => {
   expect(await screen.findByText("服务在线")).toBeInTheDocument();
   expect(screen.getByText("test")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Agent" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "评测案例" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "工作台" })).toBeInTheDocument();
   expect(screen.queryByText("legacy-v1")).not.toBeInTheDocument();
   expect(screen.getByText("unified-v3")).toBeInTheDocument();
@@ -202,6 +203,7 @@ test("lets an entitled named read-only user open workspace without operator navi
   expect(screen.queryByRole("link", { name: "总览" })).not.toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "Agent" })).not.toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "评测任务" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "评测案例" })).not.toBeInTheDocument();
 });
 
 test("keeps operator routes guarded from named read-only workspace users", async () => {

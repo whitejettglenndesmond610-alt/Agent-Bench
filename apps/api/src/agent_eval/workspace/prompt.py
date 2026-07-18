@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from agent_eval.db.enums import WorkspaceMessageRole
 
 WORKSPACE_PROMPT_FORMAT = "workspace-chat-v2"
+WORKSPACE_COMPARISON_PROMPT_FORMAT = "workspace-compare-v1"
 WORKSPACE_PROMPT_HARD_CAP = 200_000
 
 
@@ -75,3 +76,12 @@ def format_workspace_transcript(
 
 def workspace_prompt_limit(configured_limit: int | None) -> int:
     return min(configured_limit or WORKSPACE_PROMPT_HARD_CAP, WORKSPACE_PROMPT_HARD_CAP)
+
+
+def format_workspace_comparison_prompt(prompt: str) -> FormattedWorkspacePrompt:
+    return FormattedWorkspacePrompt(
+        content=prompt,
+        format_version=WORKSPACE_COMPARISON_PROMPT_FORMAT,
+        sha256=hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+        characters=len(prompt),
+    )

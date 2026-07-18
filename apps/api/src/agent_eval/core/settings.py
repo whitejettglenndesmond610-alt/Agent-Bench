@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     monitoring_max_system_failed_runs: int = Field(default=0, ge=0, le=10000)
     monitoring_resource_lease_grace_seconds: int = Field(default=120, ge=0, le=86400)
     monitoring_max_expired_resource_leases: int = Field(default=0, ge=0, le=10000)
+    monitoring_max_queued_workspace_attempts: int = Field(default=20, ge=0, le=10000)
+    monitoring_max_workspace_queue_age_minutes: int = Field(default=30, ge=1, le=10080)
+    monitoring_max_recent_failed_workspace_attempts: int = Field(
+        default=10, ge=0, le=10000
+    )
     artifact_backend: Literal["local", "s3"] = "local"
     artifact_local_dir: Path | None = None
     artifact_s3_bucket: str | None = None

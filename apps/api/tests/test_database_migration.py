@@ -21,6 +21,7 @@ from agent_eval.db.enums import (
     AuthType,
     CitationFetchStatus,
     DatasetStatus,
+    EvaluationCaseStatus,
     ExecutionStatus,
     Language,
     NotificationType,
@@ -40,6 +41,7 @@ from agent_eval.db.models import (
     Benchmark,
     CitationRecord,
     DatasetVersion,
+    EvaluationCase,
     EvaluationRun,
     ExecutionItem,
     HttpAttempt,
@@ -56,10 +58,12 @@ from agent_eval.db.models import (
     Session,
     WorkerLease,
     WorkspaceAttempt,
+    WorkspaceComparison,
     WorkspaceConversation,
     WorkspaceMessage,
 )
 from agent_eval.db.session import create_session_factory, session_scope
+from agent_eval.evaluation_cases.service import canonical_sha256
 from agent_eval.maintenance import database_migration
 from agent_eval.maintenance.database_migration import (
     ALEMBIC_HEAD,
@@ -358,12 +362,23 @@ async def seed_representative_source(source_url: str) -> None:
             session.add_all([agent_version, dataset])
             await session.flush()
 
+            comparison = WorkspaceComparison(
+                owner_user_id=workspace_user.id,
+                title="Migrated comparison",
+                prompt="Migration question",
+                idempotency_key="00000000-0000-4000-8000-000000000003",
+                request_fingerprint="a" * 64,
+            )
+            session.add(comparison)
+            await session.flush()
             conversation = WorkspaceConversation(
                 owner_user_id=workspace_user.id,
                 pinned_agent_version_id=agent_version.id,
                 title="Migrated workspace history",
                 last_turn_no=1,
                 revision=1,
+                comparison_id=comparison.id,
+                comparison_position=1,
             )
             session.add(conversation)
             await session.flush()
@@ -386,29 +401,68 @@ async def seed_representative_source(source_url: str) -> None:
             )
             session.add_all([workspace_user_message, workspace_assistant_message])
             await session.flush()
+            workspace_attempt = WorkspaceAttempt(
+                conversation_id=conversation.id,
+                user_message_id=workspace_user_message.id,
+                assistant_message_id=workspace_assistant_message.id,
+                agent_version_id=agent_version.id,
+                generation_no=1,
+                idempotency_key="00000000-0000-4000-8000-000000000002",
+                request_fingerprint="8" * 64,
+                status=WorkspaceAttemptStatus.SUCCEEDED,
+                claimed_at=now - timedelta(seconds=2),
+                started_at=now - timedelta(seconds=2),
+                finished_at=now - timedelta(seconds=1),
+                http_attempt_count=1,
+                last_http_status=200,
+                latency_ms=125,
+                input_tokens=10,
+                output_tokens=2,
+                total_tokens=12,
+                artifact_id=artifact.id,
+                prompt_hash="9" * 64,
+                prompt_characters=500,
+                prompt_format="workspace-compare-v1",
+            )
+            session.add(workspace_attempt)
+            await session.flush()
+            source_snapshot = {
+                "agent": {
+                    "agent_id": str(agent.id),
+                    "agent_version_id": str(agent_version.id),
+                    "name": agent.name,
+                    "provider": agent.provider,
+                    "version": agent_version.version,
+                },
+                "artifact_sha256": artifact.sha256,
+                "assistant_message_id": str(workspace_assistant_message.id),
+                "attempt_id": str(workspace_attempt.id),
+                "candidate_answer": workspace_assistant_message.content,
+                "citations": list(workspace_assistant_message.citations or []),
+                "comparison_id": str(comparison.id),
+                "conversation_id": str(conversation.id),
+                "generation_no": workspace_attempt.generation_no,
+                "input_tokens": workspace_attempt.input_tokens,
+                "latency_ms": workspace_attempt.latency_ms,
+                "output_tokens": workspace_attempt.output_tokens,
+                "prompt_format": workspace_attempt.prompt_format,
+                "prompt_hash": workspace_attempt.prompt_hash,
+                "total_tokens": workspace_attempt.total_tokens,
+                "user_message": workspace_user_message.content,
+                "user_message_id": str(workspace_user_message.id),
+            }
             session.add(
-                WorkspaceAttempt(
-                    conversation_id=conversation.id,
-                    user_message_id=workspace_user_message.id,
-                    assistant_message_id=workspace_assistant_message.id,
-                    agent_version_id=agent_version.id,
-                    generation_no=1,
-                    idempotency_key="00000000-0000-4000-8000-000000000002",
-                    request_fingerprint="8" * 64,
-                    status=WorkspaceAttemptStatus.SUCCEEDED,
-                    claimed_at=now - timedelta(seconds=2),
-                    started_at=now - timedelta(seconds=2),
-                    finished_at=now - timedelta(seconds=1),
-                    http_attempt_count=1,
-                    last_http_status=200,
-                    latency_ms=125,
-                    input_tokens=10,
-                    output_tokens=2,
-                    total_tokens=12,
-                    artifact_id=artifact.id,
-                    prompt_hash="9" * 64,
-                    prompt_characters=500,
-                    prompt_format="workspace-transcript-v1",
+                EvaluationCase(
+                    owner_user_id=workspace_user.id,
+                    source_attempt_id=workspace_attempt.id,
+                    source_conversation_id=conversation.id,
+                    idempotency_key="00000000-0000-4000-8000-000000000004",
+                    request_fingerprint="b" * 64,
+                    source_hash=canonical_sha256(source_snapshot),
+                    source_payload_json=source_snapshot,
+                    status=EvaluationCaseStatus.DRAFT,
+                    revision=0,
+                    prompt="Migration question",
                 )
             )
 

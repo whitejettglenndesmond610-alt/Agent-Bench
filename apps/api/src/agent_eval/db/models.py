@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     Numeric,
@@ -35,6 +36,7 @@ from agent_eval.db.enums import (
     CitationFetchStatus,
     DatasetStatus,
     DesiredRunState,
+    EvaluationCaseStatus,
     ExecutionStatus,
     Language,
     NotificationType,
@@ -706,6 +708,38 @@ class AuthUser(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     sessions: Mapped[list[Session]] = relationship(back_populates="user")
     conversations: Mapped[list["WorkspaceConversation"]] = relationship(back_populates="owner")
+    comparisons: Mapped[list["WorkspaceComparison"]] = relationship(back_populates="owner")
+    evaluation_cases: Mapped[list["EvaluationCase"]] = relationship(
+        back_populates="owner", foreign_keys="EvaluationCase.owner_user_id"
+    )
+
+
+class WorkspaceComparison(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "workspace_comparisons"
+    __table_args__ = (
+        UniqueConstraint(
+            "owner_user_id",
+            "idempotency_key",
+            name="uq_workspace_comparisons_idempotency",
+        ),
+        UniqueConstraint("id", "owner_user_id", name="uq_workspace_comparisons_id_owner"),
+        CheckConstraint("length(title) > 0", name="title_nonempty"),
+        CheckConstraint("length(prompt) BETWEEN 1 AND 200000", name="prompt_length"),
+        CheckConstraint("length(idempotency_key) = 36", name="idempotency_key_uuid"),
+        CheckConstraint("length(request_fingerprint) = 64", name="request_fingerprint_sha256"),
+        Index("ix_workspace_comparisons_owner_created", "owner_user_id", "created_at"),
+    )
+
+    owner_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("auth_users.id", ondelete="RESTRICT"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(36), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    owner: Mapped[AuthUser] = relationship(back_populates="comparisons")
 
 
 class WorkspaceConversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -714,6 +748,28 @@ class WorkspaceConversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint("last_turn_no >= 0", name="last_turn_no_nonnegative"),
         CheckConstraint("revision >= 0", name="revision_nonnegative"),
         CheckConstraint("length(title) > 0", name="title_nonempty"),
+        CheckConstraint(
+            "(comparison_id IS NULL AND comparison_position IS NULL) OR "
+            "(comparison_id IS NOT NULL AND comparison_position BETWEEN 1 AND 5)",
+            name="comparison_fields_valid",
+        ),
+        ForeignKeyConstraint(
+            ["comparison_id", "owner_user_id"],
+            ["workspace_comparisons.id", "workspace_comparisons.owner_user_id"],
+            ondelete="CASCADE",
+            name="fk_workspace_conversations_comparison_owner",
+        ),
+        UniqueConstraint(
+            "comparison_id",
+            "comparison_position",
+            name="uq_workspace_conversations_comparison_position",
+        ),
+        UniqueConstraint(
+            "comparison_id",
+            "pinned_agent_version_id",
+            name="uq_workspace_conversations_comparison_agent_version",
+        ),
+        UniqueConstraint("id", "owner_user_id", name="uq_workspace_conversations_id_owner"),
         Index("ix_workspace_conversations_owner_updated", "owner_user_id", "updated_at"),
     )
 
@@ -727,9 +783,14 @@ class WorkspaceConversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     last_turn_no: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     revision: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    comparison_id: Mapped[UUID | None] = mapped_column(index=True)
+    comparison_position: Mapped[int | None] = mapped_column(SmallInteger)
 
     owner: Mapped[AuthUser] = relationship(back_populates="conversations")
     pinned_agent_version: Mapped[AgentVersion] = relationship()
+    comparison: Mapped[WorkspaceComparison | None] = relationship(
+        foreign_keys=[comparison_id, owner_user_id], viewonly=True
+    )
     messages: Mapped[list["WorkspaceMessage"]] = relationship(back_populates="conversation")
     attempts: Mapped[list["WorkspaceAttempt"]] = relationship(back_populates="conversation")
 
@@ -788,6 +849,9 @@ class WorkspaceAttempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
         UniqueConstraint(
             "user_message_id", "generation_no", name="uq_workspace_attempts_generation"
+        ),
+        UniqueConstraint(
+            "id", "conversation_id", name="uq_workspace_attempts_id_conversation"
         ),
         CheckConstraint("generation_no > 0", name="generation_no_positive"),
         CheckConstraint("length(request_fingerprint) = 64", name="request_fingerprint_sha256"),
@@ -894,6 +958,129 @@ class WorkspaceAttempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     agent_version: Mapped[AgentVersion] = relationship()
     artifact: Mapped[ArtifactIndex | None] = relationship()
+    evaluation_case: Mapped["EvaluationCase | None"] = relationship(
+        back_populates="source_attempt", uselist=False
+    )
+
+
+class EvaluationCase(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "evaluation_cases"
+    __table_args__ = (
+        UniqueConstraint(
+            "owner_user_id", "idempotency_key", name="uq_evaluation_cases_idempotency"
+        ),
+        ForeignKeyConstraint(
+            ["source_attempt_id", "source_conversation_id"],
+            ["workspace_attempts.id", "workspace_attempts.conversation_id"],
+            ondelete="RESTRICT",
+            name="fk_evaluation_cases_source_attempt_conversation",
+        ),
+        ForeignKeyConstraint(
+            ["source_conversation_id", "owner_user_id"],
+            ["workspace_conversations.id", "workspace_conversations.owner_user_id"],
+            ondelete="RESTRICT",
+            name="fk_evaluation_cases_source_conversation_owner",
+        ),
+        CheckConstraint("revision >= 0", name="revision_nonnegative"),
+        CheckConstraint("length(idempotency_key) = 36", name="idempotency_key_uuid"),
+        CheckConstraint("length(request_fingerprint) = 64", name="request_fingerprint_sha256"),
+        CheckConstraint("length(source_hash) = 64", name="source_hash_sha256"),
+        CheckConstraint(
+            "record_hash IS NULL OR length(record_hash) = 64", name="record_hash_sha256"
+        ),
+        CheckConstraint(
+            "published_prompt_hash IS NULL OR length(published_prompt_hash) = 64",
+            name="published_prompt_hash_sha256",
+        ),
+        CheckConstraint("length(prompt) BETWEEN 1 AND 200000", name="prompt_length"),
+        CheckConstraint(
+            "reference_answer IS NULL OR length(reference_answer) > 0",
+            name="reference_answer_nonempty",
+        ),
+        CheckConstraint(
+            "question_type IN ('short_answer', 'open_ended')",
+            name="supported_question_type",
+        ),
+        CheckConstraint(
+            "(status = 'draft' AND reviewed_by_user_id IS NULL AND reviewed_at IS NULL "
+            "AND record_hash IS NULL AND published_by_user_id IS NULL AND published_at IS NULL "
+            "AND published_prompt_hash IS NULL AND standalone_verified = false "
+            "AND reference_answer_verified = false AND rights_verified = false "
+            "AND sensitive_data_verified = false) OR "
+            "(status = 'reviewed' AND reviewed_by_user_id IS NOT NULL AND reviewed_at IS NOT NULL "
+            "AND record_hash IS NOT NULL AND published_by_user_id IS NULL AND published_at IS NULL "
+            "AND published_prompt_hash IS NULL AND standalone_verified = true "
+            "AND reference_answer_verified = true AND rights_verified = true "
+            "AND sensitive_data_verified = true AND reference_answer IS NOT NULL "
+            "AND language IS NOT NULL AND ability IS NOT NULL) OR "
+            "(status = 'published' AND reviewed_by_user_id IS NOT NULL AND reviewed_at IS NOT NULL "
+            "AND record_hash IS NOT NULL AND published_by_user_id IS NOT NULL "
+            "AND published_at IS NOT NULL AND published_prompt_hash IS NOT NULL "
+            "AND standalone_verified = true AND reference_answer_verified = true "
+            "AND rights_verified = true AND sensitive_data_verified = true "
+            "AND reference_answer IS NOT NULL AND language IS NOT NULL AND ability IS NOT NULL)",
+            name="status_lifecycle_fields",
+        ),
+        Index("ix_evaluation_cases_owner_updated", "owner_user_id", "updated_at"),
+    )
+
+    owner_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("auth_users.id", ondelete="RESTRICT"), nullable=False
+    )
+    source_attempt_id: Mapped[UUID] = mapped_column(nullable=False, unique=True)
+    source_conversation_id: Mapped[UUID] = mapped_column(nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(36), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    status: Mapped[EvaluationCaseStatus] = mapped_column(
+        enum_column(EvaluationCaseStatus, name="evaluation_case_status"),
+        default=EvaluationCaseStatus.DRAFT,
+        nullable=False,
+        index=True,
+    )
+    revision: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    reference_answer: Mapped[str | None] = mapped_column(Text)
+    language: Mapped[Language | None] = mapped_column(
+        enum_column(Language, name="evaluation_case_language")
+    )
+    ability: Mapped[Ability | None] = mapped_column(
+        enum_column(Ability, name="evaluation_case_ability")
+    )
+    question_type: Mapped[QuestionType] = mapped_column(
+        enum_column(QuestionType, name="evaluation_case_question_type"),
+        default=QuestionType.OPEN_ENDED,
+        nullable=False,
+    )
+    requires_citations: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    difficulty: Mapped[str | None] = mapped_column(String(80))
+    domain: Mapped[str | None] = mapped_column(String(120))
+    review_notes: Mapped[str | None] = mapped_column(Text)
+    standalone_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    reference_answer_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    rights_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    sensitive_data_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    record_hash: Mapped[str | None] = mapped_column(String(64))
+    reviewed_by_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("auth_users.id", ondelete="RESTRICT")
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_by_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("auth_users.id", ondelete="RESTRICT")
+    )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_prompt_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+
+    owner: Mapped[AuthUser] = relationship(
+        back_populates="evaluation_cases", foreign_keys=[owner_user_id]
+    )
+    source_attempt: Mapped[WorkspaceAttempt] = relationship(
+        back_populates="evaluation_case",
+        foreign_keys=[source_attempt_id, source_conversation_id],
+    )
+    reviewed_by: Mapped[AuthUser | None] = relationship(foreign_keys=[reviewed_by_user_id])
+    published_by: Mapped[AuthUser | None] = relationship(foreign_keys=[published_by_user_id])
 
 
 class Notification(UUIDPrimaryKeyMixin, Base):

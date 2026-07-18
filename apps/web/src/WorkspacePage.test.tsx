@@ -109,25 +109,28 @@ function attempt(
   };
 }
 
-function renderWorkspace(initialEntry = "/workspace") {
+function renderWorkspace(initialEntry = "/workspace", canDraft = true) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
   });
-  return render(
+  const rendered = render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
-          <Route path="/workspace" element={<WorkspacePage userId="user-1" />} />
-          <Route path="/workspace/:conversationId" element={<WorkspacePage userId="user-1" />} />
+          <Route path="/workspace" element={<WorkspacePage userId="user-1" canDraft={canDraft} />} />
+          <Route path="/workspace/:conversationId" element={<WorkspacePage userId="user-1" canDraft={canDraft} />} />
+          <Route path="/evaluation-cases/:caseId" element={<div>案例编辑器占位</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
   );
+  return Object.assign(rendered, { queryClient });
 }
 
 function baseFetch(input: string) {
   if (input === "/api/v1/workspace/agents") return Promise.resolve(response([agent]));
   if (input === "/api/v1/workspace/conversations") return Promise.resolve(response({ items: [conversation] }));
+  if (input === "/api/v1/evaluation-cases") return Promise.resolve(response({ items: [] }));
   throw new Error(`Unexpected request: ${input}`);
 }
 
@@ -650,6 +653,111 @@ test("renames and archives history with the latest expected revision", async () 
     { archived: true, expected_revision: 3 }
   ]);
   expect(await screen.findByRole("heading", { name: /建立一条可追溯的/ })).toBeInTheDocument();
+});
+
+test("saves the selected successful variant as an evaluation draft", async () => {
+  vi.spyOn(crypto, "randomUUID").mockReturnValue("00000000-0000-4000-8000-000000000201");
+  const successfulTurn = {
+    turn_no: 1,
+    user_message: userMessage(1),
+    assistant_messages: [assistantMessage("answer-draft", 1, "可沉淀的回答")],
+    attempts: [attempt("attempt-draft", "succeeded", 1, "answer-draft")]
+  };
+  const fetchMock = vi.fn().mockImplementation((input: string, init?: RequestInit) => {
+    if (input === "/api/v1/workspace/conversations/conversation-1") {
+      return Promise.resolve(response({ ...conversation, last_turn_no: 1, turns: [successfulTurn] }));
+    }
+    if (input === "/api/v1/evaluation-cases" && init?.method === "POST") {
+      return Promise.resolve(response({ id: "case-1" }, 201));
+    }
+    return baseFetch(input);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  const { queryClient } = renderWorkspace("/workspace/conversation-1");
+  fireEvent.click(await screen.findByRole("button", { name: "保存为评测草稿" }));
+
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+    "/api/v1/evaluation-cases",
+    expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        source_attempt_id: "attempt-draft",
+        idempotency_key: "00000000-0000-4000-8000-000000000201"
+      })
+    })
+  ));
+  expect(queryClient.getQueryData(["workspace", "user-1", "evaluation-cases"])).toEqual({ items: [{ id: "case-1" }] });
+  expect(await screen.findByText("案例编辑器占位")).toBeInTheDocument();
+});
+
+test("links an existing evaluation case for the selected successful attempt", async () => {
+  const successfulTurn = {
+    turn_no: 1,
+    user_message: userMessage(1),
+    assistant_messages: [assistantMessage("answer-existing", 1, "已有评测草稿的回答")],
+    attempts: [attempt("attempt-existing", "succeeded", 1, "answer-existing")]
+  };
+  const fetchMock = vi.fn().mockImplementation((input: string) => {
+    if (input === "/api/v1/workspace/conversations/conversation-1") {
+      return Promise.resolve(response({ ...conversation, last_turn_no: 1, turns: [successfulTurn] }));
+    }
+    if (input === "/api/v1/evaluation-cases") {
+      return Promise.resolve(response({
+        items: [{ id: "case-existing", source: { attempt_id: "attempt-existing" } }]
+      }));
+    }
+    return baseFetch(input);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  renderWorkspace("/workspace/conversation-1");
+
+  expect(await screen.findByRole("link", { name: "查看评测草稿" })).toHaveAttribute(
+    "href",
+    "/evaluation-cases/case-existing"
+  );
+  expect(screen.queryByRole("button", { name: "保存为评测草稿" })).not.toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/v1/evaluation-cases",
+    expect.objectContaining({ credentials: "same-origin" })
+  );
+});
+
+test("renders an explicit conversation history error", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => {
+    if (input === "/api/v1/workspace/agents") return Promise.resolve(response([agent]));
+    if (input === "/api/v1/evaluation-cases") return Promise.resolve(response({ items: [] }));
+    if (input === "/api/v1/workspace/conversations") {
+      return Promise.resolve(response({ detail: { message: "会话服务不可用" } }, 503));
+    }
+    throw new Error(`Unexpected request: ${input}`);
+  }));
+
+  renderWorkspace();
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("会话历史读取失败：会话服务不可用");
+  expect(screen.queryByText("暂无进行中的会话")).not.toBeInTheDocument();
+});
+
+test("keeps comparison available without showing draft controls to read-only users", async () => {
+  const successfulTurn = {
+    turn_no: 1,
+    user_message: userMessage(1),
+    assistant_messages: [assistantMessage("answer-read-only", 1, "只读回答")],
+    attempts: [attempt("attempt-read-only", "succeeded", 1, "answer-read-only")]
+  };
+  vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => {
+    if (input === "/api/v1/workspace/conversations/conversation-1") {
+      return Promise.resolve(response({ ...conversation, last_turn_no: 1, turns: [successfulTurn] }));
+    }
+    return baseFetch(input);
+  }));
+
+  renderWorkspace("/workspace/conversation-1", false);
+
+  expect(await screen.findByRole("link", { name: "并行对比" })).toHaveAttribute("href", "/workspace/compare");
+  expect(screen.queryByRole("button", { name: "保存为评测草稿" })).not.toBeInTheDocument();
 });
 
 test("exposes accessible drawer controls and returns focus after Escape", async () => {

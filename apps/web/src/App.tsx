@@ -21,6 +21,12 @@ const ComparePage = lazy(() =>
 const WorkspacePage = lazy(() =>
   import("./WorkspacePage").then((module) => ({ default: module.WorkspacePage }))
 );
+const WorkspaceComparePage = lazy(() =>
+  import("./WorkspaceComparePage").then((module) => ({ default: module.WorkspaceComparePage }))
+);
+const EvaluationCasesPage = lazy(() =>
+  import("./EvaluationCasesPage").then((module) => ({ default: module.EvaluationCasesPage }))
+);
 
 function Dashboard() {
   const platform = useQuery({
@@ -108,6 +114,7 @@ function AppNavigation({ session, onLogout, loggingOut }: { session: SessionInfo
         {operator && <NavLink to="/" end>总览</NavLink>}
         {operator && <NavLink to="/agents">Agent</NavLink>}
         {operator && <NavLink to="/runs">评测任务</NavLink>}
+        {operator && <NavLink to="/evaluation-cases">评测案例</NavLink>}
         {workspaceEnabled && <NavLink to="/workspace">工作台</NavLink>}
         <NavLink to="/leaderboard">排行榜</NavLink>
       </nav>
@@ -144,10 +151,14 @@ function AuthenticatedApp({ session }: { session: SessionInfo }) {
         <Route path="/agents" element={operator ? <AgentsPage /> : <Navigate to="/" replace />} />
         <Route path="/runs" element={operator ? <RunsPage /> : <Navigate to="/" replace />} />
         <Route path="/runs/:runId" element={operator ? <RunsPage /> : <Navigate to="/" replace />} />
+        <Route path="/evaluation-cases" element={operator ? <Suspense fallback={workspaceFallback}><EvaluationCasesPage userId={session.user_id} canPublish={operator && !session.is_shared} /></Suspense> : <Navigate to="/" replace />} />
+        <Route path="/evaluation-cases/:caseId" element={operator ? <Suspense fallback={workspaceFallback}><EvaluationCasesPage userId={session.user_id} canPublish={operator && !session.is_shared} /></Suspense> : <Navigate to="/" replace />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
         <Route path="/leaderboard/compare" element={<Suspense fallback={<main className="workspace"><div className="leaderboard-loading"><span className="status-dot" />正在加载对比视图</div></main>}><ComparePage /></Suspense>} />
-        <Route path="/workspace" element={workspaceEnabled ? <Suspense fallback={workspaceFallback}><WorkspacePage userId={session.user_id} /></Suspense> : <Navigate to="/" replace />} />
-        <Route path="/workspace/:conversationId" element={workspaceEnabled ? <Suspense fallback={workspaceFallback}><WorkspacePage userId={session.user_id} /></Suspense> : <Navigate to="/" replace />} />
+        <Route path="/workspace" element={workspaceEnabled ? <Suspense fallback={workspaceFallback}><WorkspacePage userId={session.user_id} canDraft={operator && !session.is_shared} /></Suspense> : <Navigate to="/" replace />} />
+        <Route path="/workspace/compare" element={workspaceEnabled ? <Suspense fallback={workspaceFallback}><WorkspaceComparePage userId={session.user_id} canDraft={operator && !session.is_shared} /></Suspense> : <Navigate to="/" replace />} />
+        <Route path="/workspace/compare/:comparisonId" element={workspaceEnabled ? <Suspense fallback={workspaceFallback}><WorkspaceComparePage userId={session.user_id} canDraft={operator && !session.is_shared} /></Suspense> : <Navigate to="/" replace />} />
+        <Route path="/workspace/:conversationId" element={workspaceEnabled ? <Suspense fallback={workspaceFallback}><WorkspacePage userId={session.user_id} canDraft={operator && !session.is_shared} /></Suspense> : <Navigate to="/" replace />} />
       </Routes></div>
     </div>
   );

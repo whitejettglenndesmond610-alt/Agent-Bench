@@ -181,6 +181,7 @@ async def owned_conversation(
         .where(
             WorkspaceConversation.id == conversation_id,
             WorkspaceConversation.owner_user_id == owner_user_id,
+            WorkspaceConversation.comparison_id.is_(None),
         )
     )
     if lock:
@@ -363,6 +364,7 @@ async def list_conversations(
             )
         )
         .where(WorkspaceConversation.owner_user_id == workspace_user_id(auth_session))
+        .where(WorkspaceConversation.comparison_id.is_(None))
     )
     if not include_archived:
         statement = statement.where(WorkspaceConversation.archived_at.is_(None))

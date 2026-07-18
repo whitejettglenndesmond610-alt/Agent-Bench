@@ -144,7 +144,7 @@ paste them into tickets, logs, or reports.
    period. Rollback means stopping all PostgreSQL writers and restoring the retained SQLite and
    Artifact snapshots together; never merge writes from both databases.
 
-Both databases must report Alembic head `b5e1f8a3c702`. The target must have a schema matching the
+Both databases must report Alembic head `c6a2f4d8e913`. The target must have a schema matching the
 current SQLAlchemy model metadata and no rows beyond its two deterministic shared AuthUser seeds.
 There is intentionally no
 general-purpose command to clear a migration target; recreate a disposable target when rehearsing.
@@ -345,8 +345,10 @@ the loopback readiness URL, expected Compose service state and health, safe data
 ArtifactStore writability, and the newest complete backup set's age and component hashes. Configure
 thresholds and `AGENT_EVAL_BACKUP_MAX_AGE_HOURS` in the durable environment file. Failures remain
 visible in `systemctl --user --failed` and the user journal; the monitor never restarts services.
-Workspace aggregates include queued, running, failed, and stale attempts; any stale workspace lease
-is an alert.
+Workspace aggregates include queue depth and age, running attempts, recent failures, and stale
+leases. Configure `AGENT_EVAL_MONITORING_MAX_QUEUED_WORKSPACE_ATTEMPTS`,
+`AGENT_EVAL_MONITORING_MAX_WORKSPACE_QUEUE_AGE_MINUTES`, and
+`AGENT_EVAL_MONITORING_MAX_RECENT_FAILED_WORKSPACE_ATTEMPTS`; any stale workspace lease is an alert.
 External notifications or webhooks are a later optional integration and are not sent by this local
 monitor.
 
@@ -372,13 +374,25 @@ PostgreSQL volume alone is not a backup.
 deploy/manage.sh upgrade
 ```
 
-The upgrade command stops all application writers, creates and verifies an online SQLite backup,
-then runs migrations and starts the new stack. Do not use an uncoordinated `compose up` for a
-populated production database.
+For SQLite, the upgrade command stops all application writers, creates and verifies a database
+backup, then runs migrations and starts the new stack. Before invoking it, block new workspace
+submissions at the reverse proxy and let workers finish or cancel all active attempts. Do not use an
+uncoordinated `compose up` for a populated production database.
 
-For PostgreSQL, stop or scale all API/worker writers to zero, take a verified database backup, run
-the one-shot `migrate` service, then restore the desired worker scale. The ownership migration
-intentionally fails while any evaluation run has an active slot.
+For PostgreSQL, first block new API submissions while leaving the current API and workers available
+to drain or cancel active workspace attempts. Then stop or scale all API/worker writers to zero,
+take a verified database plus Artifact backup set, run the one-shot `migrate` service, and restore
+the desired worker scale. The ownership migration intentionally fails while any evaluation run has
+an active slot.
+
+The workspace-comparison migration is a coordinated point of no return once comparison traffic is
+accepted. Older workers cannot execute `workspace-compare-v1` attempts, and an Alembic downgrade
+would discard comparison grouping and curated evaluation cases. Do not perform an image-only
+rollback. Block new submissions, drain or cancel active attempts while the current workers are still
+running, and only then stop the stack. Restore the matching pre-upgrade checkpoint as a unit: the
+SQLite database plus Artifact archive for SQLite, or the PostgreSQL dump plus Artifact archive for
+PostgreSQL. Start the matching older images only after the restore verifies successfully. Rehearse
+this restore path before production rollout.
 
 ## Restore
 

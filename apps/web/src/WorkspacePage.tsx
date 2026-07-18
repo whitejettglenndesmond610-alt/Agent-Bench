@@ -15,7 +15,10 @@ import remarkGfm from "remark-gfm";
 import {
   ApiError,
   cancelWorkspaceAttempt,
+  createEvaluationCase,
   createWorkspaceConversation,
+  EvaluationCaseList,
+  fetchEvaluationCases,
   fetchWorkspaceAgents,
   fetchWorkspaceConversation,
   fetchWorkspaceConversations,
@@ -37,6 +40,10 @@ const workspaceAgentsKey = (userId: string) => ["workspace", userId, "agents"] a
 const workspaceConversationsKey = (userId: string) => ["workspace", userId, "conversations"] as const;
 const workspaceConversationKey = (userId: string, conversationId: string) =>
   ["workspace", userId, "conversation", conversationId] as const;
+const workspaceEvaluationCasesKey = (userId: string) =>
+  ["workspace", userId, "evaluation-cases"] as const;
+const workspaceEvaluationCaseKey = (userId: string, caseId: string) =>
+  ["workspace", userId, "evaluation-case", caseId] as const;
 
 function isActiveAttempt(attempt: WorkspaceAttempt): boolean {
   return activeStatuses.has(attempt.status);
@@ -140,7 +147,7 @@ function CodeBlock({ children }: { children: ReactNode }) {
   );
 }
 
-function MarkdownContent({ content }: { content: string }) {
+export function MarkdownContent({ content }: { content: string }) {
   return (
     <div className="workspace-markdown">
       <ReactMarkdown
@@ -182,7 +189,7 @@ function citationParts(citation: string): { label: string; href?: string } {
   return { label: citation, href: looksLikeLink ? safeHref(citation) : undefined };
 }
 
-function Citations({ citations }: { citations: string[] }) {
+export function Citations({ citations }: { citations: string[] }) {
   if (!citations.length) return null;
   return (
     <section className="workspace-citations" aria-label="引用来源">
@@ -288,16 +295,26 @@ function TurnLedger({
   latestTurn,
   selectedVariant,
   busy,
+  canDraft,
+  evaluationCaseIdsByAttempt,
+  evaluationCasesReady,
+  draftingAttemptId,
   onSelectVariant,
   onCancel,
+  onCreateDraft,
   onRegenerate
 }: {
   turn: WorkspaceTurn;
   latestTurn: boolean;
   selectedVariant: number | undefined;
   busy: boolean;
+  canDraft: boolean;
+  evaluationCaseIdsByAttempt: Record<string, string>;
+  evaluationCasesReady: boolean;
+  draftingAttemptId: string | undefined;
   onSelectVariant: (variant: number) => void;
   onCancel: (attemptId: string) => void;
+  onCreateDraft: (attemptId: string) => void;
   onRegenerate: () => void;
 }) {
   const messages = [...turn.assistant_messages].sort((left, right) => left.variant_no - right.variant_no);
@@ -310,6 +327,9 @@ function TurnLedger({
     ? attempts.find((attempt) => attempt.assistant_message_id === selectedMessage.id)
       ?? attempts.find((attempt) => attempt.generation_no === selectedMessage.variant_no)
     : latestAttempt;
+  const evaluationCaseId = selectedAttempt
+    ? evaluationCaseIdsByAttempt[selectedAttempt.id]
+    : undefined;
   const pendingNewAttempt = latestAttempt
     && latestAttempt.id !== selectedAttempt?.id
     && (isActiveAttempt(latestAttempt) || latestAttempt.status === "failed" || latestAttempt.status === "canceled");
@@ -356,6 +376,19 @@ function TurnLedger({
             <AttemptMeta attempt={selectedAttempt} />
             <div>
               <button type="button" onClick={() => copyText(selectedMessage.content)}>复制回答</button>
+              {canDraft && selectedAttempt?.status === "succeeded" && (
+                evaluationCaseId ? (
+                  <Link to={`/evaluation-cases/${evaluationCaseId}`}>查看评测草稿</Link>
+                ) : evaluationCasesReady ? (
+                  <button
+                    type="button"
+                    disabled={Boolean(draftingAttemptId)}
+                    onClick={() => onCreateDraft(selectedAttempt.id)}
+                  >
+                    {draftingAttemptId === selectedAttempt.id ? "保存中" : "保存为评测草稿"}
+                  </button>
+                ) : null
+              )}
               {latestTurn && !latestAttempt?.status.match(/queued|running/) && (
                 <button type="button" disabled={busy} onClick={onRegenerate}>重新生成</button>
               )}
@@ -381,6 +414,7 @@ function ConversationRail({
   conversations,
   activeId,
   loading,
+  error,
   editingId,
   editTitle,
   mutationPending,
@@ -394,6 +428,7 @@ function ConversationRail({
   conversations: WorkspaceConversation[];
   activeId: string | undefined;
   loading: boolean;
+  error: string | null;
   editingId: string | null;
   editTitle: string;
   mutationPending: boolean;
@@ -461,7 +496,8 @@ function ConversationRail({
       </header>
       <div className="rail-scroll">
         {loading && <p className="rail-state">正在读取会话记录</p>}
-        {!loading && live.length === 0 && <p className="rail-state">暂无进行中的会话</p>}
+        {error && <p className="rail-state is-error" role="alert">会话历史读取失败：{error}</p>}
+        {!loading && !error && live.length === 0 && <p className="rail-state">暂无进行中的会话</p>}
         {live.length > 0 && <ul>{live.map(renderItem)}</ul>}
         {archived.length > 0 && (
           <section className="archived-conversations">
@@ -475,7 +511,7 @@ function ConversationRail({
   );
 }
 
-export function WorkspacePage({ userId }: { userId: string }) {
+export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: boolean }) {
   const { conversationId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -517,6 +553,11 @@ export function WorkspacePage({ userId }: { userId: string }) {
       return conversation?.turns.some((turn) => turn.attempts.some(isActiveAttempt)) ? 1_000 : false;
     }
   });
+  const evaluationCasesQuery = useQuery({
+    queryKey: workspaceEvaluationCasesKey(userId),
+    queryFn: fetchEvaluationCases,
+    enabled: canDraft
+  });
 
   const catalog = catalogQuery.data ?? [];
   const conversations = conversationsQuery.data?.items ?? [];
@@ -536,6 +577,9 @@ export function WorkspacePage({ userId }: { userId: string }) {
   const archived = Boolean(conversation?.archived_at);
   const detailUnavailable = Boolean(conversationId) && !conversation;
   const detailBlocked = Boolean(conversationId && blockedConversationId === conversationId);
+  const evaluationCaseIdsByAttempt = Object.fromEntries(
+    (evaluationCasesQuery.data?.items ?? []).map((item) => [item.source.attempt_id, item.id])
+  );
 
   useEffect(() => {
     routeConversationRef.current = conversationId;
@@ -790,6 +834,39 @@ export function WorkspacePage({ userId }: { userId: string }) {
     onError: (error, variables) => void handleMutationError(error, variables.originConversationId, "停止生成失败")
   });
 
+  const createDraftMutation = useMutation({
+    mutationFn: ({ attemptId }: { attemptId: string; originConversationId: string }) =>
+      createEvaluationCase({
+        source_attempt_id: attemptId,
+        idempotency_key: crypto.randomUUID()
+      }),
+    onMutate: () => setActionError(null),
+    onSuccess: (evaluationCase, variables) => {
+      queryClient.setQueryData(workspaceEvaluationCaseKey(userId, evaluationCase.id), evaluationCase);
+      queryClient.setQueryData<EvaluationCaseList>(workspaceEvaluationCasesKey(userId), (current) => {
+        if (!current) return { items: [evaluationCase] };
+        const exists = current.items.some((item) => item.id === evaluationCase.id);
+        return {
+          items: exists
+            ? current.items.map((item) => item.id === evaluationCase.id ? evaluationCase : item)
+            : [evaluationCase, ...current.items]
+        };
+      });
+      void queryClient.invalidateQueries({
+        queryKey: workspaceEvaluationCasesKey(userId),
+        refetchType: "none"
+      });
+      if (routeIsCurrent(variables.originConversationId)) {
+        navigate(`/evaluation-cases/${evaluationCase.id}`);
+      }
+    },
+    onError: (error, variables) => void handleMutationError(
+      error,
+      variables.originConversationId,
+      "保存评测草稿失败"
+    )
+  });
+
   const conversationMutationPending = (
     createMutation.isPending && createMutation.variables?.originConversationId === conversationId
   ) || (
@@ -945,6 +1022,7 @@ export function WorkspacePage({ userId }: { userId: string }) {
           conversations={conversations}
           activeId={conversationId}
           loading={conversationsQuery.isPending}
+          error={conversationsQuery.error?.message ?? null}
           editingId={editingId}
           editTitle={editTitle}
           mutationPending={updateMutation.isPending}
@@ -1013,8 +1091,9 @@ export function WorkspacePage({ userId }: { userId: string }) {
               </label>
             )}
           </div>
-          <div className="instrument-status">
-            <i className={activeAttempt ? "is-active" : ""} />
+           <div className="instrument-status">
+            <Link className="instrument-mode-link" to="/workspace/compare">并行对比</Link>
+             <i className={activeAttempt ? "is-active" : ""} />
             <span>{activeAttempt ? attemptLabel(activeAttempt) : "CHANNEL READY"}</span>
           </div>
         </header>
@@ -1076,13 +1155,20 @@ export function WorkspacePage({ userId }: { userId: string }) {
               key={turn.turn_no}
               turn={turn}
               latestTurn={index === conversation.turns.length - 1}
-              selectedVariant={variantSelection[turn.turn_no]}
-              busy={conversationMutationPending}
-              onSelectVariant={(variant) => setVariantSelection((current) => ({ ...current, [turn.turn_no]: variant }))}
+               selectedVariant={variantSelection[turn.turn_no]}
+               busy={conversationMutationPending}
+               canDraft={canDraft}
+               evaluationCaseIdsByAttempt={evaluationCaseIdsByAttempt}
+               evaluationCasesReady={evaluationCasesQuery.isSuccess}
+               draftingAttemptId={createDraftMutation.isPending ? createDraftMutation.variables?.attemptId : undefined}
+               onSelectVariant={(variant) => setVariantSelection((current) => ({ ...current, [turn.turn_no]: variant }))}
               onCancel={(attemptId) => {
-                if (conversationId) cancelMutation.mutate({ attemptId, originConversationId: conversationId });
-              }}
-              onRegenerate={regenerateLatestTurn}
+                 if (conversationId) cancelMutation.mutate({ attemptId, originConversationId: conversationId });
+               }}
+               onCreateDraft={(attemptId) => {
+                 if (conversationId) createDraftMutation.mutate({ attemptId, originConversationId: conversationId });
+               }}
+               onRegenerate={regenerateLatestTurn}
             />
           ))}
           <div ref={ledgerEndRef} />

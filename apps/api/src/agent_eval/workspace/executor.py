@@ -42,7 +42,10 @@ from agent_eval.db.models import (
 )
 from agent_eval.worker.limits import WorkerLimits, agent_request_slots
 from agent_eval.workspace.prompt import (
+    WORKSPACE_COMPARISON_PROMPT_FORMAT,
+    WORKSPACE_PROMPT_FORMAT,
     TranscriptMessage,
+    format_workspace_comparison_prompt,
     format_workspace_transcript,
 )
 from agent_eval.workspace.queue import WorkspaceClaim
@@ -81,6 +84,9 @@ async def load_workspace_work(
             .options(
                 joinedload(WorkspaceAttempt.agent_version).joinedload(AgentVersion.agent),
                 joinedload(WorkspaceAttempt.user_message),
+                joinedload(WorkspaceAttempt.conversation).joinedload(
+                    WorkspaceConversation.comparison
+                ),
             )
             .where(
                 WorkspaceAttempt.id == claim.attempt_id,
@@ -105,31 +111,44 @@ async def load_workspace_work(
             or version.agent.status != AgentStatus.ENABLED
         ):
             raise WorkspaceWorkUnavailable("agent_unavailable", "configuration")
-        messages = list(
-            await session.scalars(
-                select(WorkspaceMessage)
-                .where(
-                    WorkspaceMessage.conversation_id == attempt.conversation_id,
-                    WorkspaceMessage.turn_no <= attempt.user_message.turn_no,
-                    WorkspaceMessage.active.is_(True),
+        if attempt.prompt_format == WORKSPACE_COMPARISON_PROMPT_FORMAT:
+            comparison = attempt.conversation.comparison
+            if (
+                comparison is None
+                or attempt.user_message.turn_no != 1
+                or attempt.conversation.last_turn_no != 1
+                or attempt.user_message.content != comparison.prompt
+            ):
+                raise WorkspaceWorkUnavailable("comparison_integrity", "internal")
+            formatted = format_workspace_comparison_prompt(comparison.prompt)
+        elif attempt.prompt_format == WORKSPACE_PROMPT_FORMAT:
+            messages = list(
+                await session.scalars(
+                    select(WorkspaceMessage)
+                    .where(
+                        WorkspaceMessage.conversation_id == attempt.conversation_id,
+                        WorkspaceMessage.turn_no <= attempt.user_message.turn_no,
+                        WorkspaceMessage.active.is_(True),
+                    )
+                    .order_by(WorkspaceMessage.turn_no, WorkspaceMessage.role)
                 )
-                .order_by(WorkspaceMessage.turn_no, WorkspaceMessage.role)
             )
-        )
-        formatted = format_workspace_transcript(
-            [
-                TranscriptMessage(
-                    turn_no=message.turn_no,
-                    role=message.role,
-                    content=message.content,
-                    active=message.active,
-                )
-                for message in messages
-            ],
-            current_turn_no=attempt.user_message.turn_no,
-            agent_name=version.agent.name,
-            agent_version=version.version,
-        )
+            formatted = format_workspace_transcript(
+                [
+                    TranscriptMessage(
+                        turn_no=message.turn_no,
+                        role=message.role,
+                        content=message.content,
+                        active=message.active,
+                    )
+                    for message in messages
+                ],
+                current_turn_no=attempt.user_message.turn_no,
+                agent_name=version.agent.name,
+                agent_version=version.version,
+            )
+        else:
+            raise WorkspaceWorkUnavailable("prompt_format_unsupported", "internal")
         if (
             formatted.format_version != attempt.prompt_format
             or formatted.sha256 != attempt.prompt_hash

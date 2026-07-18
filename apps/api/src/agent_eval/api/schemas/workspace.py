@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Self
+from typing import Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -158,3 +158,66 @@ class WorkspaceSendResult(BaseModel):
 class WorkspaceRegenerateResult(BaseModel):
     conversation_revision: int
     attempt: WorkspaceAttemptResponse
+
+
+class WorkspaceComparisonCreate(BaseModel):
+    prompt: str = Field(min_length=1, max_length=200_000)
+    agent_version_ids: list[UUID] = Field(min_length=2, max_length=5)
+    idempotency_key: UUID | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+
+    @field_validator("prompt")
+    @classmethod
+    def normalize_prompt(cls, value: str) -> str:
+        prompt = value.strip()
+        if not prompt:
+            raise ValueError("prompt cannot be blank")
+        return prompt
+
+    @field_validator("title")
+    @classmethod
+    def normalize_optional_title(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        title = value.strip()
+        if not title:
+            raise ValueError("title cannot be blank")
+        return title
+
+    @model_validator(mode="after")
+    def unique_agents(self) -> Self:
+        if len(self.agent_version_ids) != len(set(self.agent_version_ids)):
+            raise ValueError("Agent versions must be unique")
+        return self
+
+
+class WorkspaceComparisonCounts(BaseModel):
+    queued: int
+    running: int
+    succeeded: int
+    failed: int
+    canceled: int
+
+
+class WorkspaceComparisonItem(BaseModel):
+    position: int
+    conversation_id: UUID
+    agent: WorkspaceConversationAgent
+    attempt: WorkspaceAttemptResponse
+    evaluation_case_id: UUID | None
+
+
+class WorkspaceComparisonResponse(BaseModel):
+    id: UUID
+    title: str
+    prompt: str
+    status: Literal["queued", "running", "canceling", "completed"]
+    counts: WorkspaceComparisonCounts
+    cancel_requested_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    items: list[WorkspaceComparisonItem]
+
+
+class WorkspaceComparisonList(BaseModel):
+    items: list[WorkspaceComparisonResponse]

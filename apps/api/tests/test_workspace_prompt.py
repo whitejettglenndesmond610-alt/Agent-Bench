@@ -1,5 +1,9 @@
 from agent_eval.db.enums import WorkspaceMessageRole
-from agent_eval.workspace.prompt import TranscriptMessage, format_workspace_transcript
+from agent_eval.workspace.prompt import (
+    TranscriptMessage,
+    format_workspace_comparison_prompt,
+    format_workspace_transcript,
+)
 
 
 def test_workspace_prompt_is_direct_chat_continuation() -> None:
@@ -27,4 +31,12 @@ def test_workspace_prompt_is_direct_chat_continuation() -> None:
     assert "canonical JSON" not in prompt.content
     assert "TRANSCRIPT_JSON" not in prompt.content
     assert prompt.content.endswith("Assistant:\n")
+    assert prompt.characters == len(prompt.content)
+
+
+def test_workspace_comparison_prompt_is_agent_neutral_and_exact() -> None:
+    prompt = format_workspace_comparison_prompt("同一道题，不增加包装。")
+
+    assert prompt.format_version == "workspace-compare-v1"
+    assert prompt.content == "同一道题，不增加包装。"
     assert prompt.characters == len(prompt.content)

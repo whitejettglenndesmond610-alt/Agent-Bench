@@ -9,6 +9,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import select
 
+from agent_eval.auth.identity import LEGACY_OPERATOR_USER_ID
 from agent_eval.core.settings import Settings
 from agent_eval.db.engine import create_engine
 from agent_eval.db.enums import AgentStatus, AuthType
@@ -23,6 +24,7 @@ BUSINESS_TABLES = {
     "benchmarks",
     "citation_records",
     "dataset_versions",
+    "evaluation_cases",
     "evaluation_runs",
     "execution_items",
     "http_attempts",
@@ -39,6 +41,7 @@ BUSINESS_TABLES = {
     "sessions",
     "worker_leases",
     "workspace_attempts",
+    "workspace_comparisons",
     "workspace_conversations",
     "workspace_messages",
 }
@@ -68,6 +71,84 @@ def test_initial_migration_is_complete_and_reversible(tmp_path: Path) -> None:
     command.downgrade(config, "base")
 
     assert not BUSINESS_TABLES & table_names(database_path)
+
+
+def test_comparison_migration_preserves_populated_workspace_conversations(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "populated-workspace-migration.db"
+    config = alembic_config(database_path)
+    command.upgrade(config, "b5e1f8a3c702")
+    agent_id = "10000000000000000000000000000001"
+    version_id = "10000000000000000000000000000002"
+    conversation_id = "10000000000000000000000000000003"
+    message_id = "10000000000000000000000000000004"
+    attempt_id = "10000000000000000000000000000005"
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            "INSERT INTO agents (name, provider, status, id, created_at, updated_at) "
+            "VALUES ('Migration Agent', 'Provider', 'enabled', ?, CURRENT_TIMESTAMP, "
+            "CURRENT_TIMESTAMP)",
+            (agent_id,),
+        )
+        connection.execute(
+            "INSERT INTO agent_versions (agent_id, version, endpoint_url, auth_type, "
+            "request_template, answer_jsonpath, timeout_seconds, concurrency, lifecycle_status, "
+            "preflight_status, enabled, id, created_at, updated_at) VALUES "
+            "(?, 1, 'https://agent.invalid', 'none', '{\"prompt\":\"{{prompt}}\"}', "
+            "'$.answer', 120, 1, 'active', 'not_run', 1, ?, CURRENT_TIMESTAMP, "
+            "CURRENT_TIMESTAMP)",
+            (agent_id, version_id),
+        )
+        connection.execute(
+            "INSERT INTO workspace_conversations (owner_user_id, pinned_agent_version_id, "
+            "title, last_turn_no, revision, id, created_at, updated_at) VALUES "
+            "(?, ?, 'Existing conversation', 1, 1, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            (LEGACY_OPERATOR_USER_ID.hex, version_id, conversation_id),
+        )
+        connection.execute(
+            "INSERT INTO workspace_messages (conversation_id, turn_no, role, variant_no, active, "
+            "content, id, created_at) VALUES (?, 1, 'user', 1, 1, 'Existing prompt', ?, "
+            "CURRENT_TIMESTAMP)",
+            (conversation_id, message_id),
+        )
+        connection.execute(
+            "INSERT INTO workspace_attempts (conversation_id, user_message_id, "
+            "agent_version_id, generation_no, idempotency_key, request_fingerprint, status, "
+            "http_attempt_count, prompt_hash, prompt_characters, prompt_format, id, created_at, "
+            "updated_at) VALUES (?, ?, ?, 1, '00000000-0000-4000-8000-000000000001', ?, "
+            "'queued', 0, ?, 15, 'workspace-chat-v2', ?, CURRENT_TIMESTAMP, "
+            "CURRENT_TIMESTAMP)",
+            (conversation_id, message_id, version_id, "a" * 64, "b" * 64, attempt_id),
+        )
+
+    command.upgrade(config, "head")
+    with sqlite3.connect(database_path) as connection:
+        row = connection.execute(
+            "SELECT title, comparison_id, comparison_position FROM workspace_conversations "
+            "WHERE id = ?",
+            (conversation_id,),
+        ).fetchone()
+    assert row == ("Existing conversation", None, None)
+    with sqlite3.connect(database_path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM workspace_attempts WHERE id = ?", (attempt_id,)
+        ).fetchone() == (1,)
+
+    command.downgrade(config, "b5e1f8a3c702")
+    with sqlite3.connect(database_path) as connection:
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(workspace_conversations)")
+        }
+        title = connection.execute(
+            "SELECT title FROM workspace_conversations WHERE id = ?", (conversation_id,)
+        ).fetchone()
+        attempt_count = connection.execute(
+            "SELECT COUNT(*) FROM workspace_attempts WHERE id = ?", (attempt_id,)
+        ).fetchone()
+    assert title == ("Existing conversation",)
+    assert attempt_count == (1,)
+    assert not {"comparison_id", "comparison_position"} & columns
 
 
 def test_csrf_migration_invalidates_existing_sessions(tmp_path: Path) -> None:

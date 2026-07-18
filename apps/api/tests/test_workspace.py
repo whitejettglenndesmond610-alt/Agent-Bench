@@ -14,6 +14,7 @@ from argon2 import PasswordHasher
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 
 from agent_eval.api.main import create_app
 from agent_eval.core.artifact_store import StoredArtifact, create_artifact_store
@@ -23,6 +24,7 @@ from agent_eval.db.engine import create_engine
 from agent_eval.db.enums import (
     AgentVersionLifecycle,
     AuthType,
+    EvaluationCaseStatus,
     SessionRole,
     WorkspaceAttemptStatus,
     WorkspaceMessageRole,
@@ -31,7 +33,14 @@ from agent_eval.db.models import (
     Agent,
     AgentVersion,
     ArtifactIndex,
+    DatasetVersion,
+    EvaluationCase,
+    EvaluationRun,
+    LeaderboardResult,
+    LeaderboardSnapshot,
+    Question,
     WorkspaceAttempt,
+    WorkspaceComparison,
     WorkspaceConversation,
     WorkspaceMessage,
 )
@@ -242,6 +251,350 @@ async def test_concurrent_sqlite_send_is_idempotent_and_conflict_safe(
             response for response in different_fingerprints if response.status_code == 409
         )
         assert conflict.json()["detail"]["code"] == "idempotency_conflict"
+
+
+async def test_workspace_comparison_and_curated_evaluation_case(tmp_path: Path) -> None:
+    provider_prompts: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        provider_prompts.append(json.loads(request.content)["query"])
+        return httpx.Response(
+            200,
+            json={
+                "answer": "候选答案",
+                "citations": ["https://example.test/evidence"],
+                "usage": {
+                    "prompt_tokens": 5,
+                    "completion_tokens": 3,
+                    "total_tokens": 8,
+                },
+            },
+        )
+
+    async with workspace_client(tmp_path) as (
+        client,
+        app,
+        settings,
+        version_id,
+        small_version_id,
+    ):
+        async with session_scope(app.state.session_factory) as session:
+            named = await create_workspace_user(
+                session,
+                username="comparison.operator",
+                display_name="Comparison Operator",
+                role=SessionRole.OPERATOR,
+                password="comparison-secret",
+            )
+            named_id = named.id
+        login = await client.post(
+            "/api/v1/auth/user-login",
+            headers={"Origin": "http://test"},
+            json={"username": "comparison.operator", "password": "comparison-secret"},
+        )
+        assert login.status_code == 200
+        csrf = client.cookies.get("agent_eval_csrf")
+        assert csrf is not None
+        headers = {"Origin": "http://test", "X-CSRF-Token": csrf}
+
+        oversized = await client.post(
+            "/api/v1/workspace/comparisons",
+            headers=headers,
+            json={
+                "prompt": "x" * 21,
+                "agent_version_ids": [str(version_id), str(small_version_id)],
+                "idempotency_key": str(uuid4()),
+            },
+        )
+        assert oversized.status_code == 422
+        assert oversized.json()["detail"]["code"] == "prompt_too_long"
+        async with app.state.session_factory() as session:
+            assert await session.scalar(select(func.count()).select_from(WorkspaceComparison)) == 0
+
+        key = str(uuid4())
+        payload = {
+            "prompt": "共同问题",
+            "agent_version_ids": [str(version_id), str(small_version_id)],
+            "idempotency_key": key,
+        }
+        created = await client.post(
+            "/api/v1/workspace/comparisons", headers=headers, json=payload
+        )
+        assert created.status_code == 202
+        comparison_id = created.json()["id"]
+        assert created.json()["status"] == "queued"
+        assert len(created.json()["items"]) == 2
+
+        replay = await client.post(
+            "/api/v1/workspace/comparisons", headers=headers, json=payload
+        )
+        assert replay.status_code == 202
+        assert replay.json()["id"] == comparison_id
+        conflict = await client.post(
+            "/api/v1/workspace/comparisons",
+            headers=headers,
+            json={**payload, "prompt": "不同问题"},
+        )
+        assert conflict.status_code == 409
+        assert conflict.json()["detail"]["code"] == "idempotency_conflict"
+        assert (await client.get("/api/v1/workspace/conversations")).json() == {
+            "items": []
+        }
+        hidden_id = created.json()["items"][0]["conversation_id"]
+        assert (
+            await client.get(f"/api/v1/workspace/conversations/{hidden_id}")
+        ).status_code == 404
+
+        async with app.state.session_factory() as session:
+            attempts = list(
+                await session.scalars(
+                    select(WorkspaceAttempt)
+                    .join(
+                        WorkspaceConversation,
+                        WorkspaceConversation.id == WorkspaceAttempt.conversation_id,
+                    )
+                    .where(WorkspaceConversation.comparison_id == UUID(comparison_id))
+                )
+            )
+        assert len({attempt.prompt_hash for attempt in attempts}) == 1
+        assert {attempt.prompt_format for attempt in attempts} == {"workspace-compare-v1"}
+
+        await run_next_attempt(app, settings, httpx.MockTransport(handler))
+        await run_next_attempt(app, settings, httpx.MockTransport(handler))
+        detail = await client.get(f"/api/v1/workspace/comparisons/{comparison_id}")
+        assert detail.json()["status"] == "completed"
+        assert detail.json()["counts"]["succeeded"] == 2
+        assert provider_prompts == ["共同问题", "共同问题"]
+
+        source_attempt_id = detail.json()["items"][0]["attempt"]["id"]
+        draft_key = str(uuid4())
+        draft = await client.post(
+            "/api/v1/evaluation-cases",
+            headers=headers,
+            json={
+                "source_attempt_id": source_attempt_id,
+                "idempotency_key": draft_key,
+            },
+        )
+        assert draft.status_code == 201
+        case_id = draft.json()["id"]
+        assert draft.json()["status"] == "draft"
+        assert draft.json()["reference_answer"] is None
+        assert draft.json()["source"]["candidate_answer"] == "候选答案"
+        draft_replay = await client.post(
+            "/api/v1/evaluation-cases",
+            headers=headers,
+            json={
+                "source_attempt_id": source_attempt_id,
+                "idempotency_key": draft_key,
+            },
+        )
+        assert draft_replay.status_code == 201
+        assert draft_replay.json()["id"] == case_id
+        duplicate = await client.post(
+            "/api/v1/evaluation-cases",
+            headers=headers,
+            json={
+                "source_attempt_id": source_attempt_id,
+                "idempotency_key": str(uuid4()),
+            },
+        )
+        assert duplicate.status_code == 409
+        assert duplicate.json()["detail"]["code"] == "source_already_curated"
+        artifact_sha = draft.json()["source"]["artifact_sha256"]
+        assert artifact_sha is not None
+        async with session_scope(app.state.session_factory) as session:
+            stored_attempt = await session.get(WorkspaceAttempt, UUID(source_attempt_id))
+            assert stored_attempt is not None and stored_attempt.artifact_id is not None
+            stored_artifact = await session.get(ArtifactIndex, stored_attempt.artifact_id)
+            assert stored_artifact is not None
+            await session.delete(stored_artifact)
+        persisted_source = await client.get(f"/api/v1/evaluation-cases/{case_id}")
+        assert persisted_source.json()["source"]["artifact_sha256"] == artifact_sha
+
+        edited = await client.patch(
+            f"/api/v1/evaluation-cases/{case_id}",
+            headers=headers,
+            json={
+                "expected_revision": 0,
+                "reference_answer": "人工核验后的标准答案",
+                "language": "zh",
+                "ability": "reasoning",
+                "question_type": "short_answer",
+                "difficulty": "medium",
+                "domain": "general",
+            },
+        )
+        assert edited.status_code == 200
+        reviewed = await client.post(
+            f"/api/v1/evaluation-cases/{case_id}/review",
+            headers=headers,
+            json={
+                "expected_revision": 1,
+                "standalone_verified": True,
+                "reference_answer_verified": True,
+                "rights_verified": True,
+                "sensitive_data_verified": True,
+            },
+        )
+        assert reviewed.json()["status"] == "reviewed"
+        assert reviewed.json()["record_hash"] is not None
+        reset_to_draft = await client.patch(
+            f"/api/v1/evaluation-cases/{case_id}",
+            headers=headers,
+            json={"expected_revision": 2, "review_notes": "补充复核备注"},
+        )
+        assert reset_to_draft.json()["status"] == "draft"
+        assert reset_to_draft.json()["record_hash"] is None
+        reviewed_again = await client.post(
+            f"/api/v1/evaluation-cases/{case_id}/review",
+            headers=headers,
+            json={
+                "expected_revision": 3,
+                "standalone_verified": True,
+                "reference_answer_verified": True,
+                "rights_verified": True,
+                "sensitive_data_verified": True,
+            },
+        )
+        assert reviewed_again.json()["status"] == "reviewed"
+        published = await client.post(
+            f"/api/v1/evaluation-cases/{case_id}/publish",
+            headers=headers,
+            json={"expected_revision": 4, "confirm_curated_only": True},
+        )
+        assert published.json()["status"] == "published"
+        async with app.state.session_factory() as session:
+            with pytest.raises(IntegrityError):
+                await session.execute(
+                    update(EvaluationCase)
+                    .where(EvaluationCase.id == UUID(case_id))
+                    .values(rights_verified=False)
+                )
+                await session.commit()
+            await session.rollback()
+        immutable = await client.patch(
+            f"/api/v1/evaluation-cases/{case_id}",
+            headers=headers,
+            json={"expected_revision": 5, "prompt": "不能修改"},
+        )
+        assert immutable.status_code == 409
+
+        second_source_attempt_id = detail.json()["items"][1]["attempt"]["id"]
+        concurrent_case_creates = await asyncio.gather(
+            client.post(
+                "/api/v1/evaluation-cases",
+                headers=headers,
+                json={
+                    "source_attempt_id": second_source_attempt_id,
+                    "idempotency_key": str(uuid4()),
+                },
+            ),
+            client.post(
+                "/api/v1/evaluation-cases",
+                headers=headers,
+                json={
+                    "source_attempt_id": second_source_attempt_id,
+                    "idempotency_key": str(uuid4()),
+                },
+            ),
+        )
+        assert sorted(response.status_code for response in concurrent_case_creates) == [201, 409]
+        second_case = next(
+            response for response in concurrent_case_creates if response.status_code == 201
+        )
+        duplicate_case = next(
+            response for response in concurrent_case_creates if response.status_code == 409
+        )
+        assert duplicate_case.json()["detail"]["code"] == "source_already_curated"
+        concurrent_case_updates = await asyncio.gather(
+            client.patch(
+                f"/api/v1/evaluation-cases/{second_case.json()['id']}",
+                headers=headers,
+                json={"expected_revision": 0, "review_notes": "first"},
+            ),
+            client.patch(
+                f"/api/v1/evaluation-cases/{second_case.json()['id']}",
+                headers=headers,
+                json={"expected_revision": 0, "review_notes": "second"},
+            ),
+        )
+        assert sorted(response.status_code for response in concurrent_case_updates) == [200, 409]
+        assert next(
+            response for response in concurrent_case_updates if response.status_code == 409
+        ).json()["detail"]["code"] == "revision_conflict"
+
+        cancel_payload = {
+            "prompt": "取消对比",
+            "agent_version_ids": [str(version_id), str(small_version_id)],
+            "idempotency_key": str(uuid4()),
+        }
+        cancel_target = await client.post(
+            "/api/v1/workspace/comparisons", headers=headers, json=cancel_payload
+        )
+        canceled = await client.post(
+            f"/api/v1/workspace/comparisons/{cancel_target.json()['id']}/cancel",
+            headers=headers,
+        )
+        assert canceled.json()["counts"]["canceled"] == 2
+        assert canceled.json()["status"] == "completed"
+
+        concurrent_key = str(uuid4())
+        concurrent_payload = {
+            "prompt": "并发幂等对比",
+            "agent_version_ids": [str(version_id), str(small_version_id)],
+            "idempotency_key": concurrent_key,
+        }
+        concurrent_comparisons = await asyncio.gather(
+            client.post(
+                "/api/v1/workspace/comparisons", headers=headers, json=concurrent_payload
+            ),
+            client.post(
+                "/api/v1/workspace/comparisons", headers=headers, json=concurrent_payload
+            ),
+        )
+        assert [response.status_code for response in concurrent_comparisons] == [202, 202]
+        assert len({response.json()["id"] for response in concurrent_comparisons}) == 1
+        await client.post(
+            f"/api/v1/workspace/comparisons/{concurrent_comparisons[0].json()['id']}/cancel",
+            headers=headers,
+        )
+
+        async with app.state.session_factory() as session:
+            assert await session.scalar(select(func.count()).select_from(WorkspaceComparison)) == 3
+            assert await session.scalar(select(func.count()).select_from(EvaluationCase)) == 2
+            stored_case = await session.get(EvaluationCase, UUID(case_id))
+            assert stored_case is not None
+            assert stored_case.owner_user_id == named_id
+            assert stored_case.status == EvaluationCaseStatus.PUBLISHED
+            for model in (
+                DatasetVersion,
+                Question,
+                EvaluationRun,
+                LeaderboardSnapshot,
+                LeaderboardResult,
+            ):
+                assert await session.scalar(select(func.count()).select_from(model)) == 0
+        assert app.state.sqlite_mutation_locks == {}
+
+        await login_operator(client)
+        shared_draft = await client.post(
+            "/api/v1/evaluation-cases",
+            headers={
+                "Origin": "http://test",
+                "X-CSRF-Token": client.cookies.get("agent_eval_csrf") or "",
+            },
+            json={
+                "source_attempt_id": source_attempt_id,
+                "idempotency_key": str(uuid4()),
+            },
+        )
+        assert shared_draft.status_code == 403
+        assert shared_draft.json()["detail"]["code"] == "named_operator_required"
+        assert (
+            await client.get(f"/api/v1/workspace/comparisons/{comparison_id}")
+        ).status_code == 404
+        assert (await client.get("/api/v1/evaluation-cases")).json() == {"items": []}
 
 
 async def test_workspace_api_context_regeneration_and_ownership(tmp_path: Path) -> None:

@@ -342,6 +342,40 @@ export interface WorkspaceRegenerateResult {
   attempt: WorkspaceAttempt;
 }
 
+export type WorkspaceComparisonStatus = "queued" | "running" | "canceling" | "completed";
+
+export interface WorkspaceComparisonCounts {
+  queued: number;
+  running: number;
+  succeeded: number;
+  failed: number;
+  canceled: number;
+}
+
+export interface WorkspaceComparisonItem {
+  position: number;
+  conversation_id: string;
+  agent: WorkspaceConversationAgent;
+  attempt: WorkspaceAttempt;
+  evaluation_case_id: string | null;
+}
+
+export interface WorkspaceComparison {
+  id: string;
+  title: string;
+  prompt: string;
+  status: WorkspaceComparisonStatus;
+  counts: WorkspaceComparisonCounts;
+  cancel_requested_at: string | null;
+  created_at: string;
+  updated_at: string;
+  items: WorkspaceComparisonItem[];
+}
+
+export interface WorkspaceComparisonList {
+  items: WorkspaceComparison[];
+}
+
 export function fetchWorkspaceAgents(): Promise<WorkspaceAgent[]> {
   return requestJson<WorkspaceAgent[]>("/api/v1/workspace/agents");
 }
@@ -407,6 +441,31 @@ export function regenerateWorkspaceMessage(
 export function cancelWorkspaceAttempt(attemptId: string): Promise<WorkspaceAttempt> {
   return jsonMutation<WorkspaceAttempt>(
     `/api/v1/workspace/attempts/${attemptId}/cancel`,
+    "POST",
+    {}
+  );
+}
+
+export function createWorkspaceComparison(input: {
+  prompt: string;
+  agent_version_ids: string[];
+  idempotency_key: string;
+  title?: string;
+}): Promise<WorkspaceComparison> {
+  return jsonMutation<WorkspaceComparison>("/api/v1/workspace/comparisons", "POST", input);
+}
+
+export function fetchWorkspaceComparisons(): Promise<WorkspaceComparisonList> {
+  return requestJson<WorkspaceComparisonList>("/api/v1/workspace/comparisons");
+}
+
+export function fetchWorkspaceComparison(comparisonId: string): Promise<WorkspaceComparison> {
+  return requestJson<WorkspaceComparison>(`/api/v1/workspace/comparisons/${comparisonId}`);
+}
+
+export function cancelWorkspaceComparison(comparisonId: string): Promise<WorkspaceComparison> {
+  return jsonMutation<WorkspaceComparison>(
+    `/api/v1/workspace/comparisons/${comparisonId}/cancel`,
     "POST",
     {}
   );
@@ -571,6 +630,120 @@ export type Ability =
   | "instruction_following"
   | "long_context";
 export type RunScope = "comprehensive" | "specialist" | "smoke";
+
+export type EvaluationCaseStatus = "draft" | "reviewed" | "published";
+export type EvaluationQuestionType = "short_answer" | "open_ended";
+
+export interface EvaluationCaseSourceAgent {
+  agent_id: string;
+  agent_version_id: string;
+  name: string;
+  provider: string;
+  version: number;
+}
+
+export interface EvaluationCaseSource {
+  attempt_id: string;
+  conversation_id: string;
+  comparison_id: string | null;
+  user_message: string;
+  candidate_answer: string;
+  citations: string[];
+  generation_no: number;
+  prompt_format: string;
+  prompt_hash: string;
+  latency_ms: number | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
+  artifact_sha256: string | null;
+  agent: EvaluationCaseSourceAgent;
+}
+
+export interface EvaluationCase {
+  id: string;
+  status: EvaluationCaseStatus;
+  revision: number;
+  prompt: string;
+  reference_answer: string | null;
+  language: "zh" | "en" | null;
+  ability: Ability | null;
+  question_type: EvaluationQuestionType;
+  requires_citations: boolean;
+  difficulty: string | null;
+  domain: string | null;
+  review_notes: string | null;
+  standalone_verified: boolean;
+  reference_answer_verified: boolean;
+  rights_verified: boolean;
+  sensitive_data_verified: boolean;
+  source_hash: string;
+  record_hash: string | null;
+  reviewed_at: string | null;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+  source: EvaluationCaseSource;
+}
+
+export interface EvaluationCaseList {
+  items: EvaluationCase[];
+}
+
+export interface EvaluationCasePatchInput {
+  expected_revision: number;
+  prompt?: string | null;
+  reference_answer?: string | null;
+  language?: "zh" | "en" | null;
+  ability?: Ability | null;
+  question_type?: EvaluationQuestionType | null;
+  requires_citations?: boolean | null;
+  difficulty?: string | null;
+  domain?: string | null;
+  review_notes?: string | null;
+}
+
+export function createEvaluationCase(input: {
+  source_attempt_id: string;
+  idempotency_key: string;
+}): Promise<EvaluationCase> {
+  return jsonMutation<EvaluationCase>("/api/v1/evaluation-cases", "POST", input);
+}
+
+export function fetchEvaluationCases(): Promise<EvaluationCaseList> {
+  return requestJson<EvaluationCaseList>("/api/v1/evaluation-cases");
+}
+
+export function fetchEvaluationCase(caseId: string): Promise<EvaluationCase> {
+  return requestJson<EvaluationCase>(`/api/v1/evaluation-cases/${caseId}`);
+}
+
+export function updateEvaluationCase(
+  caseId: string,
+  input: EvaluationCasePatchInput
+): Promise<EvaluationCase> {
+  return jsonMutation<EvaluationCase>(`/api/v1/evaluation-cases/${caseId}`, "PATCH", input);
+}
+
+export function reviewEvaluationCase(
+  caseId: string,
+  input: {
+    expected_revision: number;
+    standalone_verified: true;
+    reference_answer_verified: true;
+    rights_verified: true;
+    sensitive_data_verified: true;
+  }
+): Promise<EvaluationCase> {
+  return jsonMutation<EvaluationCase>(`/api/v1/evaluation-cases/${caseId}/review`, "POST", input);
+}
+
+export function publishEvaluationCase(
+  caseId: string,
+  input: { expected_revision: number; confirm_curated_only: true }
+): Promise<EvaluationCase> {
+  return jsonMutation<EvaluationCase>(`/api/v1/evaluation-cases/${caseId}/publish`, "POST", input);
+}
 
 export interface RunDatasetOption {
   benchmark_id: string;
