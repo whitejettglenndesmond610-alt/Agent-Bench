@@ -383,7 +383,7 @@ export function EvaluationCasesPage({ userId, canPublish }: { userId: string; ca
     <main className="workspace evaluation-cases-page">
       <header className="evaluation-cases-header">
         <div><p className="eyebrow">CURATED EVALUATION CASES</p><h1>精选评测案例</h1><p>从真实 Agent 回答建立独立、可复核、可追溯的精选案例。</p></div>
-        <Link className="back-link" to="/workspace">← 返回工作台</Link>
+        <div className="evaluation-header-actions"><Link className="back-link" to="/dataset-releases">正式数据集发布 →</Link><Link className="back-link" to="/workspace">← 返回工作台</Link></div>
       </header>
       {pageError && <div className="result-banner is-error" role="alert">{pageError}</div>}
       <div className="evaluation-cases-layout">

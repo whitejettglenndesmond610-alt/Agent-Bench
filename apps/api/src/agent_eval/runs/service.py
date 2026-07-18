@@ -253,6 +253,10 @@ async def prepare_evaluation_run(
         raise RunConfigurationError("dataset_version_not_found", "一个或多个题库版本不存在")
     if any(version.status != DatasetStatus.FROZEN for version in dataset_versions):
         raise RunConfigurationError("dataset_not_frozen", "只能使用已冻结的题库版本")
+    if any(not version.run_eligible for version in dataset_versions):
+        raise RunConfigurationError(
+            "dataset_not_run_eligible", "精选发布数据集尚未获准进入评测任务"
+        )
     cohort_keys = {version.cohort_key for version in dataset_versions}
     unified_profile = profile_key in UNIFIED_V3_PROFILE_KEYS
     if profile_key.startswith(UNIFIED_V3_PROFILE_KEY) and not unified_profile:

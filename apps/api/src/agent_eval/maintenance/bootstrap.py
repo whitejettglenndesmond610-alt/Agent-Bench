@@ -104,11 +104,19 @@ async def demo_preflight(
     require_snapshot: bool,
 ) -> list[str]:
     failures: list[str] = []
-    question_count = await session.scalar(select(func.count()).select_from(Question))
+    question_count = await session.scalar(
+        select(func.count())
+        .select_from(Question)
+        .join(DatasetVersion)
+        .where(DatasetVersion.run_eligible.is_(True))
+    )
     frozen_dataset_count = await session.scalar(
         select(func.count())
         .select_from(DatasetVersion)
-        .where(DatasetVersion.status == DatasetStatus.FROZEN)
+        .where(
+            DatasetVersion.status == DatasetStatus.FROZEN,
+            DatasetVersion.run_eligible.is_(True),
+        )
     )
     if question_count != 100 or frozen_dataset_count != 6:
         failures.append(

@@ -161,6 +161,12 @@ class EvaluationCaseStatus(StrEnum):
     PUBLISHED = "published"
 
 
+class DatasetReleaseStatus(StrEnum):
+    DRAFT = "draft"
+    APPROVED = "approved"
+    PUBLISHED = "published"
+
+
 class NotificationType(StrEnum):
     RUN_PUBLISHED = "run_published"
     RUN_FAILED = "run_failed"

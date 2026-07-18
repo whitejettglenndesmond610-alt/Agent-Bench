@@ -34,6 +34,7 @@ import {
   WorkspaceSendResult,
   WorkspaceTurn
 } from "./api";
+import { AgentPicker } from "./AgentPicker";
 
 const activeStatuses = new Set(["queued", "running"]);
 const workspaceAgentsKey = (userId: string) => ["workspace", userId, "agents"] as const;
@@ -1073,22 +1074,15 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
                 )}
               </div>
             ) : (
-              <label>
-                <span className="sr-only">选择 Agent</span>
-                <select
-                  aria-label="选择 Agent"
-                  value={selectedAgent?.agent_version_id ?? ""}
-                  disabled={catalogQuery.isPending || catalog.length === 0}
-                  onChange={(event) => setSelectedAgentVersionId(event.target.value)}
-                >
-                  {catalog.length === 0 && <option value="">暂无可用 Agent</option>}
-                  {catalog.map((agent) => (
-                    <option key={agent.agent_version_id} value={agent.agent_version_id}>
-                      {agent.name} · V{agent.version}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <AgentPicker
+                agents={catalog}
+                selectedVersionIds={selectedAgent ? [selectedAgent.agent_version_id] : []}
+                recentVersionIds={conversations.map((item) => item.agent.agent_version_id)}
+                mode="single"
+                loading={catalogQuery.isPending}
+                error={catalogQuery.error?.message ?? null}
+                onChange={(versionIds) => setSelectedAgentVersionId(versionIds[0] ?? "")}
+              />
             )}
           </div>
            <div className="instrument-status">

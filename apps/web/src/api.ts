@@ -714,6 +714,10 @@ export function fetchEvaluationCases(): Promise<EvaluationCaseList> {
   return requestJson<EvaluationCaseList>("/api/v1/evaluation-cases");
 }
 
+export function fetchPublishedEvaluationCases(): Promise<EvaluationCaseList> {
+  return requestJson<EvaluationCaseList>("/api/v1/evaluation-cases?status=published&limit=100");
+}
+
 export function fetchEvaluationCase(caseId: string): Promise<EvaluationCase> {
   return requestJson<EvaluationCase>(`/api/v1/evaluation-cases/${caseId}`);
 }
@@ -743,6 +747,81 @@ export function publishEvaluationCase(
   input: { expected_revision: number; confirm_curated_only: true }
 ): Promise<EvaluationCase> {
   return jsonMutation<EvaluationCase>(`/api/v1/evaluation-cases/${caseId}/publish`, "POST", input);
+}
+
+export type DatasetReleaseStatus = "draft" | "approved" | "published";
+
+export interface DatasetReleaseCase {
+  id: string;
+  position: number;
+  prompt: string;
+  language: "zh" | "en";
+  ability: Ability;
+  question_type: EvaluationQuestionType;
+  record_hash: string;
+}
+
+export interface DatasetReleaseVersion {
+  id: string;
+  benchmark_name: string;
+  language: "zh" | "en";
+  ability: Ability;
+  version: number;
+  question_count: number;
+  content_hash: string;
+  run_eligible: boolean;
+}
+
+export interface DatasetRelease {
+  id: string;
+  name: string;
+  description: string | null;
+  status: DatasetReleaseStatus;
+  revision: number;
+  manifest_hash: string | null;
+  approved_by_user_id: string | null;
+  approved_at: string | null;
+  published_by_user_id: string | null;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+  cases: DatasetReleaseCase[];
+  dataset_versions: DatasetReleaseVersion[];
+}
+
+export interface DatasetReleaseList {
+  items: DatasetRelease[];
+}
+
+export function createDatasetRelease(input: {
+  name: string;
+  description?: string | null;
+  evaluation_case_ids: string[];
+  idempotency_key: string;
+}): Promise<DatasetRelease> {
+  return jsonMutation<DatasetRelease>("/api/v1/dataset-releases", "POST", input);
+}
+
+export function fetchDatasetReleases(): Promise<DatasetReleaseList> {
+  return requestJson<DatasetReleaseList>("/api/v1/dataset-releases");
+}
+
+export function fetchDatasetRelease(releaseId: string): Promise<DatasetRelease> {
+  return requestJson<DatasetRelease>(`/api/v1/dataset-releases/${releaseId}`);
+}
+
+export function approveDatasetRelease(
+  releaseId: string,
+  input: { expected_revision: number; confirm_case_selection: true }
+): Promise<DatasetRelease> {
+  return jsonMutation<DatasetRelease>(`/api/v1/dataset-releases/${releaseId}/approve`, "POST", input);
+}
+
+export function publishDatasetRelease(
+  releaseId: string,
+  input: { expected_revision: number; confirm_not_run_eligible: true }
+): Promise<DatasetRelease> {
+  return jsonMutation<DatasetRelease>(`/api/v1/dataset-releases/${releaseId}/publish`, "POST", input);
 }
 
 export interface RunDatasetOption {

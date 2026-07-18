@@ -16,6 +16,7 @@ import {
   WorkspaceComparisonList,
   WorkspaceComparisonItem
 } from "./api";
+import { AgentPicker } from "./AgentPicker";
 import { Citations, MarkdownContent } from "./WorkspacePage";
 
 const workspaceAgentsKey = (userId: string) => ["workspace", userId, "agents"] as const;
@@ -340,12 +341,6 @@ export function WorkspaceComparePage({ userId, canDraft }: { userId: string; can
     createMutation.mutate();
   }
 
-  function toggleAgent(versionId: string) {
-    setSelectedVersionIds((current) => current.includes(versionId)
-      ? current.filter((id) => id !== versionId)
-      : current.length < 5 ? [...current, versionId] : current);
-  }
-
   const comparison = comparisonQuery.data;
   const sortedItems = comparison ? [...comparison.items].sort((left, right) => left.position - right.position) : [];
   const active = comparison ? activeComparisonStatuses.has(comparison.status) : false;
@@ -374,26 +369,20 @@ export function WorkspaceComparePage({ userId, canDraft }: { userId: string; can
           <form className="comparison-builder" onSubmit={submitComparison}>
             <fieldset>
               <legend>选择 Agent <span>{selectedVersionIds.length} / 5</span></legend>
-              {agentsQuery.isPending && <p className="comparison-builder-state">正在读取 Agent 目录</p>}
-              {agentsQuery.isError && <p className="comparison-builder-state is-error">Agent 目录读取失败</p>}
-              <div className="comparison-agent-grid">
-                {(agentsQuery.data ?? []).map((agent) => {
-                  const selected = selectedVersionIds.includes(agent.agent_version_id);
-                  const disabled = !selected && selectedVersionIds.length >= 5;
-                  return (
-                    <label className={selected ? "is-selected" : ""} key={agent.agent_version_id}>
-                      <input
-                        type="checkbox"
-                        checked={selected}
-                        disabled={disabled}
-                        onChange={() => toggleAgent(agent.agent_version_id)}
-                      />
-                      <span><strong>{agent.name}</strong><small>{agent.provider} · V{agent.version}</small></span>
-                      <b>{agent.supports_citations ? "CITE" : "TEXT"}</b>
-                    </label>
-                  );
-                })}
-              </div>
+              <AgentPicker
+                agents={agentsQuery.data ?? []}
+                selectedVersionIds={selectedVersionIds}
+                recentVersionIds={(historyQuery.data?.items ?? []).flatMap((item) =>
+                  [...item.items]
+                    .sort((left, right) => left.position - right.position)
+                    .map((entry) => entry.agent.agent_version_id)
+                )}
+                mode="multiple"
+                maxSelected={5}
+                loading={agentsQuery.isPending}
+                error={agentsQuery.error?.message ?? null}
+                onChange={setSelectedVersionIds}
+              />
               {!agentsQuery.isPending && (agentsQuery.data?.length ?? 0) === 0 && (
                 <p className="comparison-builder-state">当前账号没有可用的 Agent 版本。</p>
               )}

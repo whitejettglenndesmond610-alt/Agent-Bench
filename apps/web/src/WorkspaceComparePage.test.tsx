@@ -139,6 +139,9 @@ test("creates one persisted comparison batch for two unique Agents", async () =>
   vi.stubGlobal("fetch", fetchMock);
 
   renderPage();
+  const picker = await screen.findByRole("button", { name: "选择对比 Agent" });
+  await waitFor(() => expect(picker).toBeEnabled());
+  fireEvent.click(picker);
   fireEvent.click(await screen.findByRole("checkbox", { name: /Alpha Agent/ }));
   fireEvent.click(screen.getByRole("checkbox", { name: /Beta Agent/ }));
   fireEvent.change(screen.getByRole("textbox", { name: "统一提示词" }), { target: { value: "解释可重复评测" } });

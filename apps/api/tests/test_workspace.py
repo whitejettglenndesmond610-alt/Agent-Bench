@@ -24,6 +24,7 @@ from agent_eval.db.engine import create_engine
 from agent_eval.db.enums import (
     AgentVersionLifecycle,
     AuthType,
+    DatasetReleaseStatus,
     EvaluationCaseStatus,
     SessionRole,
     WorkspaceAttemptStatus,
@@ -33,12 +34,16 @@ from agent_eval.db.models import (
     Agent,
     AgentVersion,
     ArtifactIndex,
+    DatasetRelease,
     DatasetVersion,
     EvaluationCase,
     EvaluationRun,
+    JudgeConfig,
     LeaderboardResult,
     LeaderboardSnapshot,
     Question,
+    RunDatasetVersion,
+    ScoreConfig,
     WorkspaceAttempt,
     WorkspaceComparison,
     WorkspaceConversation,
@@ -46,6 +51,7 @@ from agent_eval.db.models import (
 )
 from agent_eval.db.session import create_session_factory, session_scope
 from agent_eval.maintenance.workspace_users import create_workspace_user
+from agent_eval.runs.profiles import build_run_profiles
 from agent_eval.runs.queue import acquire_worker_lease
 from agent_eval.worker.limits import WorkerLimits
 from agent_eval.workspace.executor import process_workspace_attempt
@@ -577,6 +583,111 @@ async def test_workspace_comparison_and_curated_evaluation_case(tmp_path: Path) 
                 assert await session.scalar(select(func.count()).select_from(model)) == 0
         assert app.state.sqlite_mutation_locks == {}
 
+        published_cases = await client.get(
+            "/api/v1/evaluation-cases?status=published"
+        )
+        assert [item["id"] for item in published_cases.json()["items"]] == [case_id]
+        blank_release = await client.post(
+            "/api/v1/dataset-releases",
+            headers=headers,
+            json={
+                "name": "   ",
+                "evaluation_case_ids": [case_id],
+                "idempotency_key": str(uuid4()),
+            },
+        )
+        assert blank_release.status_code == 422
+
+        release_key = str(uuid4())
+        release = await client.post(
+            "/api/v1/dataset-releases",
+            headers=headers,
+            json={
+                "name": "Workspace curated release",
+                "description": "Reviewed production candidates",
+                "evaluation_case_ids": [case_id],
+                "idempotency_key": release_key,
+            },
+        )
+        assert release.status_code == 201
+        release_id = release.json()["id"]
+        assert release.json()["status"] == "draft"
+        assert release.json()["dataset_versions"] == []
+        replayed_release = await client.post(
+            "/api/v1/dataset-releases",
+            headers=headers,
+            json={
+                "name": "Workspace curated release",
+                "description": "Reviewed production candidates",
+                "evaluation_case_ids": [case_id],
+                "idempotency_key": release_key,
+            },
+        )
+        assert replayed_release.json()["id"] == release_id
+
+        approved_release = await client.post(
+            f"/api/v1/dataset-releases/{release_id}/approve",
+            headers=headers,
+            json={"expected_revision": 0, "confirm_case_selection": True},
+        )
+        assert approved_release.json()["status"] == "approved"
+        assert approved_release.json()["manifest_hash"] is not None
+        assert approved_release.json()["dataset_versions"] == []
+
+        published_release = await client.post(
+            f"/api/v1/dataset-releases/{release_id}/publish",
+            headers=headers,
+            json={"expected_revision": 1, "confirm_not_run_eligible": True},
+        )
+        assert published_release.json()["status"] == "published"
+        assert len(published_release.json()["dataset_versions"]) == 1
+        assert published_release.json()["dataset_versions"][0]["run_eligible"] is False
+        released_version_id = UUID(
+            published_release.json()["dataset_versions"][0]["id"]
+        )
+
+        async with app.state.session_factory() as session:
+            stored_release = await session.get(DatasetRelease, UUID(release_id))
+            released_question = await session.scalar(
+                select(Question).where(
+                    Question.source_evaluation_case_id == UUID(case_id)
+                )
+            )
+            profiles = await build_run_profiles(session)
+            assert stored_release is not None
+            assert stored_release.status == DatasetReleaseStatus.PUBLISHED
+            assert released_question is not None
+            assert all(
+                released_version_id not in profile.dataset_version_ids
+                for profile in profiles
+            )
+            assert await session.scalar(
+                select(func.count()).select_from(LeaderboardResult)
+            ) == 0
+
+            judge = JudgeConfig(provider="test", model="test", prompt_version="v1")
+            score = ScoreConfig(name="Curated release isolation")
+            session.add_all([judge, score])
+            await session.flush()
+            isolated_run = EvaluationRun(
+                name="Must reject curated release",
+                dataset_bundle_hash="c" * 64,
+                protocol_hash="d" * 64,
+                judge_config_id=judge.id,
+                score_config_id=score.id,
+            )
+            session.add(isolated_run)
+            await session.flush()
+            session.add(
+                RunDatasetVersion(
+                    run_id=isolated_run.id,
+                    dataset_version_id=released_version_id,
+                )
+            )
+            with pytest.raises(IntegrityError):
+                await session.flush()
+            await session.rollback()
+
         await login_operator(client)
         shared_draft = await client.post(
             "/api/v1/evaluation-cases",
@@ -595,6 +706,7 @@ async def test_workspace_comparison_and_curated_evaluation_case(tmp_path: Path) 
             await client.get(f"/api/v1/workspace/comparisons/{comparison_id}")
         ).status_code == 404
         assert (await client.get("/api/v1/evaluation-cases")).json() == {"items": []}
+        assert (await client.get("/api/v1/dataset-releases")).json() == {"items": []}
 
 
 async def test_workspace_api_context_regeneration_and_ownership(tmp_path: Path) -> None:

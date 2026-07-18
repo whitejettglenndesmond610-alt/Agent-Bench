@@ -338,7 +338,10 @@ async def preflight_agent_version(
             select(Question)
             .options(joinedload(Question.dataset_version).joinedload(DatasetVersion.benchmark))
             .join(DatasetVersion, DatasetVersion.id == Question.dataset_version_id)
-            .where(DatasetVersion.status == DatasetStatus.FROZEN)
+            .where(
+                DatasetVersion.status == DatasetStatus.FROZEN,
+                DatasetVersion.run_eligible.is_(True),
+            )
         )
     )
     config = ConnectionConfig(

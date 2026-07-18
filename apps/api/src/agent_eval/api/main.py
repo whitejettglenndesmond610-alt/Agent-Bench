@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from agent_eval import __version__
 from agent_eval.api.routes.agents import router as agents_router
 from agent_eval.api.routes.auth import router as auth_router
+from agent_eval.api.routes.dataset_releases import router as dataset_releases_router
 from agent_eval.api.routes.evaluation_cases import router as evaluation_cases_router
 from agent_eval.api.routes.health import router as health_router
 from agent_eval.api.routes.leaderboards import router as leaderboards_router
@@ -94,6 +95,7 @@ def create_app(
     app.include_router(workspace_router)
     app.include_router(workspace_comparisons_router)
     app.include_router(evaluation_cases_router)
+    app.include_router(dataset_releases_router)
     return app
 
 

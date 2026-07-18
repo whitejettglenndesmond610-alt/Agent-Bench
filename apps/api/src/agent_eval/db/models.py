@@ -34,6 +34,7 @@ from agent_eval.db.enums import (
     AuthSource,
     AuthType,
     CitationFetchStatus,
+    DatasetReleaseStatus,
     DatasetStatus,
     DesiredRunState,
     EvaluationCaseStatus,
@@ -160,6 +161,7 @@ class DatasetVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint("benchmark_id", "version", name="uq_dataset_versions_version"),
         UniqueConstraint("benchmark_id", "content_hash", name="uq_dataset_versions_hash"),
+        UniqueConstraint("id", "run_eligible", name="uq_dataset_versions_id_run_eligible"),
         CheckConstraint("version > 0", name="version_positive"),
         CheckConstraint("question_count >= 0", name="question_count_nonnegative"),
         CheckConstraint("length(cohort_key) > 0", name="cohort_key_nonempty"),
@@ -182,21 +184,40 @@ class DatasetVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
+    run_eligible: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False, index=True
+    )
+    dataset_release_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("dataset_releases.id", ondelete="RESTRICT"), index=True
+    )
     frozen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     benchmark: Mapped[Benchmark] = relationship(back_populates="versions")
     questions: Mapped[list["Question"]] = relationship(back_populates="dataset_version")
-    run_links: Mapped[list["RunDatasetVersion"]] = relationship(back_populates="dataset_version")
+    run_links: Mapped[list["RunDatasetVersion"]] = relationship(
+        back_populates="dataset_version",
+        foreign_keys="RunDatasetVersion.dataset_version_id",
+    )
+    dataset_release: Mapped["DatasetRelease | None"] = relationship(
+        back_populates="dataset_versions"
+    )
 
 
 class Question(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "questions"
     __table_args__ = (
         UniqueConstraint("dataset_version_id", "external_id", name="uq_questions_dataset_external"),
+        UniqueConstraint(
+            "source_evaluation_case_id", name="uq_questions_source_evaluation_case_id"
+        ),
+        Index("ix_questions_source_evaluation_case_id", "source_evaluation_case_id"),
     )
 
     dataset_version_id: Mapped[UUID] = mapped_column(
         ForeignKey("dataset_versions.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    source_evaluation_case_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("evaluation_cases.id", ondelete="RESTRICT")
     )
     external_id: Mapped[str] = mapped_column(String(200), nullable=False)
     type: Mapped[QuestionType] = mapped_column(
@@ -211,6 +232,9 @@ class Question(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     dataset_version: Mapped[DatasetVersion] = relationship(back_populates="questions")
     execution_items: Mapped[list["ExecutionItem"]] = relationship(back_populates="question")
+    source_evaluation_case: Mapped["EvaluationCase | None"] = relationship(
+        back_populates="formal_question"
+    )
 
 
 class JudgeConfig(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -353,6 +377,15 @@ class EvaluationRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 class RunDatasetVersion(Base):
     __tablename__ = "run_dataset_versions"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["dataset_version_id", "dataset_run_eligible"],
+            ["dataset_versions.id", "dataset_versions.run_eligible"],
+            ondelete="RESTRICT",
+            name="fk_run_dataset_versions_dataset_runnable",
+        ),
+        CheckConstraint("dataset_run_eligible = true", name="dataset_must_be_runnable"),
+    )
 
     run_id: Mapped[UUID] = mapped_column(
         ForeignKey("evaluation_runs.id", ondelete="CASCADE"), primary_key=True
@@ -360,9 +393,14 @@ class RunDatasetVersion(Base):
     dataset_version_id: Mapped[UUID] = mapped_column(
         ForeignKey("dataset_versions.id", ondelete="RESTRICT"), primary_key=True
     )
+    dataset_run_eligible: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
 
     run: Mapped[EvaluationRun] = relationship(back_populates="dataset_links")
-    dataset_version: Mapped[DatasetVersion] = relationship(back_populates="run_links")
+    dataset_version: Mapped[DatasetVersion] = relationship(
+        back_populates="run_links", foreign_keys=[dataset_version_id]
+    )
 
 
 class RunAgent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -1081,6 +1119,98 @@ class EvaluationCase(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     reviewed_by: Mapped[AuthUser | None] = relationship(foreign_keys=[reviewed_by_user_id])
     published_by: Mapped[AuthUser | None] = relationship(foreign_keys=[published_by_user_id])
+    release_links: Mapped[list["DatasetReleaseCase"]] = relationship(
+        back_populates="evaluation_case"
+    )
+    formal_question: Mapped[Question | None] = relationship(
+        back_populates="source_evaluation_case", uselist=False
+    )
+
+
+class DatasetRelease(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "dataset_releases"
+    __table_args__ = (
+        UniqueConstraint(
+            "owner_user_id", "idempotency_key", name="uq_dataset_releases_idempotency"
+        ),
+        CheckConstraint("length(name) > 0", name="name_nonempty"),
+        CheckConstraint("revision >= 0", name="revision_nonnegative"),
+        CheckConstraint("length(idempotency_key) = 36", name="idempotency_key_uuid"),
+        CheckConstraint("length(request_fingerprint) = 64", name="request_fingerprint_sha256"),
+        CheckConstraint(
+            "manifest_hash IS NULL OR length(manifest_hash) = 64", name="manifest_hash_sha256"
+        ),
+        CheckConstraint(
+            "(status = 'draft' AND manifest_hash IS NULL AND approved_by_user_id IS NULL "
+            "AND approved_at IS NULL AND published_by_user_id IS NULL AND published_at IS NULL) OR "
+            "(status = 'approved' AND manifest_hash IS NOT NULL "
+            "AND approved_by_user_id IS NOT NULL AND approved_at IS NOT NULL "
+            "AND published_by_user_id IS NULL AND published_at IS NULL) OR "
+            "(status = 'published' AND manifest_hash IS NOT NULL "
+            "AND approved_by_user_id IS NOT NULL "
+            "AND approved_at IS NOT NULL AND published_by_user_id IS NOT NULL "
+            "AND published_at IS NOT NULL)",
+            name="status_lifecycle_fields",
+        ),
+        Index("ix_dataset_releases_owner_updated", "owner_user_id", "updated_at"),
+    )
+
+    owner_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("auth_users.id", ondelete="RESTRICT"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    idempotency_key: Mapped[str] = mapped_column(String(36), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[DatasetReleaseStatus] = mapped_column(
+        enum_column(DatasetReleaseStatus, name="dataset_release_status"),
+        default=DatasetReleaseStatus.DRAFT,
+        nullable=False,
+        index=True,
+    )
+    revision: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    manifest_hash: Mapped[str | None] = mapped_column(String(64))
+    approved_by_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("auth_users.id", ondelete="RESTRICT")
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_by_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("auth_users.id", ondelete="RESTRICT")
+    )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    owner: Mapped[AuthUser] = relationship(foreign_keys=[owner_user_id])
+    approved_by: Mapped[AuthUser | None] = relationship(foreign_keys=[approved_by_user_id])
+    published_by: Mapped[AuthUser | None] = relationship(foreign_keys=[published_by_user_id])
+    case_links: Mapped[list["DatasetReleaseCase"]] = relationship(
+        back_populates="dataset_release", order_by="DatasetReleaseCase.position"
+    )
+    dataset_versions: Mapped[list[DatasetVersion]] = relationship(
+        back_populates="dataset_release"
+    )
+
+
+class DatasetReleaseCase(Base):
+    __tablename__ = "dataset_release_cases"
+    __table_args__ = (
+        UniqueConstraint(
+            "dataset_release_id", "position", name="uq_dataset_release_cases_position"
+        ),
+        CheckConstraint("position > 0", name="position_positive"),
+        CheckConstraint("length(record_hash) = 64", name="record_hash_sha256"),
+    )
+
+    dataset_release_id: Mapped[UUID] = mapped_column(
+        ForeignKey("dataset_releases.id", ondelete="CASCADE"), primary_key=True
+    )
+    evaluation_case_id: Mapped[UUID] = mapped_column(
+        ForeignKey("evaluation_cases.id", ondelete="RESTRICT"), primary_key=True
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    record_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    dataset_release: Mapped[DatasetRelease] = relationship(back_populates="case_links")
+    evaluation_case: Mapped[EvaluationCase] = relationship(back_populates="release_links")
 
 
 class Notification(UUIDPrimaryKeyMixin, Base):

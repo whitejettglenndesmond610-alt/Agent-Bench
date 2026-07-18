@@ -67,7 +67,10 @@ async def build_run_profiles(session: AsyncSession) -> list[RunProfile]:
         await session.scalars(
             select(DatasetVersion)
             .options(joinedload(DatasetVersion.benchmark))
-            .where(DatasetVersion.status == DatasetStatus.FROZEN)
+            .where(
+                DatasetVersion.status == DatasetStatus.FROZEN,
+                DatasetVersion.run_eligible.is_(True),
+            )
             .order_by(DatasetVersion.benchmark_id, DatasetVersion.version.desc())
         )
     )

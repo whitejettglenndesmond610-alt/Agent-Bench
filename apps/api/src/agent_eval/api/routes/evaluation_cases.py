@@ -212,13 +212,18 @@ async def list_cases(
     database: DatabaseSession,
     auth_session: OperatorSession,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    case_status: Annotated[EvaluationCaseStatus | None, Query(alias="status")] = None,
 ) -> EvaluationCaseList:
+    statement = select(EvaluationCase).where(
+        EvaluationCase.owner_user_id == workspace_user_id(auth_session)
+    )
+    if case_status is not None:
+        statement = statement.where(EvaluationCase.status == case_status)
     cases = list(
         await database.scalars(
-            select(EvaluationCase)
-            .where(EvaluationCase.owner_user_id == workspace_user_id(auth_session))
-            .order_by(EvaluationCase.updated_at.desc(), EvaluationCase.id.desc())
-            .limit(limit)
+            statement.order_by(EvaluationCase.updated_at.desc(), EvaluationCase.id.desc()).limit(
+                limit
+            )
         )
     )
     return EvaluationCaseList(items=[case_response(case) for case in cases])
