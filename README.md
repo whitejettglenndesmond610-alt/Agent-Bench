@@ -13,7 +13,9 @@ Agent Evaluation Platform 是一个面向第三方智能体（Agent）API 的内
 - **多 Agent 接入**：支持配置第三方 HTTP API、认证方式、请求模板、答案 JSONPath 和引用 JSONPath。
 - **异步评测任务**：API 负责创建任务，Worker 独立执行推理、评分、引用抓取和排行榜发布。
 - **Agent 工作区**：具名用户可创建持久化多轮会话、重新生成回答，并让 2–5 个 Agent 对同一原始 Prompt 并行作答。
+- **可扩展模型目录**：单聊和并行对比共用可搜索模型选择器，支持厂商筛选、厂商分组以及根据服务端会话历史生成的最近使用列表。
 - **评测案例策展**：成功回答可保存为独立草稿，经参考答案编辑、四项人工复核后发布到隔离案例库，不自动进入正式题库或榜单。
+- **受控数据集发布**：具名运营者可批量选择已发布案例，经过清单批准和显式发布后生成正式冻结版本；新版本默认不可运行，不会自动进入 Profile、评测任务或排行榜。
 - **综合榜与专项榜**：同时提供综合能力排行榜以及推理、检索、数据推理、指令遵循、长上下文专项榜。
 - **可信结果门禁**：认证失败、响应结构错误和大规模客户端配置错误会使整场结果失效，避免错误配置污染榜单。
 - **完整运行记录**：保存单题状态、失败类型、HTTP Attempt、Token 用量、P50/P95 延迟和评分明细。
@@ -51,6 +53,7 @@ Agent Evaluation Platform 是一个面向第三方智能体（Agent）API 的内
 - 共享登录和具名用户均保留 `read_only`/`operator` 角色；具名用户密码仅保存 Argon2 哈希。
 - Agent 响应、Judge 响应和引用内容以不可变 Artifact 保存，并校验大小与 SHA-256。
 - 排行榜只接收通过有效性检查且协议一致的正式评测结果。
+- 精选案例发布生成的 `DatasetVersion` 默认设置 `run_eligible=false`。Run API、Profile 构建、Agent 预检和维护检查都会过滤这些版本，数据库组合外键也会拒绝绕过 API 建立 Run 关联。
 - 仓库不包含真实密码、API Key、数据库、Artifact、备份或受限评测数据。
 - 部分评测来源存在不可再分发或非商业限制，使用前必须检查各数据集许可。
 
@@ -83,6 +86,24 @@ Docker Compose 部署、PostgreSQL/MinIO 切换、备份与恢复流程请继续
 
 > **重要提示**：不要提交 `.env`、真实数据集、数据库、Artifact、备份、登录凭据、Agent Token
 > 或第三方 API Key。公开部署时必须使用 HTTPS，并且不要将 PostgreSQL 或 MinIO 端口暴露到公网。
+
+### 模型目录与正式发布流程
+
+工作区模型目录直接使用服务端返回的 Agent 及当前版本，不在前端硬编码厂商。模型可按名称、
+厂商或描述搜索，并按厂商分组展示。最近使用记录来自持久化会话和对比历史，不依赖
+`localStorage`；单 Agent 对话使用单选，并行对比允许选择 2–5 个不同 Agent。
+
+成功回答进入正式数据集前必须经过多阶段人工门禁：
+
+1. 在评测案例页面完成内容编辑、四项复核，并发布到精选案例库。
+2. 在数据集发布页面批量建立发布草稿，显式批准不可变案例清单。
+3. 再次确认版本不可用于评测运行后，正式发布数据集版本。
+
+发布批次遵循 `draft → approved → published` 生命周期。清单记录案例顺序和记录哈希；正式
+发布时按能力维度与语言拆分为多个冻结 `DatasetVersion`，并在 `Question` 上保留来源案例。
+该操作不会创建 Run Profile、`EvaluationRun`、`LeaderboardSnapshot` 或
+`LeaderboardResult`。如果未来需要让某个版本参与评测，必须另行实现并执行独立、显式的
+审核流程修改其运行资格，而不是由发布动作自动启用。
 
 ## English Documentation
 
@@ -167,6 +188,27 @@ of the same logical Agent while no generation is active; existing turns remain u
 future transcripts. Cross-table message role/conversation equality cannot be expressed as a
 portable SQLite/PostgreSQL check constraint, so workers validate it both before provider execution
 and before successful finalization.
+
+### Agent Catalog and Curated Dataset Releases
+
+Single-Agent chat and parallel comparison share a catalog-driven model picker. It searches Agent
+names, providers, and descriptions; groups results by provider; and derives recently used versions
+from persisted server-side conversation and comparison history. No provider list or recent history
+is stored in browser `localStorage`. Chat uses single selection, while comparison accepts two to
+five distinct Agents.
+
+Curated answers reach a formal dataset only through staged, explicit human gates. A named operator
+first publishes a fully reviewed evaluation case to the curated library. The operator then creates
+a batch release draft, approves its immutable ordered case manifest, and separately confirms formal
+publication. Release batches follow `draft → approved → published`; concurrent mutations use
+idempotency keys and revision checks.
+
+Publication groups cases by ability and language, creates frozen `DatasetVersion` rows, and records
+the source evaluation case on every formal `Question`. These versions default to
+`run_eligible=false`. Run creation, profile discovery, Agent preflight, and maintenance checks all
+exclude them, while a composite database foreign key prevents a direct `RunDatasetVersion` insert
+from bypassing the application checks. Publication never creates a Run Profile, `EvaluationRun`,
+`LeaderboardSnapshot`, or `LeaderboardResult`.
 
 Artifact storage is selected with `AGENT_EVAL_ARTIFACT_BACKEND`; `local` remains the default.
 `AGENT_EVAL_ARTIFACT_LOCAL_DIR` defaults to `<AGENT_EVAL_DATA_DIR>/artifacts`. The `s3` backend uses
@@ -310,7 +352,7 @@ docker compose -f deploy/compose.yaml up --build
 ```
 
 An optional private MinIO overlay is available for S3-compatible deployments. It is not part of the
-default or current production stack and publishes no MinIO ports:
+default stack, should only be enabled when the S3 backend is selected, and publishes no MinIO ports:
 
 ```bash
 cp .env.minio.example .env.minio
