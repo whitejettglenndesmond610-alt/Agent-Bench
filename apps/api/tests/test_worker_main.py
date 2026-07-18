@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from agent_eval.core.artifact_store import ArtifactStore
 from agent_eval.core.settings import Settings
 from agent_eval.worker import main as worker_main
-from agent_eval.worker.limits import WorkerLimits, concurrency_slot
+from agent_eval.worker.limits import WorkerLimits, agent_request_slots, concurrency_slot
 
 
 async def test_run_pipelines_execute_independently(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -124,3 +124,32 @@ async def test_worker_limits_are_shared_across_tasks() -> None:
 
     await asyncio.gather(*(request() for _ in range(3)))
     assert max_active == 1
+
+
+async def test_version_wait_does_not_hold_global_agent_capacity() -> None:
+    limits = WorkerLimits.from_settings(
+        Settings(environment="test", worker_agent_concurrency=1)
+    )
+    entered = asyncio.Event()
+
+    async def wait_for_both() -> None:
+        async with agent_request_slots(
+            limits.agent_versions,
+            limits.agent_requests,
+            version_id="saturated-version",
+            version_limit=1,
+        ):
+            entered.set()
+
+    async with limits.agent_versions.slot("saturated-version", limit=1):
+        waiter = asyncio.create_task(wait_for_both())
+        await asyncio.sleep(0)
+
+        async def use_global_slot() -> None:
+            async with limits.agent_requests.slot():
+                return None
+
+        await asyncio.wait_for(use_global_slot(), timeout=0.2)
+        assert not entered.is_set()
+        waiter.cancel()
+        await asyncio.gather(waiter, return_exceptions=True)

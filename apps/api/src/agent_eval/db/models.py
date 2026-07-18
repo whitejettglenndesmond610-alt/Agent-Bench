@@ -30,6 +30,7 @@ from agent_eval.db.enums import (
     AgentVersionLifecycle,
     ArtifactKind,
     AttemptStatus,
+    AuthSource,
     AuthType,
     CitationFetchStatus,
     DatasetStatus,
@@ -45,6 +46,8 @@ from agent_eval.db.enums import (
     RunStage,
     RunStatus,
     SessionRole,
+    WorkspaceAttemptStatus,
+    WorkspaceMessageRole,
 )
 
 
@@ -652,6 +655,9 @@ class LeaderboardResult(UUIDPrimaryKeyMixin, Base):
 class Session(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "sessions"
 
+    user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("auth_users.id", ondelete="RESTRICT"), index=True
+    )
     role: Mapped[SessionRole] = mapped_column(
         enum_column(SessionRole, name="session_role"), nullable=False, index=True
     )
@@ -666,6 +672,228 @@ class Session(UUIDPrimaryKeyMixin, Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
     )
+
+    user: Mapped["AuthUser | None"] = relationship(back_populates="sessions")
+
+
+class AuthUser(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "auth_users"
+    __table_args__ = (
+        CheckConstraint(
+            "(auth_source = 'legacy_shared' AND is_shared = true AND username IS NULL "
+            "AND password_hash IS NULL) OR "
+            "(auth_source = 'local' AND is_shared = false AND username IS NOT NULL "
+            "AND password_hash LIKE '$argon2%')",
+            name="source_fields_valid",
+        ),
+        CheckConstraint("length(subject_key) > 0", name="subject_key_nonempty"),
+        CheckConstraint("length(display_name) > 0", name="display_name_nonempty"),
+    )
+
+    subject_key: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
+    username: Mapped[str | None] = mapped_column(String(64), unique=True)
+    display_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    role: Mapped[SessionRole] = mapped_column(
+        enum_column(SessionRole, name="auth_user_session_role"), nullable=False, index=True
+    )
+    auth_source: Mapped[AuthSource] = mapped_column(
+        enum_column(AuthSource, name="auth_source"), nullable=False, index=True
+    )
+    password_hash: Mapped[str | None] = mapped_column(Text)
+    is_shared: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    workspace_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+
+    sessions: Mapped[list[Session]] = relationship(back_populates="user")
+    conversations: Mapped[list["WorkspaceConversation"]] = relationship(back_populates="owner")
+
+
+class WorkspaceConversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "workspace_conversations"
+    __table_args__ = (
+        CheckConstraint("last_turn_no >= 0", name="last_turn_no_nonnegative"),
+        CheckConstraint("revision >= 0", name="revision_nonnegative"),
+        CheckConstraint("length(title) > 0", name="title_nonempty"),
+        Index("ix_workspace_conversations_owner_updated", "owner_user_id", "updated_at"),
+    )
+
+    owner_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("auth_users.id", ondelete="RESTRICT"), nullable=False
+    )
+    pinned_agent_version_id: Mapped[UUID] = mapped_column(
+        ForeignKey("agent_versions.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    last_turn_no: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+
+    owner: Mapped[AuthUser] = relationship(back_populates="conversations")
+    pinned_agent_version: Mapped[AgentVersion] = relationship()
+    messages: Mapped[list["WorkspaceMessage"]] = relationship(back_populates="conversation")
+    attempts: Mapped[list["WorkspaceAttempt"]] = relationship(back_populates="conversation")
+
+
+class WorkspaceMessage(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "workspace_messages"
+    __table_args__ = (
+        UniqueConstraint(
+            "conversation_id",
+            "turn_no",
+            "role",
+            "variant_no",
+            name="uq_workspace_messages_turn_role_variant",
+        ),
+        CheckConstraint("turn_no > 0", name="turn_no_positive"),
+        CheckConstraint("variant_no > 0", name="variant_no_positive"),
+        CheckConstraint("length(content) > 0", name="content_nonempty"),
+        CheckConstraint(
+            "role != 'user' OR (variant_no = 1 AND active = true)",
+            name="user_variant_active",
+        ),
+        Index(
+            "uq_workspace_messages_active_assistant",
+            "conversation_id",
+            "turn_no",
+            unique=True,
+            sqlite_where=text("role = 'assistant' AND active = 1"),
+            postgresql_where=text("role = 'assistant' AND active"),
+        ),
+        Index("ix_workspace_messages_conversation_turn", "conversation_id", "turn_no"),
+    )
+
+    conversation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("workspace_conversations.id", ondelete="CASCADE"), nullable=False
+    )
+    turn_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    role: Mapped[WorkspaceMessageRole] = mapped_column(
+        enum_column(WorkspaceMessageRole, name="workspace_message_role"), nullable=False
+    )
+    variant_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    citations: Mapped[list[str] | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+
+    conversation: Mapped[WorkspaceConversation] = relationship(back_populates="messages")
+
+
+class WorkspaceAttempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "workspace_attempts"
+    __table_args__ = (
+        UniqueConstraint(
+            "conversation_id", "idempotency_key", name="uq_workspace_attempts_idempotency"
+        ),
+        UniqueConstraint(
+            "user_message_id", "generation_no", name="uq_workspace_attempts_generation"
+        ),
+        CheckConstraint("generation_no > 0", name="generation_no_positive"),
+        CheckConstraint("length(request_fingerprint) = 64", name="request_fingerprint_sha256"),
+        CheckConstraint("length(prompt_hash) = 64", name="prompt_hash_sha256"),
+        CheckConstraint(
+            "prompt_characters BETWEEN 1 AND 200000", name="prompt_characters_range"
+        ),
+        CheckConstraint("http_attempt_count BETWEEN 0 AND 2", name="http_attempt_count_range"),
+        CheckConstraint(
+            "last_http_status IS NULL OR last_http_status BETWEEN 100 AND 599",
+            name="last_http_status_range",
+        ),
+        CheckConstraint("latency_ms IS NULL OR latency_ms >= 0", name="latency_nonnegative"),
+        CheckConstraint(
+            "input_tokens IS NULL OR input_tokens >= 0", name="input_tokens_nonnegative"
+        ),
+        CheckConstraint(
+            "output_tokens IS NULL OR output_tokens >= 0", name="output_tokens_nonnegative"
+        ),
+        CheckConstraint(
+            "total_tokens IS NULL OR total_tokens >= 0", name="total_tokens_nonnegative"
+        ),
+        CheckConstraint(
+            "(status = 'queued' AND claim_owner_id IS NULL AND claim_token IS NULL "
+            "AND claimed_at IS NULL AND lease_expires_at IS NULL AND heartbeat_at IS NULL "
+            "AND started_at IS NULL AND finished_at IS NULL) OR "
+            "(status = 'running' AND claim_owner_id IS NOT NULL AND claim_token IS NOT NULL "
+            "AND claimed_at IS NOT NULL AND lease_expires_at IS NOT NULL "
+            "AND heartbeat_at IS NOT NULL AND started_at IS NOT NULL AND finished_at IS NULL) OR "
+            "(status IN ('succeeded', 'failed', 'canceled') AND claim_owner_id IS NULL "
+            "AND claim_token IS NULL AND lease_expires_at IS NULL AND heartbeat_at IS NULL "
+            "AND finished_at IS NOT NULL)",
+            name="status_lifecycle_fields",
+        ),
+        CheckConstraint(
+            "(status = 'succeeded' AND assistant_message_id IS NOT NULL "
+            "AND error_type IS NULL AND error_category IS NULL) OR "
+            "(status = 'failed' AND assistant_message_id IS NULL "
+            "AND error_type IS NOT NULL AND error_category IS NOT NULL) OR "
+            "(status = 'canceled' AND assistant_message_id IS NULL "
+            "AND error_type = 'workspace_canceled' AND error_category = 'canceled') OR "
+            "(status IN ('queued', 'running') AND assistant_message_id IS NULL "
+            "AND error_type IS NULL AND error_category IS NULL)",
+            name="status_result_fields",
+        ),
+        Index(
+            "uq_workspace_attempts_active_conversation",
+            "conversation_id",
+            unique=True,
+            sqlite_where=text("status IN ('queued', 'running')"),
+            postgresql_where=text("status IN ('queued', 'running')"),
+        ),
+        Index("ix_workspace_attempts_status_created", "status", "created_at"),
+        Index("ix_workspace_attempts_lease_expires_at", "lease_expires_at"),
+    )
+
+    conversation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("workspace_conversations.id", ondelete="CASCADE"), nullable=False
+    )
+    user_message_id: Mapped[UUID] = mapped_column(
+        ForeignKey("workspace_messages.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    assistant_message_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("workspace_messages.id", ondelete="SET NULL"), unique=True
+    )
+    agent_version_id: Mapped[UUID] = mapped_column(
+        ForeignKey("agent_versions.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    generation_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(36), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[WorkspaceAttemptStatus] = mapped_column(
+        enum_column(WorkspaceAttemptStatus, name="workspace_attempt_status"),
+        default=WorkspaceAttemptStatus.QUEUED,
+        nullable=False,
+    )
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    claim_owner_id: Mapped[str | None] = mapped_column(String(120))
+    claim_token: Mapped[str | None] = mapped_column(String(32))
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    http_attempt_count: Mapped[int] = mapped_column(SmallInteger, default=0, nullable=False)
+    last_http_status: Mapped[int | None] = mapped_column(SmallInteger)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    total_tokens: Mapped[int | None] = mapped_column(Integer)
+    error_type: Mapped[str | None] = mapped_column(String(80))
+    error_category: Mapped[str | None] = mapped_column(String(80))
+    artifact_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("artifact_index.id", ondelete="SET NULL")
+    )
+    prompt_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    prompt_characters: Mapped[int] = mapped_column(Integer, nullable=False)
+    prompt_format: Mapped[str] = mapped_column(String(40), nullable=False)
+
+    conversation: Mapped[WorkspaceConversation] = relationship(back_populates="attempts")
+    user_message: Mapped[WorkspaceMessage] = relationship(foreign_keys=[user_message_id])
+    assistant_message: Mapped[WorkspaceMessage | None] = relationship(
+        foreign_keys=[assistant_message_id]
+    )
+    agent_version: Mapped[AgentVersion] = relationship()
+    artifact: Mapped[ArtifactIndex | None] = relationship()
 
 
 class Notification(UUIDPrimaryKeyMixin, Base):

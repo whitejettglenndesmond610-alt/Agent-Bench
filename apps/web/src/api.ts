@@ -10,6 +10,10 @@ export type SessionRole = "read_only" | "operator";
 export interface SessionInfo {
   role: SessionRole;
   expires_at: string;
+  user_id: string;
+  display_name: string;
+  is_shared: boolean;
+  workspace_enabled: boolean;
 }
 
 interface ValidationErrorDetail {
@@ -108,6 +112,14 @@ export async function login(role: SessionRole, password: string): Promise<Sessio
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ role, password })
+  });
+}
+
+export async function userLogin(username: string, password: string): Promise<SessionInfo> {
+  return requestJson<SessionInfo>("/api/v1/auth/user-login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password })
   });
 }
 
@@ -213,7 +225,7 @@ export interface AgentVersionPreflight {
   preflight_at: string;
 }
 
-function jsonMutation<T>(path: string, method: "POST", body: unknown): Promise<T> {
+function jsonMutation<T>(path: string, method: "POST" | "PATCH", body: unknown): Promise<T> {
   const token = csrfToken();
   return requestJson<T>(path, {
     method,
@@ -223,6 +235,181 @@ function jsonMutation<T>(path: string, method: "POST", body: unknown): Promise<T
     },
     body: JSON.stringify(body)
   });
+}
+
+export interface WorkspaceAgent {
+  agent_id: string;
+  agent_version_id: string;
+  name: string;
+  provider: string;
+  description: string | null;
+  logo_url: string | null;
+  version: number;
+  max_prompt_characters: number | null;
+  supports_citations: boolean;
+}
+
+export interface WorkspaceConversationAgent {
+  agent_id: string;
+  agent_version_id: string;
+  name: string;
+  provider: string;
+  version: number;
+}
+
+export interface WorkspaceConversation {
+  id: string;
+  agent_version_id: string;
+  title: string;
+  revision: number;
+  last_turn_no: number;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+  agent: WorkspaceConversationAgent;
+}
+
+export interface WorkspaceConversationList {
+  items: WorkspaceConversation[];
+}
+
+export interface WorkspaceMessage {
+  id: string;
+  turn_no: number;
+  role: "user" | "assistant";
+  variant_no: number;
+  active: boolean;
+  content: string;
+  citations: string[];
+  created_at: string;
+}
+
+export type WorkspaceAttemptStatus =
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "canceled";
+
+export interface WorkspaceAttemptError {
+  type: string;
+  category: string;
+}
+
+export interface WorkspaceAttempt {
+  id: string;
+  conversation_id: string;
+  user_message_id: string;
+  generation_no: number;
+  status: WorkspaceAttemptStatus;
+  assistant_message_id: string | null;
+  agent_version_id: string;
+  error_category: string | null;
+  assistant_message: WorkspaceMessage | null;
+  http_attempt_count: number;
+  last_http_status: number | null;
+  latency_ms: number | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
+  error: WorkspaceAttemptError | null;
+  cancel_requested_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceTurn {
+  turn_no: number;
+  user_message: WorkspaceMessage;
+  assistant_messages: WorkspaceMessage[];
+  attempts: WorkspaceAttempt[];
+}
+
+export interface WorkspaceConversationDetail extends WorkspaceConversation {
+  turns: WorkspaceTurn[];
+}
+
+export interface WorkspaceSendResult {
+  conversation_revision: number;
+  user_message: WorkspaceMessage;
+  attempt: WorkspaceAttempt;
+}
+
+export interface WorkspaceRegenerateResult {
+  conversation_revision: number;
+  attempt: WorkspaceAttempt;
+}
+
+export function fetchWorkspaceAgents(): Promise<WorkspaceAgent[]> {
+  return requestJson<WorkspaceAgent[]>("/api/v1/workspace/agents");
+}
+
+export function fetchWorkspaceConversations(): Promise<WorkspaceConversationList> {
+  return requestJson<WorkspaceConversationList>("/api/v1/workspace/conversations");
+}
+
+export function createWorkspaceConversation(input: {
+  agent_version_id: string;
+  title?: string;
+}): Promise<WorkspaceConversation> {
+  return jsonMutation<WorkspaceConversation>("/api/v1/workspace/conversations", "POST", input);
+}
+
+export function fetchWorkspaceConversation(
+  conversationId: string
+): Promise<WorkspaceConversationDetail> {
+  return requestJson<WorkspaceConversationDetail>(
+    `/api/v1/workspace/conversations/${conversationId}`
+  );
+}
+
+export function updateWorkspaceConversation(
+  conversationId: string,
+  input: {
+    title?: string;
+    archived?: boolean;
+    agent_version_id?: string;
+    expected_revision: number;
+  }
+): Promise<WorkspaceConversation> {
+  return jsonMutation<WorkspaceConversation>(
+    `/api/v1/workspace/conversations/${conversationId}`,
+    "PATCH",
+    input
+  );
+}
+
+export function sendWorkspaceMessage(
+  conversationId: string,
+  input: { content: string; idempotency_key: string; expected_revision: number }
+): Promise<WorkspaceSendResult> {
+  return jsonMutation<WorkspaceSendResult>(
+    `/api/v1/workspace/conversations/${conversationId}/messages`,
+    "POST",
+    input
+  );
+}
+
+export function regenerateWorkspaceMessage(
+  conversationId: string,
+  userMessageId: string,
+  input: { idempotency_key: string; expected_revision: number }
+): Promise<WorkspaceRegenerateResult> {
+  return jsonMutation<WorkspaceRegenerateResult>(
+    `/api/v1/workspace/conversations/${conversationId}/messages/${userMessageId}/regenerate`,
+    "POST",
+    input
+  );
+}
+
+export function cancelWorkspaceAttempt(attemptId: string): Promise<WorkspaceAttempt> {
+  return jsonMutation<WorkspaceAttempt>(
+    `/api/v1/workspace/attempts/${attemptId}/cancel`,
+    "POST",
+    {}
+  );
 }
 
 export function fetchAgents(): Promise<AgentSummary[]> {

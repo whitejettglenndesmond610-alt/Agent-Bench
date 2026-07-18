@@ -28,16 +28,24 @@ class ResourceLimiter:
         self._local_slots: dict[str, asyncio.Semaphore] = {}
 
     @asynccontextmanager
-    async def slot(self, resource_key: str | None = None) -> AsyncIterator[None]:
+    async def slot(
+        self, resource_key: str | None = None, *, limit: int | None = None
+    ) -> AsyncIterator[None]:
         key = resource_key or self._default_key
         if key is None:
             raise ValueError("a resource key is required")
-        semaphore = self._local_slots.setdefault(key, asyncio.Semaphore(self._local_limit))
+        selected_limit = limit or self._local_limit
+        if selected_limit < 1:
+            raise ValueError("resource limit must be positive")
+        slot_key = f"{key}\0{selected_limit}"
+        semaphore = self._local_slots.setdefault(
+            slot_key, asyncio.Semaphore(selected_limit)
+        )
         async with semaphore:
             if self._manager is None:
                 yield
                 return
-            grant = await self._wait_for_grant(key)
+            grant = await self._wait_for_grant(key, selected_limit)
             owner_task = asyncio.current_task()
             if owner_task is None:
                 await self._manager.release(grant)
@@ -53,13 +61,13 @@ class ResourceLimiter:
                 await asyncio.gather(heartbeat, return_exceptions=True)
                 await self._release(grant)
 
-    async def _wait_for_grant(self, resource_key: str) -> LeaseGrant:
+    async def _wait_for_grant(self, resource_key: str, limit: int) -> LeaseGrant:
         assert self._manager is not None
         delay = self._poll_seconds
         maximum_delay = max(self._poll_seconds, min(2.0, self._poll_seconds * 8))
         while True:
             acquire_task = asyncio.create_task(
-                self._manager.acquire(self._resource_type, resource_key, self._local_limit)
+                self._manager.acquire(self._resource_type, resource_key, limit)
             )
             try:
                 grant = await asyncio.shield(acquire_task)
@@ -105,6 +113,7 @@ RequestLimit = asyncio.Semaphore | ResourceLimiter
 @dataclass(frozen=True)
 class WorkerLimits:
     agent_requests: ResourceLimiter
+    agent_versions: ResourceLimiter
     judge_requests: ResourceLimiter
     citation_fetches: ResourceLimiter
     citation_domains: ResourceLimiter
@@ -128,6 +137,12 @@ class WorkerLimits:
                 settings.worker_agent_concurrency,
                 resource_type="request",
                 default_key="agent",
+                manager=manager,
+                poll_seconds=settings.resource_lease_poll_seconds,
+            ),
+            agent_versions=ResourceLimiter(
+                settings.worker_agent_concurrency,
+                resource_type="agent-version",
                 manager=manager,
                 poll_seconds=settings.resource_lease_poll_seconds,
             ),
@@ -157,14 +172,33 @@ class WorkerLimits:
 
 @asynccontextmanager
 async def concurrency_slot(
-    limiter: RequestLimit | None, resource_key: str | None = None
+    limiter: RequestLimit | None,
+    resource_key: str | None = None,
+    *,
+    limit: int | None = None,
 ) -> AsyncIterator[None]:
     if limiter is None:
         yield
         return
     if isinstance(limiter, ResourceLimiter):
-        async with limiter.slot(resource_key):
+        async with limiter.slot(resource_key, limit=limit):
             yield
         return
     async with limiter:
+        yield
+
+
+@asynccontextmanager
+async def agent_request_slots(
+    version_limiter: RequestLimit | None,
+    request_limiter: RequestLimit | None,
+    *,
+    version_id: str,
+    version_limit: int,
+) -> AsyncIterator[None]:
+    """Reserve scarce version capacity before consuming a global request slot."""
+    async with (
+        concurrency_slot(version_limiter, version_id, limit=version_limit),
+        concurrency_slot(request_limiter),
+    ):
         yield

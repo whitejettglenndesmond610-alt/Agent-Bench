@@ -61,6 +61,11 @@ never keeps a connection checked out while waiting.
 `AGENT_EVAL_WORKER_MAX_ACTIVE_RUNS` is the database-wide active-run limit.
 `AGENT_EVAL_WORKER_MAX_LOCAL_RUNS` limits one worker replica; set it to `1` when distributing work
 across two or more replicas. The provider limit remains global.
+`AGENT_EVAL_WORKER_MAX_LOCAL_WORKSPACE_ATTEMPTS` separately limits workspace generations in each
+replica and defaults to `2`.
+Retiring an Agent version intentionally blocks new calls for conversations pinned to it. Repin each
+conversation through the workspace PATCH API to an active version of the same Agent after active
+attempts finish; repinning preserves all prior turns and increments the conversation revision.
 
 With PostgreSQL, `AGENT_EVAL_WORKER_AGENT_CONCURRENCY`,
 `AGENT_EVAL_DEEPSEEK_CONCURRENCY`, `AGENT_EVAL_CITATION_FETCH_CONCURRENCY`, and
@@ -79,8 +84,8 @@ current application database setting. It accepts only `sqlite+aiosqlite` as the 
 paste them into tickets, logs, or reports.
 
 1. Announce the maintenance window and stop every API and worker process. Confirm no process can
-   write to SQLite. The command refuses active run slots and requires the `worker_leases` table to
-   have no rows, including expired leases.
+   write to SQLite. The command refuses active run slots and queued/running workspace attempts, and
+   requires the `worker_leases` table to have no rows, including expired leases.
 2. Take and verify an SQLite online backup while the application remains stopped. Also take a
    separate, consistent backup or snapshot of the complete Artifact storage directory. Record the
    backup filenames, sizes, and hashes, but not database URLs or secret values.
@@ -122,7 +127,10 @@ paste them into tickets, logs, or reports.
 
 6. Compare the successful migration report with the dry-run report. Every copied table count and
    hash must match. `worker_leases` and `resource_leases` are deliberately not copied; workers
-   establish fresh leases after cutover. If the command fails, keep the target offline and investigate rather than trying
+   establish fresh leases after cutover. Auth users and completed workspace conversations,
+   messages, and attempts are business history and are copied. The two deterministic shared-user
+   rows created by a fresh target migration are transactionally replaced by the source identity
+   rows. If the command fails, keep the target offline and investigate rather than trying
    to use partial data. Copy and verification failures roll back the target; an unexpected
    post-commit verification failure attempts an immediate guarded cleanup and reports if cleanup
    cannot be completed.
@@ -136,8 +144,9 @@ paste them into tickets, logs, or reports.
    period. Rollback means stopping all PostgreSQL writers and restoring the retained SQLite and
    Artifact snapshots together; never merge writes from both databases.
 
-Both databases must report Alembic head `f3b7c9d2e4a1`. The target must have a schema matching the
-current SQLAlchemy model metadata and no rows in any application table. There is intentionally no
+Both databases must report Alembic head `b5e1f8a3c702`. The target must have a schema matching the
+current SQLAlchemy model metadata and no rows beyond its two deterministic shared AuthUser seeds.
+There is intentionally no
 general-purpose command to clear a migration target; recreate a disposable target when rehearsing.
 
 ## Local-to-S3 Artifact Cutover
@@ -336,6 +345,8 @@ the loopback readiness URL, expected Compose service state and health, safe data
 ArtifactStore writability, and the newest complete backup set's age and component hashes. Configure
 thresholds and `AGENT_EVAL_BACKUP_MAX_AGE_HOURS` in the durable environment file. Failures remain
 visible in `systemctl --user --failed` and the user journal; the monitor never restarts services.
+Workspace aggregates include queued, running, failed, and stale attempts; any stale workspace lease
+is an alert.
 External notifications or webhooks are a later optional integration and are not sent by this local
 monitor.
 

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ from agent_eval.db.session import create_session_factory, session_scope
 BUSINESS_TABLES = {
     "agents",
     "agent_versions",
+    "auth_users",
     "artifact_index",
     "benchmarks",
     "citation_records",
@@ -36,6 +38,9 @@ BUSINESS_TABLES = {
     "score_records",
     "sessions",
     "worker_leases",
+    "workspace_attempts",
+    "workspace_conversations",
+    "workspace_messages",
 }
 
 
@@ -181,6 +186,74 @@ def test_resource_lease_migration_has_no_active_run_restriction(tmp_path: Path) 
     assert "resource_leases" in table_names(database_path)
     command.downgrade(config, "e1f6a2c4b890")
     assert "resource_leases" not in table_names(database_path)
+
+
+def test_identity_migration_preserves_and_backfills_existing_sessions(tmp_path: Path) -> None:
+    database_path = tmp_path / "identity-session-migration.db"
+    config = alembic_config(database_path)
+    command.upgrade(config, "f3b7c9d2e4a1")
+    session_rows = [
+        (
+            "read_only",
+            "a" * 64,
+            "b" * 64,
+            "10000000000000000000000000000001",
+        ),
+        (
+            "operator",
+            "c" * 64,
+            "d" * 64,
+            "10000000000000000000000000000002",
+        ),
+    ]
+    now = datetime.now(UTC).isoformat()
+    with sqlite3.connect(database_path) as connection:
+        connection.executemany(
+            "INSERT INTO sessions (role, token_hash, csrf_token_hash, expires_at, "
+            "last_seen_at, created_at, id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [(*row[:3], now, now, now, row[3]) for row in session_rows],
+        )
+
+    command.upgrade(config, "a4d9c2e7f601")
+    with sqlite3.connect(database_path) as connection:
+        migrated = connection.execute(
+            "SELECT role, token_hash, csrf_token_hash, id, user_id FROM sessions ORDER BY role"
+        ).fetchall()
+        users = connection.execute(
+            "SELECT role, id, workspace_enabled FROM auth_users ORDER BY role"
+        ).fetchall()
+    assert migrated == [
+        (
+            "operator",
+            "c" * 64,
+            "d" * 64,
+            "10000000000000000000000000000002",
+            "f91b3c4a9dbd59ea922f56b64a56f801",
+        ),
+        (
+            "read_only",
+            "a" * 64,
+            "b" * 64,
+            "10000000000000000000000000000001",
+            "153bc83b658456eca79b70fe5054e537",
+        ),
+    ]
+    assert users == [
+        ("operator", "f91b3c4a9dbd59ea922f56b64a56f801", 1),
+        ("read_only", "153bc83b658456eca79b70fe5054e537", 0),
+    ]
+
+    command.downgrade(config, "f3b7c9d2e4a1")
+    with sqlite3.connect(database_path) as connection:
+        downgraded = connection.execute(
+            "SELECT role, token_hash, csrf_token_hash, id FROM sessions ORDER BY role"
+        ).fetchall()
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(sessions)")}
+    assert downgraded == [
+        ("operator", "c" * 64, "d" * 64, "10000000000000000000000000000002"),
+        ("read_only", "a" * 64, "b" * 64, "10000000000000000000000000000001"),
+    ]
+    assert "user_id" not in columns
 
 
 def test_run_profile_migration_backfills_runs_and_preserves_snapshot_index(

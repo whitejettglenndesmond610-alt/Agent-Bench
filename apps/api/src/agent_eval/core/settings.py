@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     worker_max_active_runs: int = Field(default=3, ge=1, le=3)
     worker_max_local_runs: int = Field(default=3, ge=1, le=3)
     worker_max_provider_runs: int = Field(default=2, ge=1, le=3)
+    worker_max_local_workspace_attempts: int = Field(default=2, ge=1, le=20)
     worker_agent_concurrency: int = Field(default=10, gt=0, le=60)
     resource_lease_seconds: float = Field(default=30.0, ge=3, le=3600)
     resource_lease_poll_seconds: float = Field(default=0.1, gt=0, le=10)

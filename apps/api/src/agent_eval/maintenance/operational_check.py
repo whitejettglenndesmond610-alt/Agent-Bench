@@ -12,13 +12,14 @@ from agent_eval.core.artifact_store import ArtifactStore, create_artifact_store
 from agent_eval.core.settings import Settings
 from agent_eval.db.base import ensure_utc
 from agent_eval.db.engine import create_engine
-from agent_eval.db.enums import ResultValidityStatus, RunStatus
+from agent_eval.db.enums import ResultValidityStatus, RunStatus, WorkspaceAttemptStatus
 from agent_eval.db.models import (
     ArtifactIndex,
     EvaluationRun,
     ResourceLease,
     RunAgent,
     WorkerLease,
+    WorkspaceAttempt,
 )
 from agent_eval.db.session import create_session_factory
 
@@ -47,6 +48,10 @@ class OperationalStatus:
     recent_invalid_run_agents: int
     artifact_index_count: int
     artifact_store_writable: bool
+    workspace_queued_attempts: int = 0
+    workspace_running_attempts: int = 0
+    workspace_failed_attempts: int = 0
+    workspace_stale_attempts: int = 0
 
 
 async def collect_operational_status(
@@ -132,6 +137,27 @@ async def collect_operational_status(
         .where(RunAgent.validity_status == ResultValidityStatus.INVALID, recent_base)
     )
     artifact_count = await count(select(func.count()).select_from(ArtifactIndex))
+    workspace_queued = await count(
+        select(func.count(WorkspaceAttempt.id)).where(
+            WorkspaceAttempt.status == WorkspaceAttemptStatus.QUEUED
+        )
+    )
+    workspace_running = await count(
+        select(func.count(WorkspaceAttempt.id)).where(
+            WorkspaceAttempt.status == WorkspaceAttemptStatus.RUNNING
+        )
+    )
+    workspace_failed = await count(
+        select(func.count(WorkspaceAttempt.id)).where(
+            WorkspaceAttempt.status == WorkspaceAttemptStatus.FAILED
+        )
+    )
+    workspace_stale = await count(
+        select(func.count(WorkspaceAttempt.id)).where(
+            WorkspaceAttempt.status == WorkspaceAttemptStatus.RUNNING,
+            WorkspaceAttempt.lease_expires_at <= database_now,
+        )
+    )
     oldest_age = 0
     if oldest_queued_at is not None:
         oldest_age = max(0, int((database_now - ensure_utc(oldest_queued_at)).total_seconds()))
@@ -153,6 +179,10 @@ async def collect_operational_status(
         recent_invalid_run_agents=invalid_agents,
         artifact_index_count=artifact_count,
         artifact_store_writable=False,
+        workspace_queued_attempts=workspace_queued,
+        workspace_running_attempts=workspace_running,
+        workspace_failed_attempts=workspace_failed,
+        workspace_stale_attempts=workspace_stale,
     )
 
 
@@ -164,6 +194,8 @@ def alert_reasons(status: OperationalStatus, settings: Settings) -> list[str]:
         reasons.append("valid worker leases are below expected")
     if status.stale_active_runs > 0:
         reasons.append("active runs have stale heartbeats")
+    if status.workspace_stale_attempts > 0:
+        reasons.append("workspace attempts have stale leases")
     if status.queued_runs > settings.monitoring_max_queued_runs:
         reasons.append("queued runs exceed threshold")
     if status.oldest_queue_age_seconds > settings.monitoring_max_queue_age_minutes * 60:
@@ -195,6 +227,10 @@ def render_status(status: OperationalStatus, window_hours: int) -> str:
         (f"invalid_run_agents_{window_hours}h", status.recent_invalid_run_agents),
         ("artifact_index_count", status.artifact_index_count),
         ("artifact_store_writable", str(status.artifact_store_writable).lower()),
+        ("workspace_queued_attempts", status.workspace_queued_attempts),
+        ("workspace_running_attempts", status.workspace_running_attempts),
+        ("workspace_failed_attempts", status.workspace_failed_attempts),
+        ("workspace_stale_attempts", status.workspace_stale_attempts),
     )
     return "\n".join(f"{key}={value}" for key, value in values)
 

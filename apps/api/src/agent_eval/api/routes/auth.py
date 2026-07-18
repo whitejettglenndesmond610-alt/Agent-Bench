@@ -3,9 +3,11 @@ from datetime import timedelta
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import SecretStr
+from sqlalchemy import select
 
 from agent_eval.api.dependencies import CsrfSession, CurrentSession, DatabaseSession
-from agent_eval.api.schemas.auth import LoginRequest, SessionResponse
+from agent_eval.api.schemas.auth import LoginRequest, SessionResponse, UserLoginRequest
+from agent_eval.auth.identity import legacy_user_id, normalize_username
 from agent_eval.auth.rate_limit import LoginRateLimiter
 from agent_eval.auth.security import (
     client_ip,
@@ -17,9 +19,13 @@ from agent_eval.auth.security import (
 from agent_eval.core.settings import Settings
 from agent_eval.db.base import utc_now
 from agent_eval.db.enums import SessionRole
-from agent_eval.db.models import Session
+from agent_eval.db.models import AuthUser, Session
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+DUMMY_PASSWORD_HASH = (
+    "$argon2id$v=19$m=65536,t=3,p=4$93aaDfctggwyeKiEjQKX4A$"
+    "ejTnwi41+V5Q/ABxvAaqXC5F9lmum9/DoYZq4uEiKR4"
+)
 
 
 def password_hash_for_role(settings: Settings, role: SessionRole) -> SecretStr | None:
@@ -69,6 +75,59 @@ def clear_auth_cookies(response: Response, settings: Settings) -> None:
     response.delete_cookie(settings.csrf_cookie_name, path="/")
 
 
+def session_response(auth_session: Session) -> SessionResponse:
+    user = auth_session.user
+    if user is None:
+        raise RuntimeError("authenticated session has no resolved user")
+    return SessionResponse(
+        role=auth_session.role,
+        expires_at=auth_session.expires_at,
+        user_id=user.id,
+        display_name=user.display_name,
+        is_shared=user.is_shared,
+        workspace_enabled=user.workspace_enabled,
+    )
+
+
+async def issue_session(
+    database: DatabaseSession,
+    response: Response,
+    settings: Settings,
+    user: AuthUser,
+) -> SessionResponse:
+    session_token = generate_token()
+    csrf_token = generate_token()
+    lifetime = session_lifetime(settings, user.role)
+    expires_at = utc_now() + lifetime
+    auth_session = Session(
+        user_id=user.id,
+        role=user.role,
+        token_hash=hash_token(session_token),
+        csrf_token_hash=hash_token(csrf_token),
+        expires_at=expires_at,
+        user=user,
+    )
+    database.add(auth_session)
+    await database.commit()
+    set_auth_cookies(
+        response,
+        settings,
+        session_token,
+        csrf_token,
+        int(lifetime.total_seconds()),
+    )
+    return session_response(auth_session)
+
+
+def enforce_login_rate_limit(rate_limiter: LoginRateLimiter, limiter_key: str) -> None:
+    if retry_after := rate_limiter.retry_after(limiter_key):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            headers={"Retry-After": str(retry_after)},
+            detail={"code": "login_rate_limited", "message": "登录尝试过多，请稍后重试"},
+        )
+
+
 @router.post("/login", response_model=SessionResponse)
 async def login(
     payload: LoginRequest,
@@ -81,12 +140,7 @@ async def login(
     rate_limiter: LoginRateLimiter = request.app.state.login_rate_limiter
     limiter_key = client_ip(request)
 
-    if retry_after := rate_limiter.retry_after(limiter_key):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            headers={"Retry-After": str(retry_after)},
-            detail={"code": "login_rate_limited", "message": "登录尝试过多，请稍后重试"},
-        )
+    enforce_login_rate_limit(rate_limiter, limiter_key)
 
     encoded_hash = password_hash_for_role(settings, payload.role)
     if encoded_hash is None:
@@ -106,27 +160,56 @@ async def login(
         )
 
     rate_limiter.clear(limiter_key)
-    session_token = generate_token()
-    csrf_token = generate_token()
-    expires_at = utc_now() + session_lifetime(settings, payload.role)
-    database.add(
-        Session(
-            role=payload.role,
-            token_hash=hash_token(session_token),
-            csrf_token_hash=hash_token(csrf_token),
-            expires_at=expires_at,
+    user = await database.get(AuthUser, legacy_user_id(payload.role))
+    if user is None or user.disabled_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "auth_not_configured", "message": "共享登录用户尚未配置"},
+        )
+    return await issue_session(database, response, settings, user)
+
+
+@router.post("/user-login", response_model=SessionResponse)
+async def user_login(
+    payload: UserLoginRequest,
+    request: Request,
+    response: Response,
+    database: DatabaseSession,
+) -> SessionResponse:
+    require_same_origin(request)
+    settings: Settings = request.app.state.settings
+    rate_limiter: LoginRateLimiter = request.app.state.login_rate_limiter
+    limiter_key = client_ip(request)
+    enforce_login_rate_limit(rate_limiter, limiter_key)
+    try:
+        username = normalize_username(payload.username)
+    except ValueError:
+        username = ""
+    user = await database.scalar(select(AuthUser).where(AuthUser.username == username))
+    fallback_hash = settings.operator_password_hash or settings.read_only_password_hash
+    encoded_hash = (
+        user.password_hash
+        if user is not None and user.password_hash is not None
+        else (
+            fallback_hash.get_secret_value()
+            if fallback_hash is not None
+            else DUMMY_PASSWORD_HASH
         )
     )
-    await database.commit()
-
-    max_age = int(session_lifetime(settings, payload.role).total_seconds())
-    set_auth_cookies(response, settings, session_token, csrf_token, max_age)
-    return SessionResponse(role=payload.role, expires_at=expires_at)
+    password_valid = await asyncio.to_thread(verify_password, payload.password, encoded_hash)
+    if not password_valid or user is None or user.disabled_at is not None:
+        rate_limiter.record_failure(limiter_key)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "invalid_credentials", "message": "用户名或密码错误"},
+        )
+    rate_limiter.clear(limiter_key)
+    return await issue_session(database, response, settings, user)
 
 
 @router.get("/session", response_model=SessionResponse)
 async def current_session(auth_session: CurrentSession) -> SessionResponse:
-    return SessionResponse(role=auth_session.role, expires_at=auth_session.expires_at)
+    return session_response(auth_session)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

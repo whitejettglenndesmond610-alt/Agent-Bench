@@ -30,7 +30,7 @@ from agent_eval.db.models import (
 from agent_eval.db.session import create_session_factory, session_scope
 from agent_eval.maintenance.operational_check import alert_reasons, collect_operational_status
 
-HEAD = "f3b7c9d2e4a1"
+HEAD = "b5e1f8a3c702"
 
 
 def migration_config(database_path: Path) -> Config:
@@ -172,6 +172,12 @@ async def test_operational_aggregates_use_safe_counts_and_database_time(tmp_path
     assert status.recent_published_run_agents == 1
     assert status.recent_system_failed_run_agents == status.recent_system_failed_runs == 1
     assert status.recent_invalid_run_agents == status.artifact_index_count == 1
+    assert (
+        status.workspace_queued_attempts,
+        status.workspace_running_attempts,
+        status.workspace_failed_attempts,
+        status.workspace_stale_attempts,
+    ) == (0, 0, 0, 0)
 
 
 def test_operational_thresholds_exclude_invalid_results_by_default() -> None:
@@ -201,6 +207,7 @@ def test_operational_thresholds_exclude_invalid_results_by_default() -> None:
     failed = replace(
         status,
         stale_active_runs=1,
+        workspace_stale_attempts=1,
         queued_runs=11,
         oldest_queue_age_seconds=1801,
         valid_worker_leases=0,
@@ -208,4 +215,4 @@ def test_operational_thresholds_exclude_invalid_results_by_default() -> None:
         recent_system_failed_runs=1,
         artifact_store_writable=False,
     )
-    assert len(alert_reasons(failed, settings)) == 7
+    assert len(alert_reasons(failed, settings)) == 8

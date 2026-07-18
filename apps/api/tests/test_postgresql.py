@@ -1,14 +1,21 @@
 import asyncio
 import os
+from uuid import uuid4
 
 import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import delete, select
 
+from agent_eval.auth.identity import LEGACY_OPERATOR_USER_ID
 from agent_eval.core.settings import Settings
 from agent_eval.db.engine import create_engine
-from agent_eval.db.enums import AuthType, RunStatus
+from agent_eval.db.enums import (
+    AuthType,
+    RunStatus,
+    WorkspaceAttemptStatus,
+    WorkspaceMessageRole,
+)
 from agent_eval.db.models import (
     Agent,
     AgentVersion,
@@ -16,11 +23,15 @@ from agent_eval.db.models import (
     JudgeConfig,
     RunAgent,
     ScoreConfig,
+    WorkspaceAttempt,
+    WorkspaceConversation,
+    WorkspaceMessage,
 )
 from agent_eval.db.resource_leases import ResourceLeaseManager
 from agent_eval.db.session import create_session_factory, session_scope
 from agent_eval.runs.queue import acquire_worker_lease, claim_next_run
 from agent_eval.worker.limits import ResourceLimiter, concurrency_slot
+from agent_eval.workspace.queue import claim_next_workspace_attempt
 
 POSTGRES_URL = os.getenv("AGENT_EVAL_TEST_POSTGRES_URL")
 
@@ -78,6 +89,40 @@ async def test_postgresql_fresh_migration_and_concurrent_claims() -> None:
                 session.add(
                     RunAgent(run_id=run.id, agent_version_id=version.id, total=0)
                 )
+            for index in range(2):
+                conversation = WorkspaceConversation(
+                    owner_user_id=LEGACY_OPERATOR_USER_ID,
+                    pinned_agent_version_id=versions[index].id,
+                    title=f"PostgreSQL workspace {index}",
+                    last_turn_no=1,
+                    revision=1,
+                )
+                session.add(conversation)
+                await session.flush()
+                message = WorkspaceMessage(
+                    conversation_id=conversation.id,
+                    turn_no=1,
+                    role=WorkspaceMessageRole.USER,
+                    variant_no=1,
+                    active=True,
+                    content=f"Workspace question {index}",
+                )
+                session.add(message)
+                await session.flush()
+                session.add(
+                    WorkspaceAttempt(
+                        conversation_id=conversation.id,
+                        user_message_id=message.id,
+                        agent_version_id=versions[index].id,
+                        generation_no=1,
+                        idempotency_key=str(uuid4()),
+                        request_fingerprint=str(index) * 64,
+                        status=WorkspaceAttemptStatus.QUEUED,
+                        prompt_hash=str(index + 1) * 64,
+                        prompt_characters=100,
+                        prompt_format="workspace-transcript-v1",
+                    )
+                )
 
         assert await asyncio.gather(
             acquire_worker_lease(engine, "postgres-worker-a"),
@@ -113,6 +158,17 @@ async def test_postgresql_fresh_migration_and_concurrent_claims() -> None:
             "postgres-worker-b",
         }
         assert len({run.id for run in active}) == 2
+
+        workspace_claims = await asyncio.gather(
+            claim_next_workspace_attempt(
+                engine, "postgres-worker-a", lease_seconds=30
+            ),
+            claim_next_workspace_attempt(
+                engine, "postgres-worker-b", lease_seconds=30
+            ),
+        )
+        assert None not in workspace_claims
+        assert len({claim.attempt_id for claim in workspace_claims if claim is not None}) == 2
 
         second_engine = create_engine(Settings(database_url=POSTGRES_URL))
         active_requests = 0

@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent_eval.auth.encryption import generate_encryption_key
+from agent_eval.auth.identity import normalize_username
 from agent_eval.auth.security import hash_password
 from agent_eval.core.artifact_store import ArtifactStore, create_artifact_store
 from agent_eval.core.logging import configure_logging
@@ -22,6 +23,7 @@ from agent_eval.datasets.demo_builder import build_demo_dataset
 from agent_eval.datasets.importer import BALANCED_V2_COHORT_KEY, import_question_records
 from agent_eval.datasets.schema import load_question_records, validate_demo_distribution
 from agent_eval.db.engine import create_engine, verify_database
+from agent_eval.db.enums import SessionRole
 from agent_eval.db.session import create_session_factory, session_scope
 from agent_eval.maintenance.artifact_archive import (
     ArtifactArchiveError,
@@ -64,6 +66,13 @@ from agent_eval.maintenance.secrets import (
     write_demo_environment,
     write_local_real_environment,
 )
+from agent_eval.maintenance.workspace_users import (
+    WorkspaceUserError,
+    create_workspace_user,
+    generate_workspace_password,
+    reset_workspace_user_password,
+    write_credential,
+)
 
 
 async def check(
@@ -79,6 +88,58 @@ async def check(
         await asyncio.to_thread(artifact_store.verify_writable)
     finally:
         await engine.dispose()
+
+
+def prompted_password() -> str:
+    password = getpass.getpass("Password: ")
+    confirmation = getpass.getpass("Confirm password: ")
+    if not password:
+        raise WorkspaceUserError("password must not be empty")
+    if password != confirmation:
+        raise WorkspaceUserError("passwords do not match")
+    return password
+
+
+async def maintain_workspace_user(
+    *,
+    username: str,
+    display_name: str | None,
+    role: SessionRole | None,
+    output: Path | None,
+) -> None:
+    username = normalize_username(username)
+    password = generate_workspace_password() if output is not None else prompted_password()
+    credential_written = False
+    if output is not None:
+        write_credential(output, username=username, password=password)
+        credential_written = True
+    settings = Settings()
+    engine = create_engine(settings)
+    session_factory = create_session_factory(engine)
+    try:
+        await verify_database(engine)
+        async with session_scope(session_factory) as session:
+            if display_name is not None and role is not None:
+                user = await create_workspace_user(
+                    session,
+                    username=username,
+                    display_name=display_name,
+                    role=role,
+                    password=password,
+                )
+            else:
+                user = await reset_workspace_user_password(
+                    session, username=username, password=password
+                )
+    except BaseException:
+        if credential_written and output is not None:
+            output.unlink(missing_ok=True)
+        raise
+    finally:
+        await engine.dispose()
+    if output is not None:
+        print(f"credential written securely: {output}")
+    print(f"workspace user ready: {user.username}")
 
 
 async def import_dataset(path: Path, require_demo_distribution: bool) -> None:
@@ -425,6 +486,14 @@ def main() -> None:
     subparsers.add_parser("operational-check")
     subparsers.add_parser("hash-password")
     subparsers.add_parser("generate-encryption-key")
+    create_user_parser = subparsers.add_parser("create-workspace-user")
+    create_user_parser.add_argument("username")
+    create_user_parser.add_argument("display_name")
+    create_user_parser.add_argument("role", choices=[role.value for role in SessionRole])
+    create_user_parser.add_argument("--credential-output", type=Path)
+    reset_user_parser = subparsers.add_parser("reset-workspace-user-password")
+    reset_user_parser.add_argument("username")
+    reset_user_parser.add_argument("--credential-output", type=Path)
     import_parser = subparsers.add_parser("import-dataset")
     import_parser.add_argument("path", type=Path)
     import_parser.add_argument("--require-demo-distribution", action="store_true")
@@ -512,6 +581,30 @@ def main() -> None:
         print(hash_password(password))
     elif arguments.command == "generate-encryption-key":
         print(generate_encryption_key())
+    elif arguments.command == "create-workspace-user":
+        try:
+            asyncio.run(
+                maintain_workspace_user(
+                    username=arguments.username,
+                    display_name=arguments.display_name,
+                    role=SessionRole(arguments.role),
+                    output=arguments.credential_output,
+                )
+            )
+        except (ValueError, WorkspaceUserError) as error:
+            parser.exit(1, f"workspace user creation failed: {error}\n")
+    elif arguments.command == "reset-workspace-user-password":
+        try:
+            asyncio.run(
+                maintain_workspace_user(
+                    username=arguments.username,
+                    display_name=None,
+                    role=None,
+                    output=arguments.credential_output,
+                )
+            )
+        except (ValueError, WorkspaceUserError) as error:
+            parser.exit(1, f"workspace password reset failed: {error}\n")
     elif arguments.command == "import-dataset":
         asyncio.run(import_dataset(arguments.path, arguments.require_demo_distribution))
     elif arguments.command == "import-balanced-v2":

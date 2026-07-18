@@ -11,16 +11,25 @@ from uuid import UUID
 
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
-from sqlalchemy import DateTime, Table, event, func, select, text
+from sqlalchemy import DateTime, Table, delete, event, func, insert, select, text
 from sqlalchemy.engine import Connection, make_url
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
+from agent_eval.auth.identity import LEGACY_OPERATOR_USER_ID, LEGACY_READ_ONLY_USER_ID
 from agent_eval.db.base import Base, ensure_utc
 from agent_eval.db.engine import configure_sqlite_connection
-from agent_eval.db.models import EvaluationRun, LeaderboardSnapshot, ResourceLease, WorkerLease
+from agent_eval.db.enums import WorkspaceAttemptStatus
+from agent_eval.db.models import (
+    AuthUser,
+    EvaluationRun,
+    LeaderboardSnapshot,
+    ResourceLease,
+    WorkerLease,
+    WorkspaceAttempt,
+)
 
-ALEMBIC_HEAD = "f3b7c9d2e4a1"
+ALEMBIC_HEAD = "b5e1f8a3c702"
 SOURCE_DRIVER = "sqlite+aiosqlite"
 TARGET_DRIVER = "postgresql+asyncpg"
 EXCLUDED_TABLES = frozenset({"resource_leases", "worker_leases"})
@@ -119,6 +128,7 @@ async def migrate_database(
                     await target_transaction.rollback()
                     return DatabaseMigrationReport(dry_run=True, tables=source_inventory)
 
+                await target.execute(delete(AuthUser))
                 for table in tables:
                     await _copy_table(
                         source,
@@ -209,6 +219,17 @@ async def _validate_source(connection: AsyncConnection) -> None:
     )
     if active_runs:
         raise DatabaseMigrationError("source database has active evaluation runs")
+    active_workspace_attempts = await connection.scalar(
+        select(func.count())
+        .select_from(WorkspaceAttempt)
+        .where(
+            WorkspaceAttempt.status.in_(
+                [WorkspaceAttemptStatus.QUEUED, WorkspaceAttemptStatus.RUNNING]
+            )
+        )
+    )
+    if active_workspace_attempts:
+        raise DatabaseMigrationError("source database has active workspace attempts")
     worker_leases = await connection.scalar(select(func.count()).select_from(WorkerLease))
     if worker_leases:
         raise DatabaseMigrationError(
@@ -233,6 +254,34 @@ async def _validate_source(connection: AsyncConnection) -> None:
 async def _validate_empty_target(connection: AsyncConnection) -> None:
     for table in Base.metadata.sorted_tables:
         count = await connection.scalar(select(func.count()).select_from(table))
+        if table is AuthUser.__table__:
+            legacy_rows = list(
+                (
+                    await connection.execute(
+                        select(AuthUser.id, AuthUser.subject_key, AuthUser.auth_source).order_by(
+                            AuthUser.id
+                        )
+                    )
+                ).all()
+            )
+            expected = {
+                (
+                    LEGACY_READ_ONLY_USER_ID,
+                    "legacy_shared:read_only",
+                    "legacy_shared",
+                ),
+                (
+                    LEGACY_OPERATOR_USER_ID,
+                    "legacy_shared:operator",
+                    "legacy_shared",
+                ),
+            }
+            normalized = {
+                (UUID(str(user_id)), subject_key, getattr(auth_source, "value", auth_source))
+                for user_id, subject_key, auth_source in legacy_rows
+            }
+            if normalized == expected:
+                continue
         if count:
             raise DatabaseMigrationError(
                 f"target database is not empty: table {table.name} contains data"
@@ -247,6 +296,17 @@ async def _validate_invariants(connection: AsyncConnection, label: str) -> None:
     )
     if active_runs:
         raise DatabaseMigrationError(f"{label} database has active evaluation runs")
+    active_workspace_attempts = await connection.scalar(
+        select(func.count())
+        .select_from(WorkspaceAttempt)
+        .where(
+            WorkspaceAttempt.status.in_(
+                [WorkspaceAttemptStatus.QUEUED, WorkspaceAttemptStatus.RUNNING]
+            )
+        )
+    )
+    if active_workspace_attempts:
+        raise DatabaseMigrationError(f"{label} database has active workspace attempts")
     current_snapshots = await connection.scalar(
         select(func.count())
         .select_from(LeaderboardSnapshot)
@@ -415,6 +475,42 @@ async def _clear_failed_copy(target_engine: AsyncEngine, tables: Sequence[Table]
             await _lock_target_tables(connection)
             for table in reversed(tables):
                 await connection.execute(table.delete())
+            now = await connection.scalar(select(func.current_timestamp()))
+            if now is None:
+                raise DatabaseMigrationError("target database time is unavailable")
+            await connection.execute(
+                insert(AuthUser),
+                [
+                    {
+                        "id": LEGACY_READ_ONLY_USER_ID,
+                        "subject_key": "legacy_shared:read_only",
+                        "username": None,
+                        "display_name": "Shared read-only",
+                        "role": "read_only",
+                        "auth_source": "legacy_shared",
+                        "password_hash": None,
+                        "is_shared": True,
+                        "workspace_enabled": False,
+                        "disabled_at": None,
+                        "created_at": now,
+                        "updated_at": now,
+                    },
+                    {
+                        "id": LEGACY_OPERATOR_USER_ID,
+                        "subject_key": "legacy_shared:operator",
+                        "username": None,
+                        "display_name": "Shared operator",
+                        "role": "operator",
+                        "auth_source": "legacy_shared",
+                        "password_hash": None,
+                        "is_shared": True,
+                        "workspace_enabled": True,
+                        "disabled_at": None,
+                        "created_at": now,
+                        "updated_at": now,
+                    },
+                ],
+            )
     except SQLAlchemyError as error:
         raise DatabaseMigrationError(
             "post-commit verification failed and automatic target cleanup failed; "

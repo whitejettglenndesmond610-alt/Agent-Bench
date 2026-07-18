@@ -137,6 +137,24 @@ class SessionRole(StrEnum):
     OPERATOR = "operator"
 
 
+class AuthSource(StrEnum):
+    LEGACY_SHARED = "legacy_shared"
+    LOCAL = "local"
+
+
+class WorkspaceMessageRole(StrEnum):
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+class WorkspaceAttemptStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELED = "canceled"
+
+
 class NotificationType(StrEnum):
     RUN_PUBLISHED = "run_published"
     RUN_FAILED = "run_failed"

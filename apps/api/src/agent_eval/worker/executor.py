@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import joinedload, selectinload
 
+from agent_eval.agents.configuration import inference_config_for_version
 from agent_eval.agents.inference import (
     InferenceConfig,
     InferenceOutcome,
@@ -19,9 +20,9 @@ from agent_eval.agents.prompt import build_question_prompt
 from agent_eval.auth.encryption import TokenCipher
 from agent_eval.core.artifact_store import ArtifactStore
 from agent_eval.core.settings import Settings
-from agent_eval.db.enums import AuthType, ExecutionStatus
+from agent_eval.db.enums import ExecutionStatus
 from agent_eval.db.models import AgentVersion, DatasetVersion, ExecutionItem, Question, RunAgent
-from agent_eval.worker.limits import RequestLimit, concurrency_slot
+from agent_eval.worker.limits import RequestLimit, agent_request_slots
 from agent_eval.worker.result_writer import ResultWriter
 
 TransportFactory = Callable[[UUID], httpx.AsyncBaseTransport | None]
@@ -106,6 +107,7 @@ async def execute_run_inference(
     transport_factory: TransportFactory | None = None,
     sleep: Sleep = asyncio.sleep,
     request_limit: RequestLimit | None = None,
+    version_request_limit: RequestLimit | None = None,
 ) -> bool:
     work = await load_run_work(session_factory, run_id, token_cipher)
     writer = ResultWriter(session_factory, settings, run_id, owner_id, artifact_store)
@@ -123,6 +125,7 @@ async def execute_run_inference(
                     ),
                     sleep=sleep,
                     request_limit=request_limit,
+                    version_request_limit=version_request_limit,
                 )
                 for agent_work in work
             ]
@@ -157,11 +160,6 @@ async def load_run_work(
     work: list[AgentWork] = []
     for run_agent in run_agents:
         version = run_agent.agent_version
-        token: str | None = None
-        if version.auth_type == AuthType.BEARER:
-            if version.encrypted_token is None or token_cipher is None:
-                raise RuntimeError("Agent Token 无法用于评测")
-            token = token_cipher.decrypt(version.encrypted_token)
         items = [
             WorkItem(
                 id=item.id,
@@ -178,15 +176,7 @@ async def load_run_work(
                 run_agent_id=run_agent.id,
                 agent_id=version.agent_id,
                 version_id=version.id,
-                config=InferenceConfig(
-                    endpoint_url=version.endpoint_url,
-                    auth_type=version.auth_type,
-                    token=token,
-                    request_template=version.request_template,
-                    answer_jsonpath=version.answer_jsonpath,
-                    citations_jsonpath=version.citations_jsonpath,
-                    timeout_seconds=version.timeout_seconds,
-                ),
+                config=inference_config_for_version(version, token_cipher),
                 concurrency=version.concurrency,
                 items=items,
             )
@@ -211,6 +201,7 @@ async def execute_agent_work(
     transport: httpx.AsyncBaseTransport | None,
     sleep: Sleep,
     request_limit: RequestLimit | None = None,
+    version_request_limit: RequestLimit | None = None,
 ) -> None:
     item_queue: asyncio.Queue[WorkItem] = asyncio.Queue()
     circuit_breaker = AgentCircuitBreaker()
@@ -228,6 +219,7 @@ async def execute_agent_work(
                     sleep,
                     circuit_breaker,
                     request_limit,
+                    version_request_limit,
                 ),
                 name=f"agent-{work.version_id}-{index}",
             )
@@ -245,6 +237,7 @@ async def agent_worker(
     sleep: Sleep,
     circuit_breaker: AgentCircuitBreaker,
     request_limit: RequestLimit | None = None,
+    version_request_limit: RequestLimit | None = None,
 ) -> None:
     while True:
         try:
@@ -271,7 +264,12 @@ async def agent_worker(
                     ),
                 )
                 continue
-            async with concurrency_slot(request_limit):
+            async with agent_request_slots(
+                version_request_limit,
+                request_limit,
+                version_id=str(work.version_id),
+                version_limit=work.concurrency,
+            ):
                 outcome = await execute_inference(
                     client,
                     work.config,

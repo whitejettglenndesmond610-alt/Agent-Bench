@@ -5,15 +5,26 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import pytest
 from alembic import command
 from alembic.config import Config
 from argon2 import PasswordHasher
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient, Response
+from sqlalchemy import func, select
 
 from agent_eval.api.dependencies import OperatorSession
 from agent_eval.api.main import create_app
+from agent_eval.api.routes import auth as auth_routes
 from agent_eval.core.settings import Settings
+from agent_eval.db.base import utc_now
+from agent_eval.db.enums import SessionRole
+from agent_eval.db.models import AuthUser, Session
+from agent_eval.db.session import session_scope
+from agent_eval.maintenance.workspace_users import (
+    create_workspace_user,
+    reset_workspace_user_password,
+)
 
 password_hasher = PasswordHasher(time_cost=1, memory_cost=8192, parallelism=1)
 READ_ONLY_PASSWORD = "readonly-secret"
@@ -67,6 +78,9 @@ async def test_login_session_and_csrf_logout(tmp_path: Path) -> None:
 
         assert response.status_code == 200
         assert response.json()["role"] == "read_only"
+        assert response.json()["is_shared"] is True
+        assert response.json()["workspace_enabled"] is False
+        assert response.json()["display_name"] == "Shared read-only"
         assert any("HttpOnly" in value for value in response.headers.get_list("set-cookie"))
 
         session_token = client.cookies.get("agent_eval_session")
@@ -177,3 +191,131 @@ async def test_login_requires_configured_password_hash(tmp_path: Path) -> None:
 
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "auth_not_configured"
+
+
+async def test_named_user_login_workspace_entitlement_and_disable(tmp_path: Path) -> None:
+    async with auth_client(tmp_path) as (client, app, _):
+        async with session_scope(app.state.session_factory) as session:
+            user = await create_workspace_user(
+                session,
+                username="Alice.Example",
+                display_name="Alice Example",
+                role=SessionRole.READ_ONLY,
+                password="named-user-secret",
+            )
+            user_id = user.id
+
+        response = await client.post(
+            "/api/v1/auth/user-login",
+            headers={"Origin": "http://test"},
+            json={"username": "alice.example", "password": "named-user-secret"},
+        )
+        assert response.status_code == 200
+        assert response.json() == {
+            "role": "read_only",
+            "expires_at": response.json()["expires_at"],
+            "user_id": str(user_id),
+            "display_name": "Alice Example",
+            "is_shared": False,
+            "workspace_enabled": True,
+        }
+        assert "password" not in response.text
+        assert "argon2" not in response.text
+
+        catalog = await client.get("/api/v1/workspace/agents")
+        assert catalog.status_code == 200
+
+        async with session_scope(app.state.session_factory) as session:
+            stored = await session.get(AuthUser, user_id)
+            assert stored is not None
+            stored.disabled_at = utc_now()
+
+        current = await client.get("/api/v1/auth/session")
+        assert current.status_code == 401
+        assert current.json()["detail"]["code"] == "user_disabled"
+
+        disabled_login = await client.post(
+            "/api/v1/auth/user-login",
+            headers={"Origin": "http://test"},
+            json={"username": "alice.example", "password": "named-user-secret"},
+        )
+        assert disabled_login.status_code == 401
+
+
+async def test_password_reset_revokes_all_named_user_sessions(tmp_path: Path) -> None:
+    async with auth_client(tmp_path) as (client, app, _):
+        async with session_scope(app.state.session_factory) as session:
+            user = await create_workspace_user(
+                session,
+                username="reset.user",
+                display_name="Reset User",
+                role=SessionRole.READ_ONLY,
+                password="old-secret",
+            )
+            user_id = user.id
+
+        for _ in range(2):
+            response = await client.post(
+                "/api/v1/auth/user-login",
+                headers={"Origin": "http://test"},
+                json={"username": "reset.user", "password": "old-secret"},
+            )
+            assert response.status_code == 200
+
+        async with app.state.session_factory() as session:
+            session_count = await session.scalar(
+                select(func.count()).select_from(Session).where(Session.user_id == user_id)
+            )
+        assert session_count == 2
+
+        async with session_scope(app.state.session_factory) as session:
+            await reset_workspace_user_password(
+                session, username="reset.user", password="new-secret"
+            )
+
+        async with app.state.session_factory() as session:
+            session_count = await session.scalar(
+                select(func.count()).select_from(Session).where(Session.user_id == user_id)
+            )
+        assert session_count == 0
+        assert (await client.get("/api/v1/auth/session")).status_code == 401
+        old_password = await client.post(
+            "/api/v1/auth/user-login",
+            headers={"Origin": "http://test"},
+            json={"username": "reset.user", "password": "old-secret"},
+        )
+        assert old_password.status_code == 401
+        new_password = await client.post(
+            "/api/v1/auth/user-login",
+            headers={"Origin": "http://test"},
+            json={"username": "reset.user", "password": "new-secret"},
+        )
+        assert new_password.status_code == 200
+
+
+async def test_unknown_named_login_performs_one_fallback_verification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[str, str]] = []
+
+    def record_verification(password: str, encoded_hash: str) -> bool:
+        calls.append((password, encoded_hash))
+        return False
+
+    monkeypatch.setattr(auth_routes, "verify_password", record_verification)
+    async with auth_client(tmp_path) as (client, _, _):
+        invalid = await client.post(
+            "/api/v1/auth/user-login",
+            headers={"Origin": "http://test"},
+            json={"username": "not valid!", "password": "first-password"},
+        )
+        unknown = await client.post(
+            "/api/v1/auth/user-login",
+            headers={"Origin": "http://test"},
+            json={"username": "unknown.user", "password": "second-password"},
+        )
+
+    assert invalid.status_code == unknown.status_code == 401
+    assert [password for password, _ in calls] == ["first-password", "second-password"]
+    assert len(calls) == 2
+    assert all(encoded_hash.startswith("$argon2") for _, encoded_hash in calls)

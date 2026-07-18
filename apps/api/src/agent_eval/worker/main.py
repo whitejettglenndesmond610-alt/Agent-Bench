@@ -43,6 +43,13 @@ from agent_eval.worker.citations import execute_citation_fetch
 from agent_eval.worker.executor import execute_run_inference
 from agent_eval.worker.limits import WorkerLimits
 from agent_eval.worker.scoring import execute_answer_scoring
+from agent_eval.workspace.executor import process_workspace_attempt
+from agent_eval.workspace.queue import (
+    WorkspaceClaim,
+    claim_next_workspace_attempt,
+    fail_stale_workspace_attempts,
+    heartbeat_workspace_attempt,
+)
 
 logger = logging.getLogger(__name__)
 RunPhase = Literal[
@@ -157,6 +164,7 @@ async def process_run(
                     token_cipher=token_cipher,
                     owner_id=owner_id,
                     request_limit=limits.agent_requests,
+                    version_request_limit=limits.agent_versions,
                 )
             elif phase == "answer_scoring":
                 phase_complete = await execute_answer_scoring(
@@ -243,6 +251,23 @@ async def cancel_run_tasks(
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
+async def cancel_workspace_tasks(
+    workspace_tasks: dict[UUID, tuple[WorkspaceClaim, asyncio.Task[bool]]],
+    attempt_ids: set[UUID] | None = None,
+) -> None:
+    selected_ids = (
+        set(workspace_tasks)
+        if attempt_ids is None
+        else set(workspace_tasks).intersection(attempt_ids)
+    )
+    tasks = [workspace_tasks.pop(attempt_id)[1] for attempt_id in selected_ids]
+    for task in tasks:
+        if not task.done():
+            task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
 async def run_worker(
     settings: Settings | None = None, artifact_store: ArtifactStore | None = None
 ) -> None:
@@ -265,6 +290,7 @@ async def run_worker(
     owns_lease = False
     next_lease_renewal = 0.0
     run_tasks: dict[UUID, asyncio.Task[bool]] = {}
+    workspace_tasks: dict[UUID, tuple[WorkspaceClaim, asyncio.Task[bool]]] = {}
 
     loop = asyncio.get_running_loop()
     for signal_name in (signal.SIGINT, signal.SIGTERM):
@@ -285,6 +311,7 @@ async def run_worker(
                 elif not acquired and owns_lease:
                     logger.warning("worker_lease_lost", extra={"owner_id": owner_id})
                     await cancel_run_tasks(run_tasks)
+                    await cancel_workspace_tasks(workspace_tasks)
                 owns_lease = acquired
                 next_lease_renewal = monotonic() + worker_settings.worker_heartbeat_seconds
                 if owns_lease:
@@ -297,11 +324,37 @@ async def run_worker(
                     for run_id in failed_heartbeats:
                         logger.warning("run_heartbeat_failed", extra={"run_id": run_id})
                     await cancel_run_tasks(run_tasks, failed_heartbeats)
+                    failed_workspace_heartbeats = {
+                        attempt_id
+                        for attempt_id, (claim, task) in workspace_tasks.items()
+                        if not task.done()
+                        and not await heartbeat_workspace_attempt(
+                            engine,
+                            owner_id,
+                            claim,
+                            lease_seconds=worker_settings.worker_lease_seconds,
+                        )
+                    }
+                    for attempt_id in failed_workspace_heartbeats:
+                        logger.warning(
+                            "workspace_attempt_heartbeat_failed",
+                            extra={"attempt_id": attempt_id},
+                        )
+                    await cancel_workspace_tasks(
+                        workspace_tasks, failed_workspace_heartbeats
+                    )
             if owns_lease:
                 canceled_run_ids = await apply_requested_cancellations(engine, owner_id)
                 for run_id in canceled_run_ids:
                     logger.info("run_canceled", extra={"run_id": run_id})
                 await cancel_run_tasks(run_tasks, set(canceled_run_ids))
+
+                stale_attempt_ids = await fail_stale_workspace_attempts(engine)
+                for attempt_id in stale_attempt_ids:
+                    logger.warning(
+                        "workspace_attempt_stale_finalized",
+                        extra={"attempt_id": attempt_id},
+                    )
 
                 for run_id, task in list(run_tasks.items()):
                     if not task.done():
@@ -320,6 +373,28 @@ async def run_worker(
                         logger.info(
                             "run_processing_finished",
                             extra={"run_id": run_id, "complete": completed},
+                        )
+
+                for attempt_id, (_, task) in list(workspace_tasks.items()):
+                    if not task.done():
+                        continue
+                    del workspace_tasks[attempt_id]
+                    try:
+                        completed = task.result()
+                    except asyncio.CancelledError:
+                        continue
+                    except Exception as error:
+                        logger.error(
+                            "workspace_attempt_task_failed",
+                            extra={
+                                "attempt_id": attempt_id,
+                                "error_type": type(error).__name__,
+                            },
+                        )
+                    else:
+                        logger.info(
+                            "workspace_attempt_processing_finished",
+                            extra={"attempt_id": attempt_id, "complete": completed},
                         )
 
                 while len(run_tasks) < worker_settings.worker_max_local_runs:
@@ -374,6 +449,37 @@ async def run_worker(
                         ),
                         name=f"run-pipeline-{claimed_run_id}",
                     )
+
+                while (
+                    len(workspace_tasks)
+                    < worker_settings.worker_max_local_workspace_attempts
+                ):
+                    claim = await claim_next_workspace_attempt(
+                        engine,
+                        owner_id,
+                        lease_seconds=worker_settings.worker_lease_seconds,
+                    )
+                    if claim is None:
+                        break
+                    logger.info(
+                        "workspace_attempt_claimed",
+                        extra={"attempt_id": claim.attempt_id},
+                    )
+                    workspace_tasks[claim.attempt_id] = (
+                        claim,
+                        asyncio.create_task(
+                            process_workspace_attempt(
+                                session_factory,
+                                worker_settings,
+                                claim,
+                                artifact_store=worker_artifact_store,
+                                token_cipher=token_cipher,
+                                owner_id=owner_id,
+                                limits=limits,
+                            ),
+                            name=f"workspace-attempt-{claim.attempt_id}",
+                        ),
+                    )
             try:
                 await asyncio.wait_for(
                     stop_event.wait(), timeout=worker_settings.worker_poll_seconds
@@ -382,6 +488,7 @@ async def run_worker(
                 logger.debug("worker_poll")
     finally:
         await cancel_run_tasks(run_tasks)
+        await cancel_workspace_tasks(workspace_tasks)
         if owns_lease:
             try:
                 await release_worker_lease(engine, owner_id)

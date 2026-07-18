@@ -12,6 +12,7 @@ Agent Evaluation Platform 是一个面向第三方智能体（Agent）API 的内
 
 - **多 Agent 接入**：支持配置第三方 HTTP API、认证方式、请求模板、答案 JSONPath 和引用 JSONPath。
 - **异步评测任务**：API 负责创建任务，Worker 独立执行推理、评分、引用抓取和排行榜发布。
+- **Agent 工作区**：具名用户可创建持久化多轮会话、重新生成回答，并轮询异步生成状态。
 - **综合榜与专项榜**：同时提供综合能力排行榜以及推理、检索、数据推理、指令遵循、长上下文专项榜。
 - **可信结果门禁**：认证失败、响应结构错误和大规模客户端配置错误会使整场结果失效，避免错误配置污染榜单。
 - **完整运行记录**：保存单题状态、失败类型、HTTP Attempt、Token 用量、P50/P95 延迟和评分明细。
@@ -46,7 +47,7 @@ Agent Evaluation Platform 是一个面向第三方智能体（Agent）API 的内
 ### 数据与安全
 
 - Agent Token 使用独立加密密钥加密后存储，不以明文写入数据库。
-- 登录分为 `read_only` 和 `operator` 两种角色，密码仅保存 Argon2 哈希。
+- 共享登录和具名用户均保留 `read_only`/`operator` 角色；具名用户密码仅保存 Argon2 哈希。
 - Agent 响应、Judge 响应和引用内容以不可变 Artifact 保存，并校验大小与 SHA-256。
 - 排行榜只接收通过有效性检查且协议一致的正式评测结果。
 - 仓库不包含真实密码、API Key、数据库、Artifact、备份或受限评测数据。
@@ -123,6 +124,17 @@ uv run python -m agent_eval.maintenance.main generate-encryption-key
 Store it as `AGENT_EVAL_ENCRYPTION_KEY`. Losing this key makes saved Bearer Tokens impossible to
 decrypt.
 
+Create or rotate a named workspace user without placing plaintext credentials in command-line
+arguments. Omitting `--credential-output` prompts securely; when it is present, the command creates
+the output file with mode `0600` and refuses to replace an existing path:
+
+```bash
+uv run python -m agent_eval.maintenance.main create-workspace-user \
+  alice "Alice Example" read_only --credential-output /secure/alice.credential
+uv run python -m agent_eval.maintenance.main reset-workspace-user-password \
+  alice --credential-output /secure/alice-reset.credential
+```
+
 Run the API:
 
 ```bash
@@ -140,6 +152,18 @@ On PostgreSQL, the configured Agent, judge, citation-fetch, and citation-domain 
 are deployment-wide across all API and worker replicas. SQLite keeps process-local limits. Request
 leases heartbeat during long calls and expired leases make crashed holders reclaimable; see
 `deploy/runbook.md` for lease timing and database-pool sizing.
+
+The worker also claims durable workspace attempts. Each call receives a deterministic versioned
+JSON transcript through the configured `{{prompt}}` placeholder, containing every active prior
+message and the current user message. `AGENT_EVAL_WORKER_MAX_LOCAL_WORKSPACE_ATTEMPTS` defaults to
+`2` per worker; Agent-version request slots remain deployment-wide on PostgreSQL. A stale running
+workspace attempt is canceled when cancellation was already requested, otherwise it fails as
+`worker_lost`; neither state is automatically sent to the provider again.
+If a pinned version is retired, the conversation must be explicitly repinned to an active version
+of the same logical Agent while no generation is active; existing turns remain unchanged and feed
+future transcripts. Cross-table message role/conversation equality cannot be expressed as a
+portable SQLite/PostgreSQL check constraint, so workers validate it both before provider execution
+and before successful finalization.
 
 Artifact storage is selected with `AGENT_EVAL_ARTIFACT_BACKEND`; `local` remains the default.
 `AGENT_EVAL_ARTIFACT_LOCAL_DIR` defaults to `<AGENT_EVAL_DATA_DIR>/artifacts`. The `s3` backend uses

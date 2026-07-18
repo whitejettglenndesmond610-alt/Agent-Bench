@@ -14,6 +14,7 @@ from agent_eval.api.routes.auth import router as auth_router
 from agent_eval.api.routes.health import router as health_router
 from agent_eval.api.routes.leaderboards import router as leaderboards_router
 from agent_eval.api.routes.runs import router as runs_router
+from agent_eval.api.routes.workspace import router as workspace_router
 from agent_eval.auth.encryption import TokenCipher
 from agent_eval.auth.rate_limit import LoginRateLimiter
 from agent_eval.core.artifact_store import ArtifactStore, create_artifact_store
@@ -88,6 +89,7 @@ def create_app(
     app.include_router(agents_router)
     app.include_router(runs_router)
     app.include_router(leaderboards_router)
+    app.include_router(workspace_router)
     return app
 
 

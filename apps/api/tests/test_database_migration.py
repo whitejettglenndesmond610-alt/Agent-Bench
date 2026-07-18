@@ -9,6 +9,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import func, select, text
 
+from agent_eval.auth.identity import LEGACY_OPERATOR_USER_ID
 from agent_eval.core.settings import Settings
 from agent_eval.db.base import Base, utc_now
 from agent_eval.db.engine import create_engine
@@ -16,6 +17,7 @@ from agent_eval.db.enums import (
     Ability,
     ArtifactKind,
     AttemptStatus,
+    AuthSource,
     AuthType,
     CitationFetchStatus,
     DatasetStatus,
@@ -27,11 +29,14 @@ from agent_eval.db.enums import (
     RunAgentStatus,
     RunStatus,
     SessionRole,
+    WorkspaceAttemptStatus,
+    WorkspaceMessageRole,
 )
 from agent_eval.db.models import (
     Agent,
     AgentVersion,
     ArtifactIndex,
+    AuthUser,
     Benchmark,
     CitationRecord,
     DatasetVersion,
@@ -50,6 +55,9 @@ from agent_eval.db.models import (
     ScoreRecord,
     Session,
     WorkerLease,
+    WorkspaceAttempt,
+    WorkspaceConversation,
+    WorkspaceMessage,
 )
 from agent_eval.db.session import create_session_factory, session_scope
 from agent_eval.maintenance import database_migration
@@ -201,12 +209,93 @@ async def test_sqlite_source_ignores_expired_resource_leases_but_rejects_active(
         await engine.dispose()
 
 
+async def test_sqlite_source_rejects_active_workspace_attempts(tmp_path: Path) -> None:
+    source_url = await create_sqlite_database(tmp_path / "workspace-source-validation.db")
+    engine = create_engine(Settings(database_url=source_url))
+    session_factory = create_session_factory(engine)
+    try:
+        async with session_scope(session_factory) as session:
+            agent = Agent(name="Workspace migration agent", provider="provider")
+            session.add(agent)
+            await session.flush()
+            version = AgentVersion(
+                agent_id=agent.id,
+                version=1,
+                endpoint_url="https://agent.invalid/workspace",
+                auth_type=AuthType.NONE,
+                request_template='{"prompt":"{{prompt}}"}',
+                answer_jsonpath="$.answer",
+            )
+            session.add(version)
+            await session.flush()
+            conversation = WorkspaceConversation(
+                owner_user_id=LEGACY_OPERATOR_USER_ID,
+                pinned_agent_version_id=version.id,
+                title="Active workspace migration",
+                last_turn_no=1,
+                revision=1,
+            )
+            session.add(conversation)
+            await session.flush()
+            message = WorkspaceMessage(
+                conversation_id=conversation.id,
+                turn_no=1,
+                role=WorkspaceMessageRole.USER,
+                variant_no=1,
+                active=True,
+                content="Pending",
+            )
+            session.add(message)
+            await session.flush()
+            attempt = WorkspaceAttempt(
+                conversation_id=conversation.id,
+                user_message_id=message.id,
+                agent_version_id=version.id,
+                generation_no=1,
+                idempotency_key="00000000-0000-4000-8000-000000000001",
+                request_fingerprint="a" * 64,
+                status=WorkspaceAttemptStatus.QUEUED,
+                prompt_hash="b" * 64,
+                prompt_characters=100,
+                prompt_format="workspace-transcript-v1",
+            )
+            session.add(attempt)
+            await session.flush()
+            attempt_id = attempt.id
+
+        async with engine.connect() as connection:
+            with pytest.raises(DatabaseMigrationError, match="active workspace attempts"):
+                await validate_sqlite_source(connection)
+
+        async with session_scope(session_factory) as session:
+            attempt = await session.get(WorkspaceAttempt, attempt_id)
+            assert attempt is not None
+            attempt.status = WorkspaceAttemptStatus.CANCELED
+            attempt.finished_at = utc_now()
+            attempt.error_type = "workspace_canceled"
+            attempt.error_category = "canceled"
+        async with engine.connect() as connection:
+            await validate_sqlite_source(connection)
+    finally:
+        await engine.dispose()
+
+
 async def seed_representative_source(source_url: str) -> None:
     engine = create_engine(Settings(database_url=source_url))
     session_factory = create_session_factory(engine)
     now = utc_now().replace(microsecond=123456)
     try:
         async with session_scope(session_factory) as session:
+            workspace_user = AuthUser(
+                subject_key="local:migration.operator",
+                username="migration.operator",
+                display_name="Migration Operator",
+                role=SessionRole.OPERATOR,
+                auth_source=AuthSource.LOCAL,
+                password_hash="$argon2id$migration-fixture",
+                is_shared=False,
+                workspace_enabled=True,
+            )
             agent = Agent(name="Migration Agent", provider="Provider", description="representative")
             benchmark = Benchmark(
                 name="Migration Benchmark",
@@ -230,7 +319,17 @@ async def seed_representative_source(source_url: str) -> None:
                 size_bytes=654,
                 expires_at=now + timedelta(days=30),
             )
-            session.add_all([agent, benchmark, judge, score_config, artifact, judge_artifact])
+            session.add_all(
+                [
+                    workspace_user,
+                    agent,
+                    benchmark,
+                    judge,
+                    score_config,
+                    artifact,
+                    judge_artifact,
+                ]
+            )
             await session.flush()
 
             agent_version = AgentVersion(
@@ -258,6 +357,60 @@ async def seed_representative_source(source_url: str) -> None:
             )
             session.add_all([agent_version, dataset])
             await session.flush()
+
+            conversation = WorkspaceConversation(
+                owner_user_id=workspace_user.id,
+                pinned_agent_version_id=agent_version.id,
+                title="Migrated workspace history",
+                last_turn_no=1,
+                revision=1,
+            )
+            session.add(conversation)
+            await session.flush()
+            workspace_user_message = WorkspaceMessage(
+                conversation_id=conversation.id,
+                turn_no=1,
+                role=WorkspaceMessageRole.USER,
+                variant_no=1,
+                active=True,
+                content="Migration question",
+            )
+            workspace_assistant_message = WorkspaceMessage(
+                conversation_id=conversation.id,
+                turn_no=1,
+                role=WorkspaceMessageRole.ASSISTANT,
+                variant_no=1,
+                active=True,
+                content="Migration answer",
+                citations=["https://example.invalid/workspace-source"],
+            )
+            session.add_all([workspace_user_message, workspace_assistant_message])
+            await session.flush()
+            session.add(
+                WorkspaceAttempt(
+                    conversation_id=conversation.id,
+                    user_message_id=workspace_user_message.id,
+                    assistant_message_id=workspace_assistant_message.id,
+                    agent_version_id=agent_version.id,
+                    generation_no=1,
+                    idempotency_key="00000000-0000-4000-8000-000000000002",
+                    request_fingerprint="8" * 64,
+                    status=WorkspaceAttemptStatus.SUCCEEDED,
+                    claimed_at=now - timedelta(seconds=2),
+                    started_at=now - timedelta(seconds=2),
+                    finished_at=now - timedelta(seconds=1),
+                    http_attempt_count=1,
+                    last_http_status=200,
+                    latency_ms=125,
+                    input_tokens=10,
+                    output_tokens=2,
+                    total_tokens=12,
+                    artifact_id=artifact.id,
+                    prompt_hash="9" * 64,
+                    prompt_characters=500,
+                    prompt_format="workspace-transcript-v1",
+                )
+            )
 
             question = Question(
                 dataset_version_id=dataset.id,
@@ -368,6 +521,7 @@ async def seed_representative_source(source_url: str) -> None:
                         benchmark_count=1,
                     ),
                     Session(
+                        user_id=workspace_user.id,
                         role=SessionRole.OPERATOR,
                         token_hash="8" * 64,
                         csrf_token_hash="9" * 64,
@@ -401,7 +555,8 @@ async def assert_target_empty(target_url: str) -> None:
     try:
         async with engine.connect() as connection:
             for table in Base.metadata.sorted_tables:
-                assert await connection.scalar(select(func.count()).select_from(table)) == 0
+                expected = 2 if table.name == "auth_users" else 0
+                assert await connection.scalar(select(func.count()).select_from(table)) == expected
     finally:
         await engine.dispose()
 

@@ -14,6 +14,7 @@ __all__ = [
     "store_citation_content",
     "store_citation_judge_response",
     "store_judge_response",
+    "store_workspace_response",
 ]
 
 
@@ -27,6 +28,19 @@ def store_agent_response(
 ) -> StoredArtifact:
     relative_path = (
         f"runs/{run_id}/agents/{agent_id}/{question_id}/response-{uuid4()}.json"
+    )
+    return artifact_store.put(relative_path, content)
+
+
+def store_workspace_response(
+    artifact_store: ArtifactStore,
+    *,
+    conversation_id: UUID,
+    attempt_id: UUID,
+    content: bytes,
+) -> StoredArtifact:
+    relative_path = (
+        f"workspace/conversations/{conversation_id}/attempts/{attempt_id}/response.json"
     )
     return artifact_store.put(relative_path, content)
 

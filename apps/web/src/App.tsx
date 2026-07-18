@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense } from "react";
 import { Link, Navigate, NavLink, Route, Routes } from "react-router-dom";
 
-import { fetchPlatformMeta, fetchSession, login, logout, SessionInfo, SessionRole } from "./api";
+import { fetchPlatformMeta, fetchSession, login, logout, SessionInfo, SessionRole, userLogin } from "./api";
 import { AgentsPage } from "./AgentsPage";
 import { LoginPage } from "./LoginPage";
 import { LeaderboardPage } from "./LeaderboardPage";
@@ -17,6 +17,9 @@ const unifiedCapabilityRows = abilityMetrics.map((metric) => ({
 
 const ComparePage = lazy(() =>
   import("./ComparePage").then((module) => ({ default: module.ComparePage }))
+);
+const WorkspacePage = lazy(() =>
+  import("./WorkspacePage").then((module) => ({ default: module.WorkspacePage }))
 );
 
 function Dashboard() {
@@ -91,7 +94,10 @@ function Dashboard() {
   );
 }
 
-function AppNavigation({ operator, onLogout, loggingOut }: { operator: boolean; onLogout: () => void; loggingOut: boolean }) {
+function AppNavigation({ session, onLogout, loggingOut }: { session: SessionInfo; onLogout: () => void; loggingOut: boolean }) {
+  const operator = session.role === "operator";
+  const workspaceEnabled = session.workspace_enabled ?? operator;
+  const displayName = session.display_name || (operator ? "运营访问" : "只读访问");
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -102,10 +108,14 @@ function AppNavigation({ operator, onLogout, loggingOut }: { operator: boolean; 
         {operator && <NavLink to="/" end>总览</NavLink>}
         {operator && <NavLink to="/agents">Agent</NavLink>}
         {operator && <NavLink to="/runs">评测任务</NavLink>}
+        {workspaceEnabled && <NavLink to="/workspace">工作台</NavLink>}
         <NavLink to="/leaderboard">排行榜</NavLink>
       </nav>
       <footer>
-        <div className="session-role"><span>{operator ? "运营访问" : "只读访问"}</span><small>V0.1</small></div>
+        <div className="session-role">
+          <span>{displayName}</span>
+          <small>{(session.is_shared ?? true) ? "共享会话" : "个人账号"} · V0.1</small>
+        </div>
         <button type="button" className="logout-button" disabled={loggingOut} onClick={onLogout}>{loggingOut ? "退出中" : "退出"}</button>
       </footer>
     </aside>
@@ -116,13 +126,19 @@ function AuthenticatedApp({ session }: { session: SessionInfo }) {
   const queryClient = useQueryClient();
   const logoutMutation = useMutation({
     mutationFn: logout,
-    onSuccess: () => queryClient.setQueryData(["auth-session"], null)
+    onSuccess: async () => {
+      await queryClient.cancelQueries({ queryKey: ["workspace"] });
+      queryClient.removeQueries({ queryKey: ["workspace"] });
+      queryClient.setQueryData(["auth-session"], null);
+    }
   });
   const operator = session.role === "operator";
+  const workspaceEnabled = session.workspace_enabled ?? operator;
+  const workspaceFallback = <main className="workspace"><div className="leaderboard-loading"><span className="status-dot" />正在加载 Agent 工作台</div></main>;
 
   return (
     <div className="app-shell">
-      <AppNavigation operator={operator} loggingOut={logoutMutation.isPending} onLogout={() => logoutMutation.mutate()} />
+      <AppNavigation session={session} loggingOut={logoutMutation.isPending} onLogout={() => logoutMutation.mutate()} />
       <div className="shell-content"><Routes>
         <Route path="/" element={operator ? <Dashboard /> : <Navigate to="/leaderboard" replace />} />
         <Route path="/agents" element={operator ? <AgentsPage /> : <Navigate to="/" replace />} />
@@ -130,6 +146,8 @@ function AuthenticatedApp({ session }: { session: SessionInfo }) {
         <Route path="/runs/:runId" element={operator ? <RunsPage /> : <Navigate to="/" replace />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
         <Route path="/leaderboard/compare" element={<Suspense fallback={<main className="workspace"><div className="leaderboard-loading"><span className="status-dot" />正在加载对比视图</div></main>}><ComparePage /></Suspense>} />
+        <Route path="/workspace" element={workspaceEnabled ? <Suspense fallback={workspaceFallback}><WorkspacePage userId={session.user_id} /></Suspense> : <Navigate to="/" replace />} />
+        <Route path="/workspace/:conversationId" element={workspaceEnabled ? <Suspense fallback={workspaceFallback}><WorkspacePage userId={session.user_id} /></Suspense> : <Navigate to="/" replace />} />
       </Routes></div>
     </div>
   );
@@ -144,9 +162,12 @@ export function App() {
     staleTime: 60_000
   });
   const loginMutation = useMutation({
-    mutationFn: ({ role, password }: { role: SessionRole; password: string }) =>
-      login(role, password),
-    onSuccess: (session) => queryClient.setQueryData(["auth-session"], session)
+    mutationFn: (input: { mode: "role"; role: SessionRole; password: string } | { mode: "account"; username: string; password: string }) =>
+      input.mode === "role" ? login(input.role, input.password) : userLogin(input.username, input.password),
+    onSuccess: (session) => {
+      queryClient.removeQueries({ queryKey: ["workspace"] });
+      queryClient.setQueryData(["auth-session"], session);
+    }
   });
 
   if (sessionQuery.isPending) {
@@ -164,7 +185,10 @@ export function App() {
         pending={loginMutation.isPending}
         error={loginMutation.error instanceof Error ? loginMutation.error.message : undefined}
         onLogin={async (role, password) => {
-          await loginMutation.mutateAsync({ role, password });
+          await loginMutation.mutateAsync({ mode: "role", role, password });
+        }}
+        onUserLogin={async (username, password) => {
+          await loginMutation.mutateAsync({ mode: "account", username, password });
         }}
         onResetError={loginMutation.reset}
       />
