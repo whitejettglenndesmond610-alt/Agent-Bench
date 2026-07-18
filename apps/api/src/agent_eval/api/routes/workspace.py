@@ -500,7 +500,10 @@ async def queue_attempt(
     transcript: Sequence[TranscriptMessage],
 ) -> WorkspaceAttempt:
     prompt = format_workspace_transcript(
-        list(transcript), current_turn_no=user_message.turn_no
+        list(transcript),
+        current_turn_no=user_message.turn_no,
+        agent_name=version.agent.name,
+        agent_version=version.version,
     )
     ensure_prompt_fits(prompt.characters, version)
     attempt = WorkspaceAttempt(

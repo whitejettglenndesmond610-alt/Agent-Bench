@@ -127,6 +127,8 @@ async def load_workspace_work(
                 for message in messages
             ],
             current_turn_no=attempt.user_message.turn_no,
+            agent_name=version.agent.name,
+            agent_version=version.version,
         )
         if (
             formatted.format_version != attempt.prompt_format

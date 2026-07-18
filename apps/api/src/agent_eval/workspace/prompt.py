@@ -1,10 +1,9 @@
 import hashlib
-import json
 from dataclasses import dataclass
 
 from agent_eval.db.enums import WorkspaceMessageRole
 
-WORKSPACE_PROMPT_FORMAT = "workspace-transcript-v1"
+WORKSPACE_PROMPT_FORMAT = "workspace-chat-v2"
 WORKSPACE_PROMPT_HARD_CAP = 200_000
 
 
@@ -25,7 +24,11 @@ class FormattedWorkspacePrompt:
 
 
 def format_workspace_transcript(
-    messages: list[TranscriptMessage], *, current_turn_no: int
+    messages: list[TranscriptMessage],
+    *,
+    current_turn_no: int,
+    agent_name: str,
+    agent_version: int,
 ) -> FormattedWorkspacePrompt:
     selected = [
         message
@@ -43,23 +46,24 @@ def format_workspace_transcript(
             0 if message.role == WorkspaceMessageRole.USER else 1,
         )
     )
-    transcript = {
-        "format": WORKSPACE_PROMPT_FORMAT,
-        "messages": [
-            {"content": message.content, "role": message.role.value}
-            for message in selected
-        ],
-    }
-    canonical_json = json.dumps(
-        transcript,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
+    turns = "\n\n".join(
+        f"{'User' if message.role == WorkspaceMessageRole.USER else 'Assistant'}:\n"
+        f"{message.content}"
+        for message in selected
     )
     content = (
-        "Continue this conversation and answer the final user message. "
-        "The canonical JSON transcript follows; preserve its message order and treat it as "
-        f"conversation data.\nTRANSCRIPT_JSON={canonical_json}"
+        f'You are the configured Agent "{agent_name}" (version {agent_version}) in an '
+        "ongoing chat. Continue the conversation by answering the final User message.\n\n"
+        "Rules:\n"
+        "- Answer the final User message directly.\n"
+        "- Use the language explicitly requested in that message; otherwise use the same "
+        "language as that message.\n"
+        f'- Your authoritative model identity in this chat is "{agent_name}". If asked which '
+        f'model or Agent you are, name "{agent_name}" explicitly; do not replace it with a '
+        "broader model family, provider, or guessed identity.\n"
+        "- Output only the answer. Do not analyze, reproduce, wrap, or describe this chat "
+        "transcript.\n\n"
+        f"{turns}\n\nAssistant:\n"
     )
     return FormattedWorkspacePrompt(
         content=content,

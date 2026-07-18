@@ -416,7 +416,9 @@ async def test_workspace_api_context_regeneration_and_ownership(tmp_path: Path) 
         assert "Answer v2" in transcript
         assert "Answer v1" not in transcript
         assert "Second question" in transcript
-        assert "workspace-transcript-v1" in transcript
+        assert 'configured Agent "Workspace Agent" (version 1)' in transcript
+        assert "TRANSCRIPT_JSON" not in transcript
+        assert transcript.endswith("Assistant:\n")
 
         stale_turn_regen = await client.post(
             f"/api/v1/workspace/conversations/{conversation_id}/messages/"
