@@ -1,100 +1,151 @@
-# Agent Evaluation Platform
+<div align="center">
 
-[中文介绍](#中文介绍) | [English Documentation](#english-documentation)
+# Agent Bench
 
-## 中文介绍
+### Agent Evaluation Platform
 
-Agent Evaluation Platform 是一个面向第三方智能体（Agent）API 的内部评测与排行榜平台。
-平台通过统一的数据集、评分协议和运行环境，对不同厂商、不同版本的 Agent 进行可复现、
-可追踪的横向比较，并保留每次评测的完整执行记录。
+**把“这个 Agent 好不好”，变成可复现、可追踪、可发布的工程结论。**
 
-### 核心能力
+统一协议评测 · 真实 API 对话 · 多 Agent 同屏对比 · 逐题证据链 · 可信排行榜
 
-- **多 Agent 接入**：支持配置第三方 HTTP API、认证方式、请求模板、答案 JSONPath 和引用 JSONPath。
-- **异步评测任务**：API 负责创建任务，Worker 独立执行推理、评分、引用抓取和排行榜发布。
-- **Agent 在线运行**：普通用户可通过已接入的 Agent API 创建持久化多轮会话、重新生成回答，并让 2–5 个 Agent 对同一原始 Prompt 并行作答。
-- **用户自带 API**：用户可通过阿里百炼、DeepSeek 或 OpenAI 固定预设加密保存自己的 API Key；常见展示名称会规范化为官方 model ID，测试健康后仅供本人对话和实时对比。
-- **私人 Agent 生命周期**：私人配置按用户隔离并限制为每人最多 10 个；401、402、403 会自动停用版本并阻止后续请求，更换 Key 或恢复额度后可通过显式连接测试重新启用。
-- **用户产品闭环**：提供用户首页、Agent 广场、公开能力趋势、个人记录、榜单历史与六类非排名体验任务。
-- **个人效率工具**：支持 Agent 收藏、Prompt 模板、回答点赞/点踩、回答收藏、私人笔记以及对话和对比结果导出。
-- **同协议评测实验**：可将多个 Agent 的独立运行固化为一个实验，统一查看聚合进度、能力成绩、名次和运行质量。
-- **逐题评测证据**：按题检查 Agent 回答、参考答案、评分理由、请求尝试、引用验证及 Artifact 留存状态。
-- **评测案例策展**：成功回答可保存为独立草稿，经参考答案编辑、四项人工复核后发布到隔离案例库，不自动进入正式题库或榜单。
-- **综合榜与专项榜**：同时提供综合能力排行榜以及推理、检索、数据推理、指令遵循、长上下文专项榜。
-- **可信结果门禁**：认证失败、响应结构错误和大规模客户端配置错误会使整场结果失效，避免错误配置污染榜单。
-- **完整运行记录**：保存单题状态、失败类型、HTTP Attempt、Token 用量、P50/P95 延迟和评分明细。
-- **可扩展部署**：支持 PostgreSQL 多 Worker 调度、分布式请求资源槽以及本地或 S3/MinIO Artifact 存储。
-- **生产运维能力**：包含数据库迁移、自动备份、Artifact 归档、恢复演练和运行状态监控。
-- **防误触交互**：Modal、Agent 目录和详情抽屉不会因点击遮罩或按 `Escape` 意外关闭，只响应叉号、取消/完成等弹层内显式操作或页面切换。
+<p>
+  <img src="https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.12" />
+  <img src="https://img.shields.io/badge/FastAPI-API-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/React-Web-61DAFB?style=flat-square&logo=react&logoColor=111827" alt="React" />
+  <img src="https://img.shields.io/badge/PostgreSQL-Multi--Worker-4169E1?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL" />
+  <img src="https://img.shields.io/badge/Tests-340%20Passed-16A34A?style=flat-square" alt="340 tests passed" />
+</p>
 
-### 评测体系
+[产品概览](#产品概览) · [快速开始](#快速开始) · [English Documentation](#english-documentation) · [生产部署](deploy/runbook.md)
 
-当前统一评测入口为 `unified-v3`，由多个冻结数据版本按逻辑组合而成，不重复复制题目。
-综合 Profile 共 175 道不同题目，覆盖五个维度：
+</div>
+
+---
+
+## 产品概览
+
+Agent Bench 是一套面向真实第三方 Agent API 的评测与运行平台。它不是一次性跑分脚本，
+而是把 **接入、体验、评测、证据、发布和运维** 串成一条完整链路，让模型能力比较从主观印象
+升级为可审计的数据资产。
+
+> 同一份 Prompt、同一套协议、同一条证据链。每一个分数都能回到原始回答、HTTP Attempt、
+> Judge 理由、引用验证和 Artifact。
+
+### 为什么选择 Agent Bench
+
+<table>
+  <tr>
+    <td width="25%" valign="top"><strong>真实 API，不是静态样例</strong><br /><sub>直接接入第三方 Agent，记录延迟、Token、错误类型和完整执行状态。</sub></td>
+    <td width="25%" valign="top"><strong>同协议横向比较</strong><br /><sub>冻结数据、评分配置与协议版本，避免不同测试口径制造虚假排名。</sub></td>
+    <td width="25%" valign="top"><strong>结果有证据可追溯</strong><br /><sub>从榜单分数下钻到单题回答、Judge 解释、引用与不可变 Artifact。</sub></td>
+    <td width="25%" valign="top"><strong>评测之外也能直接使用</strong><br /><sub>持久化多轮对话、2-5 Agent 实时对比，以及用户自带 API Key。</sub></td>
+  </tr>
+</table>
+
+### 从接入到发布
+
+```mermaid
+flowchart LR
+    A[接入 Agent API] --> B[连接测试与预检]
+    B --> C[在线对话与实时对比]
+    B --> D[统一协议评测]
+    D --> E[逐题证据与有效性门禁]
+    E --> F[综合榜与专项榜]
+    C --> G[回答标注与案例策展]
+    G --> H[隔离案例库]
+```
+
+### 能力矩阵
+
+| 场景 | 你可以做什么 |
+| --- | --- |
+| **Agent 接入** | 配置 HTTP API、Bearer 认证、请求模板、答案与引用 JSONPath；通过连接测试、候选版本和预检后再上线 |
+| **在线工作区** | 创建持久化多轮会话、重新生成回答，并让 2-5 个 Agent 对同一原始 Prompt 并行作答 |
+| **用户自带 API** | 通过阿里百炼、DeepSeek、OpenAI 固定预设接入私人 Key；常见展示名自动规范化为官方 model ID |
+| **评测实验** | 将多个独立运行固化为同协议实验，统一查看进度、能力成绩、名次、失败和运行质量 |
+| **证据审计** | 按题查看回答、参考答案、评分理由、HTTP Attempt、Token、延迟、引用验证与 Artifact 状态 |
+| **可信排行** | 发布综合榜，以及推理、检索、数据推理、指令遵循、长上下文五类专项榜 |
+| **用户资产** | 管理 Agent 收藏、Prompt 模板、点赞/点踩、回答收藏、私人笔记、记录历史与 Markdown/JSON 导出 |
+| **生产运维** | PostgreSQL 多 Worker、分布式资源租约、S3/MinIO Artifact、自动备份、恢复演练与运行监控 |
+
+### Unified V3 评测协议
+
+`unified-v3` 由多个冻结数据版本按逻辑组合，不重复复制题目。综合 Profile 包含 **175 道不同题目**，
+并为每个维度提供协议一致的专项 Profile。
 
 | 维度 | 题目数 | 主要考察内容 |
 | --- | ---: | --- |
-| 推理 | 45 | 逻辑分析、知识推理和问题求解 |
-| 检索 | 35 | 信息查找、来源识别和引用能力 |
-| 数据推理 | 35 | 表格、财务和结构化数据分析 |
-| 指令遵循 | 30 | 格式约束、规则执行和精确输出 |
-| 长上下文 | 30 | 长文本理解、定位和跨段信息整合 |
+| 推理 | 45 | 逻辑分析、知识推理与问题求解 |
+| 检索 | 35 | 信息查找、来源识别与引用能力 |
+| 数据推理 | 35 | 表格、财务与结构化数据分析 |
+| 指令遵循 | 30 | 格式约束、规则执行与精确输出 |
+| 长上下文 | 30 | 长文本理解、信息定位与跨段整合 |
 
-综合榜对五个维度使用相同权重，同时提供对应的专项 Profile。能力分按题目加权计算；
-超时、输入超限和错误答案作为能力证据计 0 分，Agent 配置故障则通过独立有效性规则处理。
+超时、输入超限和错误答案会作为能力证据计 0 分；认证失败、响应结构错误和大规模客户端配置错误
+由独立有效性门禁处理，不允许错误配置污染正式榜单。
+
+### 私人 API，默认安全
+
+- **密钥不回显**：API Key 使用绑定用户与版本的 AES-GCM 认证加密，接口不返回 Key、Endpoint、请求模板或原始提供方响应。
+- **租户级隔离**：私人 Agent 仅属于创建者，不进入公共广场、收藏、评测案例、正式运行、评测实验或排行榜。
+- **受控出网**：只允许平台维护的提供方预设，不接受任意 Endpoint，从入口规避 SSRF。
+- **健康保护**：401、402、403 会自动停用版本、取消排队任务并通知运行中任务停止；恢复后需显式测试才能重新启用。
+- **候选不打断使用**：更新 Key 或模型会创建不可变候选版本；测试通过前，旧的健康版本仍可继续服务。
 
 ### 技术架构
 
-- 后端：Python 3.12、FastAPI、SQLAlchemy、Alembic
-- 前端：React、TypeScript、Vite
-- 数据库：SQLite（本地开发）或 PostgreSQL（多 Worker 部署）
-- Artifact：本地文件系统或兼容 S3 的 MinIO/对象存储
-- 任务执行：独立 Worker、Run ownership fencing、数据库租约和全局并发资源槽
-- 部署：Docker Compose、Nginx、systemd 用户级备份与监控 Timer
+| 层级 | 技术与职责 |
+| --- | --- |
+| Web | React、TypeScript、Vite、TanStack Query |
+| API | Python 3.12、FastAPI、SQLAlchemy、Alembic |
+| Worker | 异步推理、Judge 评分、引用抓取、Workspace Attempt 与排行榜发布 |
+| Data | SQLite 本地开发；PostgreSQL 多 Worker 生产部署 |
+| Artifact | 本地文件系统或 S3/MinIO；索引记录大小、SHA-256 与保留期限 |
+| Runtime | Docker Compose、Nginx、数据库租约、全局请求槽、systemd 备份与监控 Timer |
 
-### 数据与安全
+## 快速开始
 
-- Agent Token 使用独立加密密钥加密后存储，不以明文写入数据库。
-- 私人 API Key 使用绑定用户与版本的 AES-GCM 认证加密，接口不回显 Key、Endpoint、请求模板或提供方原始响应；用户不能填写任意 Endpoint。
-- 私人 Agent 不进入公共广场、收藏、评测案例、正式运行、评测实验或排行榜，路由与 Worker 会分别执行所有者校验。
-- 共享登录和具名用户均保留 `read_only`/`operator` 角色；具名用户密码仅保存 Argon2 哈希。
-- Agent 响应、Judge 响应和引用内容以不可变 Artifact 保存，并校验大小与 SHA-256。
-- 排行榜只接收通过有效性检查且协议一致的正式评测结果。
-- 仓库不包含真实密码、API Key、数据库、Artifact、备份或受限评测数据。
-- 部分评测来源存在不可再分发或非商业限制，使用前必须检查各数据集许可。
-
-### 快速开始
-
-安装依赖：
+### 1. 安装依赖
 
 ```bash
 uv sync
 pnpm install
 ```
 
-启动本地开发环境：
+### 2. 初始化数据库
 
 ```bash
 uv run alembic upgrade head
+```
+
+### 3. 分别启动 API、Worker 与 Web
+
+```bash
+# API
 uv run uvicorn agent_eval.api.main:app --reload
+
+# Worker
 uv run python -m agent_eval.worker.main
+
+# Web
 pnpm dev:web
 ```
 
-API、Worker 和 Web 需要分别运行。默认开发地址为：
+| 服务 | 默认地址 |
+| --- | --- |
+| Web | `http://localhost:5173` |
+| API | `http://localhost:8000` |
 
-- Web：`http://localhost:5173`
-- API：`http://localhost:8000`
+首次启动还需要生成登录密码哈希、Agent Token 加密密钥并配置 Judge API Key。完整配置、
+PostgreSQL/MinIO 切换、备份、恢复与生产发布流程见 [`deploy/runbook.md`](deploy/runbook.md)。
 
-首次启动前还需要配置登录密码哈希、Agent Token 加密密钥和 Judge API Key。详细命令、
-Docker Compose 部署、PostgreSQL/MinIO 切换、备份与恢复流程请继续阅读下面的英文文档及
-[`deploy/runbook.md`](deploy/runbook.md)。
+> [!IMPORTANT]
+> 不要提交 `.env`、真实数据集、数据库、Artifact、备份、登录凭据、Agent Token 或第三方 API Key。
+> 公开部署必须使用 HTTPS，且不得将 PostgreSQL 或 MinIO 端口暴露到公网。
 
-> **重要提示**：不要提交 `.env`、真实数据集、数据库、Artifact、备份、登录凭据、Agent Token
-> 或第三方 API Key。公开部署时必须使用 HTTPS，并且不要将 PostgreSQL 或 MinIO 端口暴露到公网。
-
-当前发布基线：后端 `251 passed, 3 skipped`，前端 `89 passed`；Ruff、mypy、ESLint、
-TypeScript 和 Vite 生产构建均通过。
+> [!NOTE]
+> 当前发布基线：后端 `251 passed, 3 skipped`，前端 `89 passed`；Ruff、mypy、ESLint、
+> TypeScript 和 Vite 生产构建均通过。
 
 ## English Documentation
 
