@@ -30,6 +30,7 @@ from agent_eval.db.enums import (
     AgentStatus,
     AgentVersionLifecycle,
     ArtifactKind,
+    PrivateAgentHealth,
     WorkspaceAttemptStatus,
     WorkspaceMessageRole,
 )
@@ -111,6 +112,11 @@ async def load_workspace_work(
             or version.agent.status != AgentStatus.ENABLED
         ):
             raise WorkspaceWorkUnavailable("agent_unavailable", "configuration")
+        if version.agent.owner_user_id is not None and (
+            version.agent.owner_user_id != attempt.conversation.owner_user_id
+            or version.private_health_status != PrivateAgentHealth.HEALTHY
+        ):
+            raise WorkspaceWorkUnavailable("agent_unavailable", "configuration")
         if attempt.prompt_format == WORKSPACE_COMPARISON_PROMPT_FORMAT:
             comparison = attempt.conversation.comparison
             if (
@@ -156,7 +162,9 @@ async def load_workspace_work(
         ):
             raise WorkspaceWorkUnavailable("transcript_changed", "internal")
         try:
-            config = inference_config_for_version(version, token_cipher)
+            config = inference_config_for_version(
+                version, token_cipher, attempt.conversation.owner_user_id
+            )
         except AgentConfigurationUnavailable as error:
             raise WorkspaceWorkUnavailable(
                 "agent_configuration_unavailable", "configuration"
@@ -424,6 +432,52 @@ async def finalize_workspace_attempt(
             attempt.status = WorkspaceAttemptStatus.FAILED
             attempt.error_type = error_type[:80]
             attempt.error_category = forced_category or safe_error_category(error_type)
+            if attempt.last_http_status in {401, 402, 403}:
+                attempt.claim_owner_id = None
+                attempt.claim_token = None
+                attempt.lease_expires_at = None
+                attempt.heartbeat_at = None
+                attempt.finished_at = now
+                attempt.updated_at = now
+                with session.no_autoflush:
+                    version = await session.get(AgentVersion, attempt.agent_version_id)
+                if version is not None and version.private_preset is not None:
+                    health_error = (
+                        "balance_exhausted"
+                        if attempt.last_http_status == 402
+                        else "authentication_failed"
+                    )
+                    version.lifecycle_status = AgentVersionLifecycle.DRAFT
+                    version.enabled = False
+                    version.private_health_status = PrivateAgentHealth.UNHEALTHY
+                    version.private_health_checked_at = now
+                    version.private_health_error_code = health_error
+                    version.private_health_latency_ms = max(0, outcome.latency_ms)
+                    await session.execute(
+                        update(WorkspaceAttempt)
+                        .where(
+                            WorkspaceAttempt.id != attempt.id,
+                            WorkspaceAttempt.agent_version_id == version.id,
+                            WorkspaceAttempt.status == WorkspaceAttemptStatus.QUEUED,
+                        )
+                        .values(
+                            status=WorkspaceAttemptStatus.CANCELED,
+                            cancel_requested_at=now,
+                            finished_at=now,
+                            error_type="workspace_canceled",
+                            error_category="canceled",
+                            updated_at=now,
+                        )
+                    )
+                    await session.execute(
+                        update(WorkspaceAttempt)
+                        .where(
+                            WorkspaceAttempt.id != attempt.id,
+                            WorkspaceAttempt.agent_version_id == version.id,
+                            WorkspaceAttempt.status == WorkspaceAttemptStatus.RUNNING,
+                        )
+                        .values(cancel_requested_at=now, updated_at=now)
+                    )
 
         if outcome.latency_ms or attempt.latency_ms is None:
             attempt.latency_ms = outcome.latency_ms

@@ -1,12 +1,15 @@
 import base64
 import binascii
 import os
+from uuid import UUID
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from pydantic import SecretStr
 
 TOKEN_PREFIX = "v1:"
 TOKEN_AAD = b"agent-evaluation-platform:agent-token:v1"
+PRIVATE_TOKEN_PREFIX = "v2:"
+PRIVATE_TOKEN_AAD_PREFIX = "agent-evaluation-platform:private-agent-token:v2"
 MIN_ENCRYPTED_PAYLOAD_BYTES = 12 + 16
 
 
@@ -57,3 +60,39 @@ class TokenCipher:
             raise ValueError("encrypted token payload is too short")
         nonce, ciphertext = payload[:12], payload[12:]
         return self._cipher.decrypt(nonce, ciphertext, TOKEN_AAD).decode("utf-8")
+
+    def encrypt_private(self, token: str, owner_user_id: UUID, version_id: UUID) -> str:
+        nonce = os.urandom(12)
+        ciphertext = self._cipher.encrypt(
+            nonce,
+            token.encode("utf-8"),
+            self._private_aad(owner_user_id, version_id),
+        )
+        payload = base64.urlsafe_b64encode(nonce + ciphertext).decode("ascii")
+        return f"{PRIVATE_TOKEN_PREFIX}{payload}"
+
+    def decrypt_private(
+        self, encrypted_token: str, owner_user_id: UUID, version_id: UUID
+    ) -> str:
+        if not encrypted_token.startswith(PRIVATE_TOKEN_PREFIX):
+            raise ValueError("unsupported encrypted private token version")
+        try:
+            payload = base64.b64decode(
+                encrypted_token.removeprefix(PRIVATE_TOKEN_PREFIX).encode("ascii"),
+                altchars=b"-_",
+                validate=True,
+            )
+        except (binascii.Error, ValueError, UnicodeEncodeError) as error:
+            raise ValueError("encrypted token payload is not valid URL-safe Base64") from error
+        if len(payload) < MIN_ENCRYPTED_PAYLOAD_BYTES:
+            raise ValueError("encrypted token payload is too short")
+        nonce, ciphertext = payload[:12], payload[12:]
+        return self._cipher.decrypt(
+            nonce,
+            ciphertext,
+            self._private_aad(owner_user_id, version_id),
+        ).decode("utf-8")
+
+    @staticmethod
+    def _private_aad(owner_user_id: UUID, version_id: UUID) -> bytes:
+        return f"{PRIVATE_TOKEN_AAD_PREFIX}:{owner_user_id}:{version_id}".encode("ascii")

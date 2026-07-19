@@ -1,10 +1,10 @@
 import os
 import socket
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
@@ -18,6 +18,7 @@ from agent_eval.api.routes.evaluation_experiments import router as evaluation_ex
 from agent_eval.api.routes.experience_tasks import router as experience_tasks_router
 from agent_eval.api.routes.health import router as health_router
 from agent_eval.api.routes.leaderboards import router as leaderboards_router
+from agent_eval.api.routes.private_agents import router as private_agents_router
 from agent_eval.api.routes.runs import router as runs_router
 from agent_eval.api.routes.workspace import router as workspace_router
 from agent_eval.api.routes.workspace_comparisons import router as workspace_comparisons_router
@@ -79,6 +80,15 @@ def create_app(
         openapi_url=None if app_settings.environment == "production" else "/api/openapi.json",
     )
 
+    @app.middleware("http")
+    async def private_agent_cache_control(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        response = await call_next(request)
+        if request.url.path.startswith("/api/v1/workspace/private-agents"):
+            response.headers["Cache-Control"] = "private, no-store"
+        return response
+
     @app.exception_handler(RequestValidationError)
     async def sanitized_validation_error(
         _request: Request, error: RequestValidationError
@@ -102,6 +112,7 @@ def create_app(
     app.include_router(leaderboards_router)
     app.include_router(experience_tasks_router)
     app.include_router(workspace_router)
+    app.include_router(private_agents_router)
     app.include_router(workspace_comparisons_router)
     app.include_router(workspace_personalization_router)
     app.include_router(evaluation_cases_router)

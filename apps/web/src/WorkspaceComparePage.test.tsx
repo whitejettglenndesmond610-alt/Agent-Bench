@@ -30,7 +30,9 @@ const agents = [
     logo_url: null,
     version: 2,
     max_prompt_characters: 4000,
-    supports_citations: true
+    supports_citations: true,
+    visibility: "public",
+    model: null
   },
   {
     agent_id: "agent-2",
@@ -41,7 +43,9 @@ const agents = [
     logo_url: null,
     version: 4,
     max_prompt_characters: null,
-    supports_citations: false
+    supports_citations: false,
+    visibility: "private",
+    model: "deepseek-chat"
   }
 ];
 
@@ -97,14 +101,14 @@ function comparison(status: "queued" | "completed") {
       {
         position: 1,
         conversation_id: "conversation-1",
-        agent: { agent_id: "agent-1", agent_version_id: "version-1", name: "Alpha Agent", provider: "Alpha", version: 2 },
+        agent: { agent_id: "agent-1", agent_version_id: "version-1", name: "Alpha Agent", provider: "Alpha", version: 2, visibility: "public", model: null as string | null },
         attempt: completed ? attempt("attempt-1", "succeeded", "Alpha 的完整回答") : attempt("attempt-1", "queued"),
         evaluation_case_id: null as string | null
       },
       {
         position: 2,
         conversation_id: "conversation-2",
-        agent: { agent_id: "agent-2", agent_version_id: "version-2", name: "Beta Agent", provider: "Beta", version: 4 },
+        agent: { agent_id: "agent-2", agent_version_id: "version-2", name: "Beta Agent", provider: "Beta", version: 4, visibility: "private", model: "deepseek-chat" as string | null },
         attempt: completed ? attempt("attempt-2", "failed") : attempt("attempt-2", "queued"),
         evaluation_case_id: null as string | null
       }
@@ -130,7 +134,7 @@ function renderPage(initialEntry = "/compare", canDraft = true) {
 test("creates one persisted comparison batch for two unique Agents", async () => {
   vi.spyOn(crypto, "randomUUID").mockReturnValue("00000000-0000-4000-8000-000000000101");
   const fetchMock = vi.fn().mockImplementation((input: string, init?: RequestInit) => {
-    if (input === "/api/v1/workspace/agents") return Promise.resolve(response(agents));
+    if (input === "/api/v1/workspace/agent-options") return Promise.resolve(response(agents));
     if (input === "/api/v1/workspace/comparisons" && !init?.method) return Promise.resolve(response({ items: [] }));
     if (input === "/api/v1/workspace/comparisons" && init?.method === "POST") return Promise.resolve(response(comparison("queued"), 202));
     if (input === "/api/v1/workspace/comparisons/comparison-1") return Promise.resolve(response(comparison("queued")));
@@ -164,7 +168,7 @@ test("creates one persisted comparison batch for two unique Agents", async () =>
 
 test("preselects a query Agent only when its version is available", async () => {
   vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => {
-    if (input === "/api/v1/workspace/agents") return Promise.resolve(response(agents));
+    if (input === "/api/v1/workspace/agent-options") return Promise.resolve(response(agents));
     if (input === "/api/v1/workspace/comparisons") return Promise.resolve(response({ items: [] }));
     throw new Error(`Unexpected request: ${input}`);
   }));
@@ -172,6 +176,8 @@ test("preselects a query Agent only when its version is available", async () => 
   renderPage("/compare?agentVersion=version-2");
 
   expect(await screen.findByLabelText("已选择 Agent")).toHaveTextContent("Beta Agent");
+  expect(screen.getByLabelText("已选择 Agent")).toHaveTextContent("私人 API");
+  expect(screen.getByLabelText("已选择 Agent")).toHaveTextContent("deepseek-chat");
   expect(screen.getByLabelText("已选择 Agent")).not.toHaveTextContent("Alpha Agent");
   expect(screen.getByRole("button", { name: "选择对比 Agent" })).toHaveTextContent("已选择 1 个 Agent");
 });
@@ -222,7 +228,7 @@ test("polls mixed results without hiding success and saves the successful answer
 test("polls history while a background comparison is active", async () => {
   let historyCalls = 0;
   vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => {
-    if (input === "/api/v1/workspace/agents") return Promise.resolve(response(agents));
+    if (input === "/api/v1/workspace/agent-options") return Promise.resolve(response(agents));
     if (input === "/api/v1/workspace/comparisons") {
       historyCalls += 1;
       return Promise.resolve(response({ items: [comparison(historyCalls === 1 ? "queued" : "completed")] }));
@@ -251,6 +257,30 @@ test("hides existing evaluation-case links from users without drafting permissio
   expect(await screen.findByText("Alpha 的完整回答")).toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "查看评测草稿" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "保存为评测草稿" })).not.toBeInTheDocument();
+});
+
+test("shows private comparison identity and hides draft and formal-score links", async () => {
+  const completed = comparison("completed");
+  completed.items[0].agent = {
+    ...completed.items[0].agent,
+    visibility: "private",
+    model: "qwen-max"
+  };
+  completed.items[0].evaluation_case_id = "case-private";
+  vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => {
+    if (input === "/api/v1/workspace/comparisons") return Promise.resolve(response({ items: [completed] }));
+    if (input === "/api/v1/workspace/comparisons/comparison-1") return Promise.resolve(response(completed));
+    throw new Error(`Unexpected request: ${input}`);
+  }));
+
+  renderPage("/compare/comparison-1", true);
+
+  expect(await screen.findByText("Alpha 的完整回答")).toBeInTheDocument();
+  expect(screen.getAllByText("私人 API").length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/qwen-max/).length).toBeGreaterThan(0);
+  expect(screen.queryByRole("link", { name: "查看评测草稿" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "保存为评测草稿" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "对比正式成绩" })).not.toBeInTheDocument();
 });
 
 test("applies a late draft response to its origin after switching comparisons", async () => {
@@ -321,7 +351,7 @@ test("applies a late cancel response to its origin after switching comparisons",
 
 test("renders an explicit comparison history error", async () => {
   vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => {
-    if (input === "/api/v1/workspace/agents") return Promise.resolve(response(agents));
+    if (input === "/api/v1/workspace/agent-options") return Promise.resolve(response(agents));
     if (input === "/api/v1/workspace/comparisons") {
       return Promise.resolve(response({ detail: { message: "对比服务不可用" } }, 503));
     }

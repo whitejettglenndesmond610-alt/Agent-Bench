@@ -94,6 +94,7 @@ test("shows real evaluation readiness and prioritized operator navigation", asyn
   expect(within(navigation).getByRole("link", { name: "在线对话" })).toBeInTheDocument();
   expect(within(navigation).getByRole("link", { name: "首页" })).toBeInTheDocument();
   expect(within(navigation).getByRole("link", { name: "Agent 广场" })).toBeInTheDocument();
+  expect(within(navigation).getByRole("link", { name: "我的 API" })).toBeInTheDocument();
   expect(within(navigation).getByRole("link", { name: "评测实验" })).toBeInTheDocument();
   expect(within(navigation).getByRole("link", { name: "评测运行" })).toBeInTheDocument();
   expect(within(navigation).getByRole("link", { name: "案例策展" })).toBeInTheDocument();
@@ -182,6 +183,7 @@ test("uses the named account login endpoint in personal account mode", async () 
   ));
   expect(await screen.findByText("测试用户")).toBeInTheDocument();
   expect(screen.getByText(/个人账号/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "我的 API" })).toBeInTheDocument();
 });
 
 test("lets an entitled named read-only user open workspace without operator navigation", async () => {
@@ -196,7 +198,7 @@ test("lets an entitled named read-only user open workspace without operator navi
         workspace_enabled: true
       }));
     }
-    if (input === "/api/v1/workspace/agents") return Promise.resolve(response([]));
+    if (input === "/api/v1/workspace/agent-options") return Promise.resolve(response([]));
     if (input === "/api/v1/workspace/conversations") return Promise.resolve(response({ items: [] }));
     throw new Error(`Unexpected request: ${input}`);
   }));
@@ -205,6 +207,7 @@ test("lets an entitled named read-only user open workspace without operator navi
 
   expect(await screen.findByText("当前账号没有可用的 Agent 版本。")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "在线对话" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "我的 API" })).toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "评测总览" })).not.toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "Agent 中心" })).not.toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "评测运行" })).not.toBeInTheDocument();
@@ -238,6 +241,40 @@ test("keeps operator routes guarded and sends entitled users to their product ho
   expect(screen.queryByText("评测任务控制")).not.toBeInTheDocument();
 });
 
+test.each([
+  {
+    label: "ordinary workspace user",
+    session: { role: "read_only", user_id: "user-private", display_name: "个人用户", is_shared: false }
+  },
+  {
+    label: "shared workspace user",
+    session: { role: "read_only", user_id: "shared-private", display_name: "共享用户", is_shared: true }
+  },
+  {
+    label: "workspace operator",
+    session: { role: "operator", user_id: "operator-private", display_name: "运营用户", is_shared: false }
+  }
+])("exposes the My API route and navigation to $label", async ({ session }) => {
+  vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => {
+    if (input === "/api/v1/auth/session") {
+      return Promise.resolve(response({
+        ...session,
+        expires_at: "2026-07-20T08:00:00Z",
+        workspace_enabled: true
+      }));
+    }
+    if (input === "/api/v1/workspace/private-agents") return Promise.resolve(response({ items: [] }));
+    throw new Error(`Unexpected request: ${input}`);
+  }));
+
+  renderApp("/my-api");
+
+  expect(await screen.findByRole("heading", { name: "我的 API" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "我的 API" })).toHaveAttribute("href", "/my-api");
+  expect(screen.getByText("PRIVATE API")).toBeInTheDocument();
+  if (session.is_shared) expect(screen.getByText("共享会话风险")).toBeInTheDocument();
+});
+
 test("clears user-scoped workspace cache across logout and account switch", async () => {
   let activeUser = "user-one";
   let resolveUserTwoHistory: ((value: ReturnType<typeof response>) => void) | undefined;
@@ -266,7 +303,9 @@ test("clears user-scoped workspace cache across logout and account switch", asyn
       agent_version_id: "version-1",
       name: "Atlas",
       provider: "Atlas",
-      version: 1
+      version: 1,
+      visibility: "public",
+      model: null
     }
   });
   const fetchMock = vi.fn().mockImplementation((input: string) => {
@@ -278,7 +317,7 @@ test("clears user-scoped workspace cache across logout and account switch", asyn
       activeUser = "user-two";
       return Promise.resolve(response(sessionFor("user-two", "User Two")));
     }
-    if (input === "/api/v1/workspace/agents") return Promise.resolve(response([]));
+    if (input === "/api/v1/workspace/agent-options") return Promise.resolve(response([]));
     if (input === "/api/v1/workspace/conversations") {
       return activeUser === "user-one"
         ? Promise.resolve(response({ items: [conversationFor("conversation-one", "User One Secret")] }))

@@ -118,8 +118,8 @@ function AgentDetail({
 }) {
   const focus = agent.metrics[focusMetric];
   return (
-    <div className="leaderboard-drawer-backdrop" role="presentation" onMouseDown={onClose}>
-      <aside className="leaderboard-drawer" aria-label={`${agent.agent_name} 评测详情`} onMouseDown={(event) => event.stopPropagation()}>
+    <div className="leaderboard-drawer-backdrop" role="presentation">
+      <aside className="leaderboard-drawer" aria-label={`${agent.agent_name} 评测详情`}>
         <header>
           <div><p className="eyebrow">AGENT EVALUATION</p><h2>{agent.agent_name}</h2><span>{agent.provider}{agent.version === null ? "" : ` · V${agent.version}`}</span></div>
           <button type="button" aria-label="关闭详情" onClick={onClose}>×</button>

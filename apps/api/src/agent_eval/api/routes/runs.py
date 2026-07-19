@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.sql.elements import ColumnElement
 
 from agent_eval.api.dependencies import DatabaseSession, OperatorCsrfSession, OperatorSession
 from agent_eval.api.schemas.runs import (
@@ -35,6 +36,7 @@ from agent_eval.db.enums import (
     RunScope,
 )
 from agent_eval.db.models import (
+    Agent,
     AgentVersion,
     DatasetVersion,
     EvaluationRun,
@@ -67,6 +69,27 @@ from agent_eval.runs.profiles import (
 from agent_eval.runs.service import PreparedRun, RunConfigurationError, prepare_evaluation_run
 
 router = APIRouter(prefix="/api/v1", tags=["evaluation-runs"])
+
+
+def public_run_filter() -> ColumnElement[bool]:
+    return ~EvaluationRun.run_agents.any(
+        RunAgent.agent_version.has(
+            AgentVersion.agent.has(Agent.owner_user_id.is_not(None))
+        )
+    )
+
+
+async def require_public_run(database: DatabaseSession, run_id: UUID) -> None:
+    if await database.scalar(
+        select(EvaluationRun.id).where(
+            EvaluationRun.id == run_id,
+            public_run_filter(),
+        )
+    ) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "run_not_found", "message": "评测任务不存在"},
+        )
 
 
 def state_response(run: EvaluationRun) -> EvaluationRunStateResponse:
@@ -196,13 +219,14 @@ async def get_evaluation_run_options(
         await database.scalars(
             select(AgentVersion)
             .options(joinedload(AgentVersion.agent))
-            .join(AgentVersion.agent)
+            .join(Agent, Agent.id == AgentVersion.agent_id)
             .where(
                 AgentVersion.enabled.is_(True),
                 AgentVersion.lifecycle_status.in_(
                     [AgentVersionLifecycle.ACTIVE, AgentVersionLifecycle.VERIFIED]
                 ),
-                AgentVersion.agent.has(status=AgentStatus.ENABLED),
+                Agent.status == AgentStatus.ENABLED,
+                Agent.owner_user_id.is_(None),
             )
             .order_by(AgentVersion.agent_id, AgentVersion.version.desc())
         )
@@ -376,6 +400,7 @@ async def list_evaluation_runs(
         await database.scalars(
             select(EvaluationRun)
             .options(selectinload(EvaluationRun.run_agents))
+            .where(public_run_filter())
             .order_by(EvaluationRun.created_at.desc(), EvaluationRun.id.desc())
         )
     )
@@ -500,7 +525,12 @@ async def get_evaluation_run(
     database: DatabaseSession,
     _authorization: OperatorSession,
 ) -> EvaluationRunStateResponse:
-    run = await database.get(EvaluationRun, run_id)
+    run = await database.scalar(
+        select(EvaluationRun).where(
+            EvaluationRun.id == run_id,
+            public_run_filter(),
+        )
+    )
     if run is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -522,7 +552,7 @@ async def get_evaluation_run_progress(
             .joinedload(RunAgent.agent_version)
             .joinedload(AgentVersion.agent)
         )
-        .where(EvaluationRun.id == run_id)
+        .where(EvaluationRun.id == run_id, public_run_filter())
     )
     if run is None:
         raise HTTPException(
@@ -619,6 +649,7 @@ async def get_evaluation_run_evidence(
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> EvaluationRunEvidenceList:
     response.headers["Cache-Control"] = "private, no-store"
+    await require_public_run(database, run_id)
     if min_score is not None and max_score is not None and min_score > max_score:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -660,6 +691,7 @@ async def get_evaluation_run_evidence_item(
     _authorization: OperatorSession,
 ) -> RunEvidenceDetail:
     response.headers["Cache-Control"] = "private, no-store"
+    await require_public_run(database, run_id)
     try:
         return await get_run_evidence_detail(
             database,
@@ -680,6 +712,7 @@ async def cancel_evaluation_run(
     database: DatabaseSession,
     _authorization: OperatorCsrfSession,
 ) -> EvaluationRunStateResponse:
+    await require_public_run(database, run_id)
     try:
         run = await request_run_cancellation(database, run_id)
         await database.commit()
@@ -705,6 +738,7 @@ async def retry_evaluation_run_scoring(
     database: DatabaseSession,
     _authorization: OperatorCsrfSession,
 ) -> EvaluationRunStateResponse:
+    await require_public_run(database, run_id)
     try:
         run = await retry_failed_answer_scoring(database, run_id)
         await database.commit()

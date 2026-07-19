@@ -82,7 +82,9 @@ def detail_response(agent: Agent) -> AgentDetailResponse:
 
 async def get_agent_or_404(database: DatabaseSession, agent_id: UUID) -> Agent:
     agent = await database.scalar(
-        select(Agent).options(selectinload(Agent.versions)).where(Agent.id == agent_id)
+        select(Agent)
+        .options(selectinload(Agent.versions))
+        .where(Agent.id == agent_id, Agent.owner_user_id.is_(None))
     )
     if agent is None:
         raise HTTPException(
@@ -93,7 +95,11 @@ async def get_agent_or_404(database: DatabaseSession, agent_id: UUID) -> Agent:
 
 
 async def get_version_or_404(database: DatabaseSession, version_id: UUID) -> AgentVersion:
-    version = await database.get(AgentVersion, version_id)
+    version = await database.scalar(
+        select(AgentVersion)
+        .join(Agent, Agent.id == AgentVersion.agent_id)
+        .where(AgentVersion.id == version_id, Agent.owner_user_id.is_(None))
+    )
     if version is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -173,7 +179,11 @@ async def list_agents(
     database: DatabaseSession,
     _authorization: OperatorSession,
 ) -> list[Agent]:
-    result = await database.scalars(select(Agent).order_by(Agent.created_at.desc()))
+    result = await database.scalars(
+        select(Agent)
+        .where(Agent.owner_user_id.is_(None))
+        .order_by(Agent.created_at.desc())
+    )
     return list(result)
 
 

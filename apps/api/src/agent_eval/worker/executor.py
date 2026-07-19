@@ -160,6 +160,8 @@ async def load_run_work(
     work: list[AgentWork] = []
     for run_agent in run_agents:
         version = run_agent.agent_version
+        if version.agent.owner_user_id is not None:
+            raise RuntimeError("formal evaluation run contains a private Agent")
         items = [
             WorkItem(
                 id=item.id,
@@ -176,7 +178,7 @@ async def load_run_work(
                 run_agent_id=run_agent.id,
                 agent_id=version.agent_id,
                 version_id=version.id,
-                config=inference_config_for_version(version, token_cipher),
+                config=inference_config_for_version(version, token_cipher, None),
                 concurrency=version.concurrency,
                 items=items,
             )

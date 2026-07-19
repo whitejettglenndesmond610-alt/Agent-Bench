@@ -18,6 +18,20 @@ class AgentVersionLifecycle(StrEnum):
     RETIRED = "retired"
 
 
+class PrivateAgentPreset(StrEnum):
+    DASHSCOPE = "dashscope"
+    DEEPSEEK = "deepseek"
+    OPENAI = "openai"
+
+
+class PrivateAgentHealth(StrEnum):
+    NOT_APPLICABLE = "not_applicable"
+    UNTESTED = "untested"
+    HEALTHY = "healthy"
+    UNHEALTHY = "unhealthy"
+    REVOKED = "revoked"
+
+
 class PreflightStatus(StrEnum):
     NOT_RUN = "not_run"
     RUNNING = "running"

@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
+from sqlalchemy.sql import Select
 
 from agent_eval.api.dependencies import CurrentSession, DatabaseSession
 from agent_eval.api.schemas.leaderboards import (
@@ -16,7 +17,7 @@ from agent_eval.api.schemas.leaderboards import (
     LeaderboardSnapshotResponse,
 )
 from agent_eval.db.enums import ResultValidityStatus, RunScope, RunStatus
-from agent_eval.db.models import EvaluationRun, LeaderboardSnapshot, RunAgent
+from agent_eval.db.models import Agent, AgentVersion, EvaluationRun, LeaderboardSnapshot, RunAgent
 from agent_eval.leaderboards.service import (
     get_agent_leaderboard_detail,
     get_global_leaderboard,
@@ -25,6 +26,27 @@ from agent_eval.leaderboards.service import (
 from agent_eval.runs.profiles import UNIFIED_V3_PROFILE_KEY
 
 router = APIRouter(prefix="/api/v1/leaderboards", tags=["leaderboards"])
+
+
+def valid_public_run_ids() -> Select[tuple[UUID]]:
+    return (
+        select(RunAgent.run_id)
+        .join(AgentVersion, AgentVersion.id == RunAgent.agent_version_id)
+        .join(Agent, Agent.id == AgentVersion.agent_id)
+        .where(
+            RunAgent.validity_status == ResultValidityStatus.VALID,
+            Agent.owner_user_id.is_(None),
+        )
+    )
+
+
+def private_run_ids() -> Select[tuple[UUID]]:
+    return (
+        select(RunAgent.run_id)
+        .join(AgentVersion, AgentVersion.id == RunAgent.agent_version_id)
+        .join(Agent, Agent.id == AgentVersion.agent_id)
+        .where(Agent.owner_user_id.is_not(None))
+    )
 
 
 def snapshot_response(
@@ -68,10 +90,9 @@ async def load_snapshot(database: DatabaseSession, snapshot_id: UUID) -> Leaderb
             EvaluationRun.status == RunStatus.PUBLISHED,
             EvaluationRun.ranking_eligible.is_(True),
             LeaderboardSnapshot.run_id.in_(
-                select(RunAgent.run_id).where(
-                    RunAgent.validity_status == ResultValidityStatus.VALID
-                )
+                valid_public_run_ids()
             ),
+            LeaderboardSnapshot.run_id.not_in(private_run_ids()),
         )
     )
     if snapshot is None:
@@ -99,11 +120,8 @@ async def get_current_leaderboard(
         .where(EvaluationRun.run_scope == RunScope.COMPREHENSIVE)
         .where(EvaluationRun.status == RunStatus.PUBLISHED)
         .where(
-            LeaderboardSnapshot.run_id.in_(
-                select(RunAgent.run_id).where(
-                    RunAgent.validity_status == ResultValidityStatus.VALID
-                )
-            )
+            LeaderboardSnapshot.run_id.in_(valid_public_run_ids()),
+            LeaderboardSnapshot.run_id.not_in(private_run_ids()),
         )
     )
     if snapshot is None:
@@ -130,10 +148,9 @@ async def get_leaderboard_history(
                 EvaluationRun.status == RunStatus.PUBLISHED,
                 EvaluationRun.ranking_eligible.is_(True),
                 LeaderboardSnapshot.run_id.in_(
-                    select(RunAgent.run_id).where(
-                        RunAgent.validity_status == ResultValidityStatus.VALID
-                    )
+                    valid_public_run_ids()
                 ),
+                LeaderboardSnapshot.run_id.not_in(private_run_ids()),
             )
             .order_by(LeaderboardSnapshot.published_at.desc(), LeaderboardSnapshot.id.desc())
         )

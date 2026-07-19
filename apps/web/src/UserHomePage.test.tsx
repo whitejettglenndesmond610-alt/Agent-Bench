@@ -62,7 +62,22 @@ test("aggregates personal activity, favorites, templates, tasks, and official le
       version: 3,
       max_prompt_characters: 10000,
       supports_citations: true,
-      is_favorite: true
+      is_favorite: true,
+      visibility: "public",
+      model: null
+    }, {
+      agent_id: "private-a",
+      agent_version_id: "private-version-a",
+      name: "Private Favorite",
+      provider: "Private Provider",
+      description: "不应出现在首页收藏",
+      logo_url: null,
+      version: 1,
+      max_prompt_characters: null,
+      supports_citations: false,
+      is_favorite: true,
+      visibility: "private",
+      model: "private-model"
     }]));
     if (input === "/api/v1/workspace/prompt-templates") return Promise.resolve(response({ items: [{
       id: "template-1",
@@ -107,6 +122,7 @@ test("aggregates personal activity, favorites, templates, tasks, and official le
   expect(screen.getByRole("link", { name: "用于对话" })).toHaveAttribute("href", "/workspace?template=template-1");
   expect(screen.getByRole("link", { name: "开始体验" })).toHaveAttribute("href", "/compare?task=source-check");
   expect(screen.getByText("93.25")).toBeInTheDocument();
+  expect(screen.queryByText("Private Favorite")).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "取消收藏 Agent Alpha" }));
   await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(

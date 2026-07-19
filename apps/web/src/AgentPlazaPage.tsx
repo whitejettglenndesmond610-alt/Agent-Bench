@@ -65,7 +65,7 @@ export function AgentPlazaPage({ userId }: { userId: string }) {
     queryFn: fetchGlobalLeaderboardOverview
   });
 
-  const agents = agentsQuery.data ?? [];
+  const agents = (agentsQuery.data ?? []).filter((agent) => agent.visibility !== "private");
   const overviewById = new Map((overviewQuery.data?.agents ?? []).map((agent) => [agent.agent_id, agent]));
   const providers = [...new Set(agents.map((agent) => agent.provider))].sort((left, right) => left.localeCompare(right, "zh-CN"));
   const query = search.trim().toLocaleLowerCase();
@@ -164,7 +164,7 @@ export function AgentPlazaDetailPage({ userId }: { userId: string }) {
   if (detailQuery.error || !detailQuery.data) return <main className="workspace"><div className="table-state is-error" role="alert">{detailQuery.error?.message ?? "Agent 不存在或不可用"}</div></main>;
 
   const detail = detailQuery.data;
-  const active = agentsQuery.data?.find((agent) => agent.agent_id === detail.agent_id);
+  const active = agentsQuery.data?.find((agent) => agent.visibility !== "private" && agent.agent_id === detail.agent_id);
   const quality = detail.metrics.overall.score !== null
     ? detail.metrics.overall
     : leaderboardMetrics.map((metric) => detail.metrics[metric.key]).find((metric) => metric.score !== null);

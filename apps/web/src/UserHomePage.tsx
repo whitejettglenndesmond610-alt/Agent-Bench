@@ -57,7 +57,7 @@ export function UserHomePage({ session }: { session: SessionInfo }) {
       type: "对比"
     }))
   ].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt)).slice(0, 5);
-  const favorites = (agentsQuery.data ?? []).filter((agent) => agent.is_favorite).slice(0, 4);
+  const favorites = (agentsQuery.data ?? []).filter((agent) => agent.visibility !== "private" && agent.is_favorite).slice(0, 4);
   const templates = (templatesQuery.data?.items ?? []).slice(0, 3);
   const tasks = (tasksQuery.data ?? []).slice(0, 3);
   const leaders = (leaderboardQuery.data?.agents ?? [])

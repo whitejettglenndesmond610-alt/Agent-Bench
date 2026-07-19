@@ -22,6 +22,8 @@ class WorkspaceAgentResponse(BaseModel):
     max_prompt_characters: int | None
     supports_citations: bool
     is_favorite: bool
+    visibility: Literal["public", "private"]
+    model: str | None
 
 
 class WorkspaceConversationCreate(BaseModel):
@@ -78,6 +80,8 @@ class WorkspaceConversationAgent(BaseModel):
     name: str
     provider: str
     version: int
+    visibility: Literal["public", "private"]
+    model: str | None
 
 
 class WorkspaceConversationList(BaseModel):

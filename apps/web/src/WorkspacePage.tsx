@@ -19,7 +19,7 @@ import {
   createWorkspaceConversation,
   EvaluationCaseList,
   fetchEvaluationCases,
-  fetchWorkspaceAgents,
+  fetchWorkspaceAgentOptions,
   fetchWorkspaceConversation,
   fetchWorkspaceConversations,
   fetchWorkspaceExperienceTask,
@@ -48,7 +48,6 @@ import {
 } from "./userProduct";
 
 const activeStatuses = new Set(["queued", "running"]);
-const workspaceAgentsKey = (userId: string) => ["workspace", userId, "agents"] as const;
 const workspaceConversationsKey = (userId: string) => ["workspace", userId, "conversations"] as const;
 const workspaceConversationKey = (userId: string, conversationId: string) =>
   ["workspace", userId, "conversation", conversationId] as const;
@@ -492,7 +491,7 @@ function ConversationRail({
           <>
             <Link to={`/workspace/${conversation.id}`} onClick={onClose}>
               <strong>{conversation.title || "未命名会话"}</strong>
-              <span>{conversation.agent.name} · V{conversation.agent.version}</span>
+              <span>{conversation.agent.name} · {conversation.agent.visibility === "private" ? "私人 API · " : ""}{conversation.agent.model ? `${conversation.agent.model} · ` : ""}V{conversation.agent.version}</span>
               <time dateTime={conversation.updated_at}>{formatTime(conversation.updated_at)}</time>
             </Link>
             <div className="rail-item-actions">
@@ -517,6 +516,7 @@ function ConversationRail({
       <header>
         <div><span>CONVERSATION INDEX</span><strong>会话档案</strong></div>
         <button type="button" className="new-conversation-button" onClick={onNew}>+ 新对话</button>
+        <button type="button" className="conversation-rail-close" aria-label="关闭会话列表" onClick={onClose}>×</button>
       </header>
       <div className="rail-scroll">
         {loading && <p className="rail-state">正在读取会话记录</p>}
@@ -567,8 +567,8 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
   const prefillHandledRef = useRef("");
 
   const catalogQuery = useQuery({
-    queryKey: workspaceAgentsKey(userId),
-    queryFn: fetchWorkspaceAgents
+    queryKey: userQueryKeys.agentOptions(userId),
+    queryFn: fetchWorkspaceAgentOptions
   });
   const conversationsQuery = useQuery({
     queryKey: workspaceConversationsKey(userId),
@@ -667,17 +667,6 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
     textarea.style.height = "0px";
     textarea.style.height = `${Math.min(textarea.scrollHeight, 190)}px`;
   }, [draft]);
-
-  useEffect(() => {
-    if (!drawerOpen) return;
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      setDrawerOpen(false);
-      setTimeout(() => drawerToggleRef.current?.focus(), 0);
-    }
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [drawerOpen]);
 
   useEffect(() => {
     if (!conversationQuery.data || (!pinnedToBottomRef.current && !forceScrollRef.current)) return;
@@ -1056,12 +1045,10 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
 
   return (
     <main className="agent-workspace-page">
-      <button
+      <div
         className="conversation-drawer-backdrop"
-        type="button"
-        aria-label="关闭会话列表"
+        aria-hidden="true"
         hidden={!drawerOpen}
-        onClick={() => closeDrawer(true)}
       />
       <aside
         ref={drawerRef}
@@ -1116,7 +1103,7 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
             <span>AGENT CHANNEL</span>
             {conversation ? (
               <div className="instrument-agent-pinned">
-                <strong>{conversation.agent.name} <i>V{conversation.agent.version}</i></strong>
+                <strong>{conversation.agent.name} {conversation.agent.visibility === "private" && <b className="private-api-badge">私人 API</b>} <i>V{conversation.agent.version}</i>{conversation.agent.model && <small>{conversation.agent.model}</small>}</strong>
                 {migrationTarget && (
                   <button
                     type="button"
@@ -1171,11 +1158,12 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
                   <span>{selectedAgent.name.slice(0, 2).toUpperCase()}</span>
                   <div>
                     <small>SELECTED CHANNEL</small>
-                    <strong>{selectedAgent.name}</strong>
+                    <strong>{selectedAgent.name}{selectedAgent.visibility === "private" && <b className="private-api-badge">私人 API</b>}</strong>
                     <p>{selectedAgent.description || `${selectedAgent.provider} 提供的 Agent 服务`}</p>
                   </div>
                   <dl>
                     <div><dt>VERSION</dt><dd>V{selectedAgent.version}</dd></div>
+                    {selectedAgent.model && <div><dt>MODEL</dt><dd>{selectedAgent.model}</dd></div>}
                     <div><dt>CITATIONS</dt><dd>{selectedAgent.supports_citations ? "YES" : "NO"}</dd></div>
                   </dl>
                   <button
@@ -1196,7 +1184,7 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
             <section className="workspace-conversation-empty">
               <span>LEDGER EMPTY / REV {String(conversation.revision).padStart(3, "0")}</span>
               <h2>会话已建立，等待第一条消息。</h2>
-              <p>Agent 版本已锁定为 {conversation.agent.name} V{conversation.agent.version}。</p>
+              <p>Agent 版本已锁定为 {conversation.agent.name}{conversation.agent.visibility === "private" ? " · 私人 API" : ""}{conversation.agent.model ? ` · ${conversation.agent.model}` : ""} V{conversation.agent.version}。</p>
             </section>
           )}
           {conversation?.turns.map((turn, index) => (
@@ -1207,7 +1195,7 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
               latestTurn={index === conversation.turns.length - 1}
                selectedVariant={variantSelection[turn.turn_no]}
                busy={conversationMutationPending}
-               canDraft={canDraft}
+               canDraft={canDraft && conversation.agent.visibility !== "private"}
                evaluationCaseIdsByAttempt={evaluationCaseIdsByAttempt}
                evaluationCasesReady={evaluationCasesQuery.isSuccess}
                draftingAttemptId={createDraftMutation.isPending ? createDraftMutation.variables?.attemptId : undefined}

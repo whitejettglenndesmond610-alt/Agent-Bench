@@ -28,7 +28,9 @@ const agents = [{
   version: 3,
   max_prompt_characters: 10000,
   supports_citations: true,
-  is_favorite: false
+  is_favorite: false,
+  visibility: "public",
+  model: null
 }, {
   agent_id: "agent-b",
   agent_version_id: "version-b",
@@ -39,7 +41,22 @@ const agents = [{
   version: 2,
   max_prompt_characters: null,
   supports_citations: false,
-  is_favorite: true
+  is_favorite: true,
+  visibility: "public",
+  model: null
+}, {
+  agent_id: "private-a",
+  agent_version_id: "private-version-a",
+  name: "Private Alpha",
+  provider: "Private Provider",
+  description: "不应出现在广场",
+  logo_url: null,
+  version: 1,
+  max_prompt_characters: null,
+  supports_citations: false,
+  is_favorite: true,
+  visibility: "private",
+  model: "private-model"
 }];
 
 function overviewMetric(score: number | null = null, rank: number | null = null) {
@@ -76,6 +93,7 @@ test("filters the plaza and persists an Agent favorite", async () => {
   expect(await screen.findByRole("heading", { name: "Agent 广场" })).toBeInTheDocument();
   expect(await screen.findByText("Agent Alpha")).toBeInTheDocument();
   expect(screen.getByText("Agent Beta")).toBeInTheDocument();
+  expect(screen.queryByText("Private Alpha")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("checkbox", { name: "支持引用" }));
   expect(screen.getByText("Agent Alpha")).toBeInTheDocument();
   expect(screen.queryByText("Agent Beta")).not.toBeInTheDocument();

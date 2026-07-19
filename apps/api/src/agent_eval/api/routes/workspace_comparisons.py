@@ -117,6 +117,10 @@ async def comparison_response(
                     name=version.agent.name,
                     provider=version.agent.provider,
                     version=version.version,
+                    visibility=(
+                        "private" if version.agent.owner_user_id is not None else "public"
+                    ),
+                    model=version.private_model,
                 ),
                 attempt=attempt_response(attempt),
                 evaluation_case_id=(
@@ -206,7 +210,7 @@ async def create_comparison_locked(
 
     versions: list[AgentVersion] = []
     for version_id in payload.agent_version_ids:
-        version = await available_version(database, version_id)
+        version = await available_version(database, version_id, owner_user_id)
         if version is None:
             raise workspace_error(
                 409, "agent_version_unavailable", "An Agent version is unavailable"

@@ -110,6 +110,12 @@ async def source_attempt(
         raise workspace_error(
             409, "attempt_not_succeeded", "Only a successful answer can become a draft"
         )
+    if attempt.agent_version.agent.owner_user_id is not None:
+        raise workspace_error(
+            409,
+            "private_agent_not_allowed",
+            "Private Agent answers cannot become evaluation cases",
+        )
     return attempt
 
 

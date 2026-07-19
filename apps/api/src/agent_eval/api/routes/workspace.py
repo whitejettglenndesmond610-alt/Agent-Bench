@@ -7,7 +7,7 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, status
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
@@ -39,6 +39,7 @@ from agent_eval.db.base import utc_now
 from agent_eval.db.enums import (
     AgentStatus,
     AgentVersionLifecycle,
+    PrivateAgentHealth,
     WorkspaceAttemptStatus,
     WorkspaceMessageRole,
 )
@@ -110,6 +111,8 @@ def conversation_response(conversation: WorkspaceConversation) -> WorkspaceConve
             name=agent.name,
             provider=agent.provider,
             version=version.version,
+            visibility="private" if agent.owner_user_id is not None else "public",
+            model=version.private_model,
         ),
     )
 
@@ -201,7 +204,7 @@ async def owned_conversation(
 
 
 async def available_version(
-    database: DatabaseSession, version_id: UUID
+    database: DatabaseSession, version_id: UUID, owner_user_id: UUID
 ) -> AgentVersion | None:
     version = await database.scalar(
         select(AgentVersion)
@@ -212,6 +215,13 @@ async def available_version(
             AgentVersion.enabled.is_(True),
             AgentVersion.lifecycle_status == AgentVersionLifecycle.ACTIVE,
             Agent.status == AgentStatus.ENABLED,
+            or_(
+                Agent.owner_user_id.is_(None),
+                and_(
+                    Agent.owner_user_id == owner_user_id,
+                    AgentVersion.private_health_status == PrivateAgentHealth.HEALTHY,
+                ),
+            ),
         )
     )
     return version
@@ -322,6 +332,7 @@ async def list_workspace_agents(
             )
             .where(
                 Agent.status == AgentStatus.ENABLED,
+                Agent.owner_user_id.is_(None),
                 AgentVersion.enabled.is_(True),
                 AgentVersion.lifecycle_status == AgentVersionLifecycle.ACTIVE,
             )
@@ -341,6 +352,63 @@ async def list_workspace_agents(
             max_prompt_characters=version.max_prompt_characters,
             supports_citations=version.citations_jsonpath is not None,
             is_favorite=favorite_owner_user_id is not None,
+            visibility="public",
+            model=None,
+        )
+        for agent, version, favorite_owner_user_id in rows
+    ]
+
+
+@router.get("/agent-options", response_model=list[WorkspaceAgentResponse])
+async def list_workspace_agent_options(
+    response: Response,
+    database: DatabaseSession,
+    auth_session: WorkspaceSession,
+) -> list[WorkspaceAgentResponse]:
+    owner_user_id = workspace_user_id(auth_session)
+    rows = list(
+        await database.execute(
+            select(Agent, AgentVersion, WorkspaceAgentFavorite.owner_user_id)
+            .join(AgentVersion, AgentVersion.agent_id == Agent.id)
+            .outerjoin(
+                WorkspaceAgentFavorite,
+                and_(
+                    WorkspaceAgentFavorite.agent_id == Agent.id,
+                    WorkspaceAgentFavorite.owner_user_id == owner_user_id,
+                ),
+            )
+            .where(
+                Agent.status == AgentStatus.ENABLED,
+                AgentVersion.enabled.is_(True),
+                AgentVersion.lifecycle_status == AgentVersionLifecycle.ACTIVE,
+                or_(
+                    Agent.owner_user_id.is_(None),
+                    and_(
+                        Agent.owner_user_id == owner_user_id,
+                        AgentVersion.private_health_status == PrivateAgentHealth.HEALTHY,
+                    ),
+                ),
+            )
+            .order_by(Agent.name, Agent.id, AgentVersion.version.desc())
+        )
+    )
+    response.headers["Cache-Control"] = "private, no-store"
+    return [
+        WorkspaceAgentResponse(
+            agent_id=agent.id,
+            agent_version_id=version.id,
+            name=agent.name,
+            provider=agent.provider,
+            description=agent.description,
+            logo_url=agent.logo_url,
+            version=version.version,
+            max_prompt_characters=version.max_prompt_characters,
+            supports_citations=version.citations_jsonpath is not None,
+            is_favorite=(
+                favorite_owner_user_id is not None and agent.owner_user_id is None
+            ),
+            visibility="private" if agent.owner_user_id is not None else "public",
+            model=version.private_model,
         )
         for agent, version, favorite_owner_user_id in rows
     ]
@@ -356,11 +424,12 @@ async def create_conversation(
     database: DatabaseSession,
     auth_session: WorkspaceCsrf,
 ) -> WorkspaceConversationResponse:
-    version = await available_version(database, payload.agent_version_id)
+    owner_user_id = workspace_user_id(auth_session)
+    version = await available_version(database, payload.agent_version_id, owner_user_id)
     if version is None:
         raise workspace_error(409, "agent_version_unavailable", "Agent version is unavailable")
     conversation = WorkspaceConversation(
-        owner_user_id=workspace_user_id(auth_session),
+        owner_user_id=owner_user_id,
         pinned_agent_version_id=payload.agent_version_id,
         pinned_agent_version=version,
         title=payload.title,
@@ -373,6 +442,7 @@ async def create_conversation(
 
 @router.get("/conversations", response_model=WorkspaceConversationList)
 async def list_conversations(
+    response: Response,
     database: DatabaseSession,
     auth_session: WorkspaceSession,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
@@ -397,6 +467,7 @@ async def list_conversations(
             ).limit(limit)
         )
     )
+    response.headers["Cache-Control"] = "private, no-store"
     return WorkspaceConversationList(
         items=[conversation_response(item) for item in conversations]
     )
@@ -494,7 +565,9 @@ async def patch_conversation(
                 raise workspace_error(
                     409, "attempt_in_progress", "A generation is already active"
                 )
-            version = await available_version(database, payload.agent_version_id)
+            version = await available_version(
+                database, payload.agent_version_id, owner_user_id
+            )
             if version is None:
                 raise workspace_error(
                     409, "agent_version_unavailable", "Agent version is unavailable"
@@ -627,7 +700,9 @@ async def send_message_locked(
         )
         if previous_answer is None:
             raise workspace_error(409, "previous_turn_incomplete", "Previous turn is incomplete")
-    version = await available_version(database, conversation.pinned_agent_version_id)
+    version = await available_version(
+        database, conversation.pinned_agent_version_id, owner_user_id
+    )
     if version is None:
         raise workspace_error(409, "agent_version_unavailable", "Agent version is unavailable")
     turn_no = conversation.last_turn_no + 1
@@ -910,7 +985,9 @@ async def regenerate_message_locked(
         )
     ):
         raise workspace_error(409, "attempt_in_progress", "A generation is already active")
-    version = await available_version(database, conversation.pinned_agent_version_id)
+    version = await available_version(
+        database, conversation.pinned_agent_version_id, owner_user_id
+    )
     if version is None:
         raise workspace_error(409, "agent_version_unavailable", "Agent version is unavailable")
     generation_no = int(

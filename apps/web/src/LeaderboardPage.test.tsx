@@ -134,8 +134,14 @@ test("opens the detail drawer and builds a global multi-agent comparison", async
 
   await screen.findByRole("heading", { name: "Agent 排行榜" });
   fireEvent.click(screen.getByRole("button", { name: /Agent Alpha/ }));
-  expect(screen.getByLabelText("Agent Alpha 评测详情")).toBeInTheDocument();
+  const detail = screen.getByLabelText("Agent Alpha 评测详情");
+  expect(detail).toBeInTheDocument();
   expect(screen.getByText("RESULT SOURCE")).toBeInTheDocument();
+  const backdrop = detail.parentElement!;
+  fireEvent.mouseDown(backdrop);
+  fireEvent.click(backdrop);
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(screen.getByLabelText("Agent Alpha 评测详情")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "关闭详情" }));
 
   fireEvent.click(screen.getByRole("checkbox", { name: "选择 Agent Alpha" }));

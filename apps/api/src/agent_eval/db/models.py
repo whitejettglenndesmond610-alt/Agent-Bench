@@ -43,6 +43,8 @@ from agent_eval.db.enums import (
     Language,
     NotificationType,
     PreflightStatus,
+    PrivateAgentHealth,
+    PrivateAgentPreset,
     QuestionType,
     ResultValidityStatus,
     RunAgentStatus,
@@ -69,8 +71,29 @@ def enum_column(enum_class: type[StrEnum], *, name: str) -> Enum:
 
 class Agent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "agents"
+    __table_args__ = (
+        Index(
+            "uq_agents_private_owner_name",
+            "owner_user_id",
+            "name",
+            unique=True,
+            sqlite_where=text("owner_user_id IS NOT NULL AND status != 'disabled'"),
+            postgresql_where=text("owner_user_id IS NOT NULL AND status != 'disabled'"),
+        ),
+        Index(
+            "uq_agents_public_name",
+            "name",
+            unique=True,
+            sqlite_where=text("owner_user_id IS NULL"),
+            postgresql_where=text("owner_user_id IS NULL"),
+        ),
+        Index("ix_agents_owner_created", "owner_user_id", "created_at"),
+    )
 
-    name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    owner_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("auth_users.id", ondelete="RESTRICT")
+    )
     provider: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     logo_url: Mapped[str | None] = mapped_column(Text)
@@ -82,6 +105,7 @@ class Agent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     versions: Mapped[list["AgentVersion"]] = relationship(back_populates="agent")
+    owner: Mapped["AuthUser | None"] = relationship(back_populates="private_agents")
     workspace_favorites: Mapped[list["WorkspaceAgentFavorite"]] = relationship(
         back_populates="agent", passive_deletes=True
     )
@@ -94,6 +118,56 @@ class AgentVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint("version > 0", name="version_positive"),
         CheckConstraint("timeout_seconds BETWEEN 1 AND 600", name="timeout_range"),
         CheckConstraint("concurrency BETWEEN 1 AND 20", name="concurrency_range"),
+        CheckConstraint(
+            "private_health_latency_ms IS NULL OR private_health_latency_ms >= 0",
+            name="private_health_latency_nonnegative",
+        ),
+        CheckConstraint(
+            "private_model IS NULL OR length(private_model) BETWEEN 1 AND 200",
+            name="private_model_length",
+        ),
+        CheckConstraint(
+            "private_health_error_code IS NULL OR "
+            "length(private_health_error_code) BETWEEN 1 AND 80",
+            name="private_health_error_code_length",
+        ),
+        CheckConstraint(
+            "(private_preset IS NULL AND private_model IS NULL "
+            "AND private_health_status = 'not_applicable' "
+            "AND private_health_checked_at IS NULL "
+            "AND private_health_error_code IS NULL "
+            "AND private_health_latency_ms IS NULL) OR "
+            "(private_preset IS NOT NULL AND private_model IS NOT NULL "
+            "AND private_health_status != 'not_applicable' "
+            "AND auth_type = 'bearer' AND citations_jsonpath IS NULL "
+            "AND timeout_seconds = 120 AND concurrency = 1)",
+            name="private_config_valid",
+        ),
+        CheckConstraint(
+            "private_health_status != 'untested' OR "
+            "(private_health_checked_at IS NULL AND private_health_error_code IS NULL "
+            "AND private_health_latency_ms IS NULL)",
+            name="private_untested_metadata_empty",
+        ),
+        CheckConstraint(
+            "private_health_status != 'healthy' OR "
+            "(private_health_checked_at IS NOT NULL "
+            "AND private_health_error_code IS NULL "
+            "AND private_health_latency_ms IS NOT NULL)",
+            name="private_healthy_metadata_valid",
+        ),
+        CheckConstraint(
+            "private_health_status != 'unhealthy' OR "
+            "(private_health_checked_at IS NOT NULL "
+            "AND private_health_error_code IS NOT NULL "
+            "AND private_health_latency_ms IS NOT NULL)",
+            name="private_unhealthy_metadata_valid",
+        ),
+        CheckConstraint(
+            "private_preset IS NULL OR private_health_status = 'revoked' "
+            "OR encrypted_token IS NOT NULL",
+            name="private_token_present",
+        ),
     )
 
     agent_id: Mapped[UUID] = mapped_column(
@@ -111,6 +185,22 @@ class AgentVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=120, nullable=False)
     concurrency: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
     max_prompt_characters: Mapped[int | None] = mapped_column(Integer)
+    private_preset: Mapped[PrivateAgentPreset | None] = mapped_column(
+        enum_column(PrivateAgentPreset, name="private_agent_preset")
+    )
+    private_model: Mapped[str | None] = mapped_column(String(200))
+    private_health_status: Mapped[PrivateAgentHealth] = mapped_column(
+        enum_column(PrivateAgentHealth, name="private_agent_health"),
+        default=PrivateAgentHealth.NOT_APPLICABLE,
+        server_default=text("'not_applicable'"),
+        nullable=False,
+        index=True,
+    )
+    private_health_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    private_health_error_code: Mapped[str | None] = mapped_column(String(80))
+    private_health_latency_ms: Mapped[int | None] = mapped_column(Integer)
     lifecycle_status: Mapped[AgentVersionLifecycle] = mapped_column(
         Enum(
             AgentVersionLifecycle,
@@ -819,6 +909,7 @@ class AuthUser(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
     sessions: Mapped[list[Session]] = relationship(back_populates="user")
+    private_agents: Mapped[list[Agent]] = relationship(back_populates="owner")
     conversations: Mapped[list["WorkspaceConversation"]] = relationship(back_populates="owner")
     comparisons: Mapped[list["WorkspaceComparison"]] = relationship(back_populates="owner")
     evaluation_cases: Mapped[list["EvaluationCase"]] = relationship(

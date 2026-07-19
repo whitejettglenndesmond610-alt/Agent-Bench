@@ -154,6 +154,7 @@ async def demo_preflight(
             .join(Agent, Agent.id == AgentVersion.agent_id)
             .where(
                 Agent.status == AgentStatus.ENABLED,
+                Agent.owner_user_id.is_(None),
                 AgentVersion.enabled.is_(True),
                 AgentVersion.lifecycle_status == AgentVersionLifecycle.ACTIVE,
             )

@@ -263,6 +263,8 @@ export interface WorkspaceAgent {
   max_prompt_characters: number | null;
   supports_citations: boolean;
   is_favorite?: boolean;
+  visibility: "public" | "private";
+  model: string | null;
 }
 
 export interface WorkspaceConversationAgent {
@@ -271,6 +273,8 @@ export interface WorkspaceConversationAgent {
   name: string;
   provider: string;
   version: number;
+  visibility: "public" | "private";
+  model: string | null;
 }
 
 export interface WorkspaceConversation {
@@ -399,6 +403,91 @@ export interface WorkspaceComparisonList {
 
 export function fetchWorkspaceAgents(): Promise<WorkspaceAgent[]> {
   return requestJson<WorkspaceAgent[]>("/api/v1/workspace/agents");
+}
+
+export function fetchWorkspaceAgentOptions(): Promise<WorkspaceAgent[]> {
+  return requestJson<WorkspaceAgent[]>("/api/v1/workspace/agent-options");
+}
+
+export type PrivateAgentPreset = "dashscope" | "deepseek" | "openai";
+export type PrivateAgentHealthStatus = "untested" | "healthy" | "unhealthy" | "revoked";
+
+export interface PrivateAgent {
+  agent_id: string;
+  agent_version_id: string;
+  active_agent_version_id: string | null;
+  active_provider: string | null;
+  active_model: string | null;
+  name: string;
+  description: string | null;
+  preset: PrivateAgentPreset;
+  provider: string;
+  model: string;
+  version: number;
+  health_status: PrivateAgentHealthStatus;
+  health_checked_at: string | null;
+  health_latency_ms: number | null;
+  health_error_code: string | null;
+  workspace_available: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PrivateAgentList {
+  items: PrivateAgent[];
+}
+
+export interface PrivateAgentCreateInput {
+  name: string;
+  description?: string;
+  preset: PrivateAgentPreset;
+  model: string;
+  api_key: string;
+}
+
+export interface PrivateAgentUpdateInput {
+  expected_version: number;
+  name?: string;
+  description?: string;
+  preset?: PrivateAgentPreset;
+  model?: string;
+  api_key?: string;
+}
+
+export interface PrivateAgentTestResponse extends PrivateAgent {
+  success: boolean;
+  status_code: number | null;
+  latency_ms: number | null;
+  error_code: string | null;
+}
+
+export function fetchPrivateAgents(): Promise<PrivateAgentList> {
+  return requestJson<PrivateAgentList>("/api/v1/workspace/private-agents");
+}
+
+export function createPrivateAgent(input: PrivateAgentCreateInput): Promise<PrivateAgent> {
+  return jsonMutation<PrivateAgent>("/api/v1/workspace/private-agents", "POST", input);
+}
+
+export function updatePrivateAgent(
+  agentId: string,
+  input: PrivateAgentUpdateInput
+): Promise<PrivateAgent> {
+  return jsonMutation<PrivateAgent>(`/api/v1/workspace/private-agents/${agentId}`, "PATCH", input);
+}
+
+export function testPrivateAgent(agentId: string): Promise<PrivateAgentTestResponse> {
+  return jsonMutation<PrivateAgentTestResponse>(
+    `/api/v1/workspace/private-agents/${agentId}/test`,
+    "POST",
+    {}
+  );
+}
+
+export function deletePrivateAgent(agentId: string, expectedVersion: number): Promise<void> {
+  return voidMutation(`/api/v1/workspace/private-agents/${agentId}`, "DELETE", {
+    expected_version: expectedVersion
+  });
 }
 
 export function setWorkspaceAgentFavorite(agentId: string, favorite: boolean): Promise<void> {

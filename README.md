@@ -13,6 +13,8 @@ Agent Evaluation Platform 是一个面向第三方智能体（Agent）API 的内
 - **多 Agent 接入**：支持配置第三方 HTTP API、认证方式、请求模板、答案 JSONPath 和引用 JSONPath。
 - **异步评测任务**：API 负责创建任务，Worker 独立执行推理、评分、引用抓取和排行榜发布。
 - **Agent 在线运行**：普通用户可通过已接入的 Agent API 创建持久化多轮会话、重新生成回答，并让 2–5 个 Agent 对同一原始 Prompt 并行作答。
+- **用户自带 API**：用户可通过阿里百炼、DeepSeek 或 OpenAI 固定预设加密保存自己的 API Key；常见展示名称会规范化为官方 model ID，测试健康后仅供本人对话和实时对比。
+- **私人 Agent 生命周期**：私人配置按用户隔离并限制为每人最多 10 个；401、402、403 会自动停用版本并阻止后续请求，更换 Key 或恢复额度后可通过显式连接测试重新启用。
 - **用户产品闭环**：提供用户首页、Agent 广场、公开能力趋势、个人记录、榜单历史与六类非排名体验任务。
 - **个人效率工具**：支持 Agent 收藏、Prompt 模板、回答点赞/点踩、回答收藏、私人笔记以及对话和对比结果导出。
 - **同协议评测实验**：可将多个 Agent 的独立运行固化为一个实验，统一查看聚合进度、能力成绩、名次和运行质量。
@@ -23,6 +25,7 @@ Agent Evaluation Platform 是一个面向第三方智能体（Agent）API 的内
 - **完整运行记录**：保存单题状态、失败类型、HTTP Attempt、Token 用量、P50/P95 延迟和评分明细。
 - **可扩展部署**：支持 PostgreSQL 多 Worker 调度、分布式请求资源槽以及本地或 S3/MinIO Artifact 存储。
 - **生产运维能力**：包含数据库迁移、自动备份、Artifact 归档、恢复演练和运行状态监控。
+- **防误触交互**：Modal、Agent 目录和详情抽屉不会因点击遮罩或按 `Escape` 意外关闭，只响应叉号、取消/完成等弹层内显式操作或页面切换。
 
 ### 评测体系
 
@@ -52,6 +55,8 @@ Agent Evaluation Platform 是一个面向第三方智能体（Agent）API 的内
 ### 数据与安全
 
 - Agent Token 使用独立加密密钥加密后存储，不以明文写入数据库。
+- 私人 API Key 使用绑定用户与版本的 AES-GCM 认证加密，接口不回显 Key、Endpoint、请求模板或提供方原始响应；用户不能填写任意 Endpoint。
+- 私人 Agent 不进入公共广场、收藏、评测案例、正式运行、评测实验或排行榜，路由与 Worker 会分别执行所有者校验。
 - 共享登录和具名用户均保留 `read_only`/`operator` 角色；具名用户密码仅保存 Argon2 哈希。
 - Agent 响应、Judge 响应和引用内容以不可变 Artifact 保存，并校验大小与 SHA-256。
 - 排行榜只接收通过有效性检查且协议一致的正式评测结果。
@@ -88,9 +93,54 @@ Docker Compose 部署、PostgreSQL/MinIO 切换、备份与恢复流程请继续
 > **重要提示**：不要提交 `.env`、真实数据集、数据库、Artifact、备份、登录凭据、Agent Token
 > 或第三方 API Key。公开部署时必须使用 HTTPS，并且不要将 PostgreSQL 或 MinIO 端口暴露到公网。
 
+当前发布基线：后端 `251 passed, 3 skipped`，前端 `89 passed`；Ruff、mypy、ESLint、
+TypeScript 和 Vite 生产构建均通过。
+
 ## English Documentation
 
-Internal platform for evaluating and ranking third-party Agent APIs.
+Internal platform for reproducible evaluation, live comparison, evidence inspection, and ranking of
+third-party Agent APIs.
+
+## Key Capabilities
+
+- **Agent integration:** Operator-managed HTTP endpoints, authentication, request templates, answer
+  JSONPath mappings, citation mappings, immutable versions, connection tests, and preflight gates.
+- **Asynchronous evaluation:** Independent API and Worker processes execute inference, judging,
+  citation retrieval, result validation, and leaderboard publication.
+- **User workspace:** Persistent multi-turn conversations, regeneration, 2-5 Agent live comparisons,
+  personal records, exports, favorites, prompt templates, feedback, bookmarks, and private notes.
+- **Bring Your Own Key:** Users can add private DashScope, DeepSeek, or OpenAI credentials through
+  server-controlled presets. Common display names are normalized to provider model IDs before use.
+- **Evaluation evidence:** Per-question answers, reference answers, judge explanations, HTTP attempts,
+  token usage, citation checks, latency samples, and immutable artifacts remain inspectable.
+- **Unified and specialist boards:** `unified-v3` publishes comprehensive and ability-specific views
+  for reasoning, retrieval, data reasoning, instruction following, and long context.
+- **Production operations:** PostgreSQL multi-worker scheduling, distributed resource leases,
+  S3/MinIO artifacts, verified backup sets, restore rehearsal, and operational monitoring.
+
+## Private BYOK Agents
+
+Private Agent credentials use owner- and version-bound AES-GCM authenticated encryption. API
+responses never return the key, endpoint, request template, authorization header, or raw provider
+test response. Arbitrary user-supplied endpoints are intentionally unsupported to avoid SSRF.
+
+A private configuration starts disabled and must pass an explicit connection test before it appears
+in chat or live comparison pickers. HTTP 401, 402, or 403 responses automatically mark it unhealthy,
+disable further use, cancel queued work, and signal running work to stop. Users can replace a key or
+model and test the new immutable candidate while an older healthy version remains available. Each
+user may keep up to 10 active private Agent configurations.
+
+Private Agents are owner-scoped and excluded from the public plaza, favorites, curated evaluation
+cases, formal runs, evaluation experiments, published snapshots, and leaderboards. Both API routes
+and Workers enforce ownership before decrypting a private credential or making a provider request.
+
+## Interaction Safety
+
+Modal dialogs, the Agent directory, leaderboard detail drawers, and the mobile conversation drawer
+do not close on backdrop clicks or `Escape`. They close only through explicit in-surface controls
+such as close, cancel, or complete actions, or when route navigation unmounts the surface. The Agent
+directory is rendered through a document-level portal so workspace overflow cannot clip its header,
+filters, or internal scrolling region.
 
 ## Prerequisites
 
@@ -298,6 +348,9 @@ are used as a fallback. Ordinary answer text is never treated as a citation.
 
 ## Verification
 
+Current release baseline: backend `251 passed, 3 skipped`; frontend `89 passed`. Ruff, mypy, ESLint,
+TypeScript, and the Vite production build pass.
+
 ```bash
 uv run ruff check .
 uv run mypy
@@ -314,7 +367,8 @@ docker compose -f deploy/compose.yaml up --build
 ```
 
 An optional private MinIO overlay is available for S3-compatible deployments. It is not part of the
-default or current production stack and publishes no MinIO ports:
+base development stack; the current local-real production composition enables it without publishing
+MinIO ports:
 
 ```bash
 cp .env.minio.example .env.minio

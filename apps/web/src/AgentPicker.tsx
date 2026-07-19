@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { WorkspaceAgent } from "./api";
 
@@ -27,12 +28,13 @@ function uniqueRecentAgents(agents: WorkspaceAgent[], recentVersionIds: string[]
 }
 
 function AgentIdentity({ agent }: { agent: WorkspaceAgent }) {
+  const privateAgent = agent.visibility === "private";
   return (
     <span className="agent-picker-identity">
       <i>{agent.name.slice(0, 2).toUpperCase()}</i>
       <span>
-        <strong>{agent.name}</strong>
-        <small>{agent.provider} · V{agent.version} · {agent.supports_citations ? "CITE" : "TEXT"}</small>
+        <strong>{agent.name}{privateAgent && <b className="private-api-badge">私人 API</b>}</strong>
+        <small>{[agent.provider, agent.model, `V${agent.version}`, agent.supports_citations ? "CITE" : "TEXT"].filter(Boolean).join(" · ")}</small>
       </span>
     </span>
   );
@@ -63,14 +65,20 @@ export function AgentPicker({
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const filtered = agents.filter((agent) => {
     const matchesProvider = provider === "all" || agent.provider === provider;
-    const haystack = `${agent.name} ${agent.provider} ${agent.description ?? ""}`.toLocaleLowerCase();
+    const haystack = `${agent.name} ${agent.provider} ${agent.model ?? ""} ${agent.description ?? ""}`.toLocaleLowerCase();
     return matchesProvider && (!normalizedQuery || haystack.includes(normalizedQuery));
   });
-  const recent = uniqueRecentAgents(filtered, recentVersionIds);
+  const privateAgents = filtered.filter((agent) => agent.visibility === "private");
+  const recent = uniqueRecentAgents(
+    filtered.filter((agent) => agent.visibility !== "private"),
+    recentVersionIds
+  );
   const recentIds = new Set(recent.map((agent) => agent.agent_version_id));
   const groups = providers.flatMap((providerName) => {
     const items = filtered.filter(
-      (agent) => agent.provider === providerName && !recentIds.has(agent.agent_version_id)
+      (agent) => agent.visibility !== "private"
+        && agent.provider === providerName
+        && !recentIds.has(agent.agent_version_id)
     );
     return items.length ? [{ provider: providerName, items }] : [];
   });
@@ -78,11 +86,7 @@ export function AgentPicker({
   useEffect(() => {
     if (!open) return;
     searchRef.current?.focus();
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        closePicker();
-        return;
-      }
+    function trapFocus(event: KeyboardEvent) {
       if (event.key !== "Tab") return;
       const focusable = [...(dialogRef.current?.querySelectorAll<HTMLElement>(
         "button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex='-1'])"
@@ -98,8 +102,17 @@ export function AgentPicker({
         first.focus();
       }
     }
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
+    window.addEventListener("keydown", trapFocus);
+    return () => window.removeEventListener("keydown", trapFocus);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
   }, [open]);
 
   function closePicker() {
@@ -127,7 +140,7 @@ export function AgentPicker({
   function option(agent: WorkspaceAgent) {
     const checked = selectedVersionIds.includes(agent.agent_version_id);
     const optionDisabled = !checked && selectedVersionIds.length >= maxSelected;
-    const accessibleName = `${agent.name}，${agent.provider}，版本 ${agent.version}`;
+    const accessibleName = `${agent.name}，${agent.provider}${agent.model ? `，模型 ${agent.model}` : ""}，版本 ${agent.version}${agent.visibility === "private" ? "，私人 API" : ""}`;
     if (mode === "single") {
       return (
         <button
@@ -174,6 +187,8 @@ export function AgentPicker({
           {selected.map((agent) => (
             <span key={agent.agent_version_id}>
               {agent.name}
+              {agent.visibility === "private" && <b className="private-api-badge">私人 API</b>}
+              {agent.model && <small>{agent.model}</small>}
               <button type="button" aria-label={`移除 ${agent.name}`} onClick={() => remove(agent.agent_version_id)}>×</button>
             </span>
           ))}
@@ -189,20 +204,19 @@ export function AgentPicker({
         disabled={disabled || loading || agents.length === 0}
         onClick={() => setOpen(true)}
       >
-        <span>{triggerCopy}</span>
-         <small>{mode === "multiple" ? `${selected.length} / ${maxSelected}` : selected[0]?.provider ?? "AGENT DIRECTORY"}</small>
+        <span>{triggerCopy}{mode === "single" && selected[0]?.visibility === "private" && <b className="private-api-badge">私人 API</b>}</span>
+         <small>{mode === "multiple" ? `${selected.length} / ${maxSelected}` : [selected[0]?.model, selected[0]?.provider].filter(Boolean).join(" · ") || "AGENT DIRECTORY"}</small>
         <b>⌄</b>
       </button>
       {error && <small className="agent-picker-error">{error}</small>}
-      {open && (
-        <div className="agent-picker-layer" role="presentation" onMouseDown={closePicker}>
+      {open && createPortal(
+        <div className="agent-picker-layer" role="presentation">
           <section
             ref={dialogRef}
             className="agent-picker-dialog"
             role="dialog"
             aria-modal="true"
-           aria-label="Agent 目录"
-            onMouseDown={(event) => event.stopPropagation()}
+            aria-label="Agent 目录"
           >
             <header>
                <div><span>AGENT DIRECTORY</span><strong>{label}</strong></div>
@@ -216,7 +230,7 @@ export function AgentPicker({
                   type="search"
                   value={query}
                    aria-label="搜索 Agent"
-                   placeholder="搜索 Agent、提供方或描述"
+                   placeholder="搜索 Agent、提供方、模型或描述"
                   onChange={(event) => setQuery(event.target.value)}
                 />
               </label>
@@ -233,6 +247,12 @@ export function AgentPicker({
               role={mode === "single" ? "listbox" : "group"}
               aria-label={mode === "multiple" ? "可选 Agent" : undefined}
             >
+              {privateAgents.length > 0 && (
+                <section>
+                  <h3><span>我的 API</span><small>{privateAgents.length} PRIVATE</small></h3>
+                  <div>{privateAgents.map(option)}</div>
+                </section>
+              )}
               {recent.length > 0 && (
                 <section>
                   <h3><span>最近使用</span><small>SERVER HISTORY</small></h3>
@@ -252,7 +272,8 @@ export function AgentPicker({
               {mode === "multiple" && <button type="button" onClick={closePicker}>完成选择（{selected.length} / {maxSelected}）</button>}
             </footer>
           </section>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -30,7 +30,9 @@ const agent = {
   logo_url: null,
   version: 3,
   max_prompt_characters: 4000,
-  supports_citations: true
+  supports_citations: true,
+  visibility: "public" as const,
+  model: null
 };
 
 const conversation = {
@@ -47,7 +49,9 @@ const conversation = {
     agent_version_id: agent.agent_version_id,
     name: agent.name,
     provider: agent.provider,
-    version: agent.version
+    version: agent.version,
+    visibility: "public" as const,
+    model: null
   }
 };
 
@@ -128,7 +132,7 @@ function renderWorkspace(initialEntry = "/workspace", canDraft = true) {
 }
 
 function baseFetch(input: string) {
-  if (input === "/api/v1/workspace/agents") return Promise.resolve(response([agent]));
+  if (input === "/api/v1/workspace/agent-options") return Promise.resolve(response([agent]));
   if (input === "/api/v1/workspace/conversations") return Promise.resolve(response({ items: [conversation] }));
   if (input === "/api/v1/evaluation-cases") return Promise.resolve(response({ items: [] }));
   throw new Error(`Unexpected request: ${input}`);
@@ -137,7 +141,7 @@ function baseFetch(input: string) {
 test("loads the catalog and history and creates a persisted empty conversation", async () => {
   document.cookie = "agent_eval_csrf=csrf-token; path=/";
   const fetchMock = vi.fn().mockImplementation((input: string, init?: RequestInit) => {
-    if (input === "/api/v1/workspace/agents") return Promise.resolve(response([agent]));
+    if (input === "/api/v1/workspace/agent-options") return Promise.resolve(response([agent]));
     if (input === "/api/v1/workspace/conversations" && !init?.method) {
       return Promise.resolve(response({ items: [conversation] }));
     }
@@ -173,10 +177,12 @@ test("preselects only an available Agent version from the query parameter", asyn
     name: "Beta Agent",
     provider: "Beta",
     description: "Query selected Agent",
-    version: 5
+    version: 5,
+    visibility: "private" as const,
+    model: "deepseek-chat"
   };
   vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => {
-    if (input === "/api/v1/workspace/agents") return Promise.resolve(response([agent, betaAgent]));
+    if (input === "/api/v1/workspace/agent-options") return Promise.resolve(response([agent, betaAgent]));
     if (input === "/api/v1/workspace/conversations") return Promise.resolve(response({ items: [] }));
     throw new Error(`Unexpected request: ${input}`);
   }));
@@ -185,12 +191,14 @@ test("preselects only an available Agent version from the query parameter", asyn
 
   expect(await screen.findByText("Query selected Agent")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "选择 Agent" })).toHaveTextContent("Beta Agent");
+  expect(screen.getByRole("button", { name: "选择 Agent" })).toHaveTextContent("私人 API");
+  expect(screen.getByRole("button", { name: "选择 Agent" })).toHaveTextContent("deepseek-chat");
   expect(screen.queryByText("带引用的研究助手")).not.toBeInTheDocument();
 });
 
 test("ignores an unavailable Agent version query and preserves the default selection", async () => {
   vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => {
-    if (input === "/api/v1/workspace/agents") return Promise.resolve(response([agent]));
+    if (input === "/api/v1/workspace/agent-options") return Promise.resolve(response([agent]));
     if (input === "/api/v1/workspace/conversations") return Promise.resolve(response({ items: [] }));
     throw new Error(`Unexpected request: ${input}`);
   }));
@@ -206,7 +214,7 @@ test("uses Enter to lazily create and send once while Shift+Enter remains a newl
   vi.spyOn(crypto, "randomUUID").mockReturnValue("00000000-0000-4000-8000-000000000001");
   let created = false;
   const fetchMock = vi.fn().mockImplementation((input: string, init?: RequestInit) => {
-    if (input === "/api/v1/workspace/agents") return Promise.resolve(response([agent]));
+    if (input === "/api/v1/workspace/agent-options") return Promise.resolve(response([agent]));
     if (input === "/api/v1/workspace/conversations" && !init?.method) {
       return Promise.resolve(response({ items: [] }));
     }
@@ -253,7 +261,7 @@ test("never creates or sends while a routed conversation detail is pending or mi
   });
   const fetchMock = vi.fn().mockImplementation((input: string, init?: RequestInit) => {
     if (input === "/api/v1/workspace/conversations/conversation-missing") return detailPromise;
-    if (input === "/api/v1/workspace/agents") return Promise.resolve(response([agent]));
+    if (input === "/api/v1/workspace/agent-options") return Promise.resolve(response([agent]));
     if (input === "/api/v1/workspace/conversations" && !init?.method) {
       return Promise.resolve(response({ items: [] }));
     }
@@ -566,7 +574,7 @@ test("does not clear or redirect a newly selected conversation when an old send 
     resolveSend = resolve;
   });
   const fetchMock = vi.fn().mockImplementation((input: string, init?: RequestInit) => {
-    if (input === "/api/v1/workspace/agents") return Promise.resolve(response([agent]));
+    if (input === "/api/v1/workspace/agent-options") return Promise.resolve(response([agent]));
     if (input === "/api/v1/workspace/conversations") {
       return Promise.resolve(response({ items: [conversation, secondConversation] }));
     }
@@ -610,7 +618,7 @@ test("offers migration when the pinned version is absent from the active catalog
     turns: []
   };
   const fetchMock = vi.fn().mockImplementation((input: string, init?: RequestInit) => {
-    if (input === "/api/v1/workspace/agents") return Promise.resolve(response([currentAgent]));
+    if (input === "/api/v1/workspace/agent-options") return Promise.resolve(response([currentAgent]));
     if (input === "/api/v1/workspace/conversations") return Promise.resolve(response({ items: [detail] }));
     if (input === "/api/v1/workspace/conversations/conversation-1" && !init?.method) {
       return Promise.resolve(response(detail));
@@ -650,7 +658,7 @@ test("renames and archives history with the latest expected revision", async () 
   let detail = { ...current, turns: [] as unknown[] };
   const patchBodies: Array<Record<string, unknown>> = [];
   const fetchMock = vi.fn().mockImplementation((input: string, init?: RequestInit) => {
-    if (input === "/api/v1/workspace/agents") return Promise.resolve(response([agent]));
+    if (input === "/api/v1/workspace/agent-options") return Promise.resolve(response([agent]));
     if (input === "/api/v1/workspace/conversations" && !init?.method) {
       return Promise.resolve(response({ items: [current] }));
     }
@@ -760,9 +768,42 @@ test("links an existing evaluation case for the selected successful attempt", as
   );
 });
 
+test("shows private conversation identity and hides all evaluation-draft actions", async () => {
+  const privateWorkspaceAgent = { ...agent, visibility: "private" as const, model: "qwen-max" };
+  const privateConversation = {
+    ...conversation,
+    agent: { ...conversation.agent, visibility: "private" as const, model: "qwen-max" }
+  };
+  const successfulTurn = {
+    turn_no: 1,
+    user_message: userMessage(1),
+    assistant_messages: [assistantMessage("answer-private", 1, "私人模型回答")],
+    attempts: [attempt("attempt-private", "succeeded", 1, "answer-private")]
+  };
+  vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => {
+    if (input === "/api/v1/workspace/agent-options") return Promise.resolve(response([privateWorkspaceAgent]));
+    if (input === "/api/v1/workspace/conversations") return Promise.resolve(response({ items: [privateConversation] }));
+    if (input === "/api/v1/workspace/conversations/conversation-1") {
+      return Promise.resolve(response({ ...privateConversation, last_turn_no: 1, turns: [successfulTurn] }));
+    }
+    if (input === "/api/v1/evaluation-cases") {
+      return Promise.resolve(response({ items: [{ id: "case-private", source: { attempt_id: "attempt-private" } }] }));
+    }
+    throw new Error(`Unexpected request: ${input}`);
+  }));
+
+  renderWorkspace("/workspace/conversation-1", true);
+
+  expect(await screen.findByText("私人模型回答")).toBeInTheDocument();
+  expect(screen.getAllByText("私人 API").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("qwen-max").length).toBeGreaterThan(0);
+  expect(screen.queryByRole("link", { name: "查看评测草稿" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "保存为评测草稿" })).not.toBeInTheDocument();
+});
+
 test("renders an explicit conversation history error", async () => {
   vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => {
-    if (input === "/api/v1/workspace/agents") return Promise.resolve(response([agent]));
+    if (input === "/api/v1/workspace/agent-options") return Promise.resolve(response([agent]));
     if (input === "/api/v1/evaluation-cases") return Promise.resolve(response({ items: [] }));
     if (input === "/api/v1/workspace/conversations") {
       return Promise.resolve(response({ detail: { message: "会话服务不可用" } }, 503));
@@ -796,7 +837,7 @@ test("keeps comparison available without showing draft controls to read-only use
   expect(screen.queryByRole("button", { name: "保存为评测草稿" })).not.toBeInTheDocument();
 });
 
-test("exposes accessible drawer controls and returns focus after Escape", async () => {
+test("keeps the mobile drawer open until its explicit close control is used", async () => {
   vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({
     matches: true,
     media: "(max-width: 900px)",
@@ -804,7 +845,7 @@ test("exposes accessible drawer controls and returns focus after Escape", async 
     removeEventListener: vi.fn()
   }));
   vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => {
-    if (input === "/api/v1/workspace/agents") return Promise.resolve(response([agent]));
+    if (input === "/api/v1/workspace/agent-options") return Promise.resolve(response([agent]));
     if (input === "/api/v1/workspace/conversations") return Promise.resolve(response({ items: [] }));
     throw new Error(`Unexpected request: ${input}`);
   }));
@@ -822,9 +863,16 @@ test("exposes accessible drawer controls and returns focus after Escape", async 
   expect(screen.getByRole("button", { name: "+ 新对话" })).toHaveFocus();
   expect(rail).not.toHaveAttribute("aria-hidden");
   expect(rail).not.toHaveAttribute("inert");
-  expect(screen.getByRole("button", { name: "关闭会话列表" })).not.toHaveAttribute("hidden");
+  const close = screen.getByRole("button", { name: "关闭会话列表" });
+  const backdrop = rendered.container.querySelector(".conversation-drawer-backdrop");
+  expect(backdrop).not.toHaveAttribute("hidden");
 
+  fireEvent.click(backdrop!);
   fireEvent.keyDown(window, { key: "Escape" });
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(rail).not.toHaveAttribute("aria-hidden");
+
+  fireEvent.click(close);
   await waitFor(() => expect(toggle).toHaveFocus());
   expect(toggle).toHaveAttribute("aria-expanded", "false");
   expect(rail).toHaveAttribute("aria-hidden", "true");

@@ -260,6 +260,8 @@ def validate_publishable(run_agents: list[RunAgent]) -> None:
     if not run_agents:
         raise RuntimeError("evaluation run has no agents")
     for run_agent in run_agents:
+        if run_agent.agent_version.agent.owner_user_id is not None:
+            raise RuntimeError("private Agent results cannot be published")
         items = run_agent.execution_items
         if run_agent.status != RunAgentStatus.COMPLETED:
             raise RuntimeError("run agent is not complete")

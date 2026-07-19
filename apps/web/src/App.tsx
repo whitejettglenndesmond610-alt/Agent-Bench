@@ -12,6 +12,7 @@ import { ExperimentsPage } from "./ExperimentsPage";
 import { LoginPage } from "./LoginPage";
 import { LeaderboardPage } from "./LeaderboardPage";
 import { LeaderboardHistoryPage, LeaderboardSnapshotPage } from "./LeaderboardHistoryPage";
+import { MyApiPage } from "./MyApiPage";
 import { NotFoundPage } from "./NotFoundPage";
 import { PromptTemplatesPage } from "./PromptTemplatesPage";
 import { RecordsPage } from "./RecordsPage";
@@ -36,7 +37,7 @@ const DatasetReleasesPage = lazy(() =>
   import("./DatasetReleasesPage").then((module) => ({ default: module.DatasetReleasesPage }))
 );
 
-type NavigationIconName = "overview" | "agents" | "runs" | "experiments" | "cases" | "datasets" | "workspace" | "leaderboard" | "home" | "plaza" | "compare" | "records" | "templates" | "experience";
+type NavigationIconName = "overview" | "agents" | "runs" | "experiments" | "cases" | "datasets" | "workspace" | "leaderboard" | "home" | "plaza" | "compare" | "records" | "templates" | "experience" | "api";
 
 function NavigationIcon({ name }: { name: NavigationIconName }) {
   return (
@@ -55,6 +56,7 @@ function NavigationIcon({ name }: { name: NavigationIconName }) {
       {name === "records" && <><path d="M5 3h14v18H5zM8 8h8M8 12h8M8 16h5" /></>}
       {name === "templates" && <><path d="M7 3h10l3 3v15H7z" /><path d="M7 6H4v15h3M10 10h7M10 14h7" /></>}
       {name === "experience" && <><path d="M9 3h6v5l5 9a2 2 0 0 1-2 3H6a2 2 0 0 1-2-3l5-9V3Z" /><path d="M7 15h10" /></>}
+      {name === "api" && <><path d="M8 12a4 4 0 1 1 3.6 4L9 19H6v2H3v-3l5-5.6V12Z" /><path d="M15 8h.01" /></>}
     </svg>
   );
 }
@@ -78,9 +80,10 @@ function AppNavigation({ session, onLogout, loggingOut }: { session: SessionInfo
         {operator && <span className="nav-section-label">数据与策展</span>}
         {operator && <NavLink to="/evaluation-cases"><NavigationIcon name="cases" /><span>案例策展</span></NavLink>}
         {operator && <NavLink to="/dataset-releases"><NavigationIcon name="datasets" /><span>数据集发布</span></NavLink>}
-        {operator && workspaceEnabled && <span className="nav-section-label">用户体验</span>}
+        {workspaceEnabled && <span className="nav-section-label">{operator ? "用户体验" : "用户工作区"}</span>}
         {workspaceEnabled && <NavLink to="/home"><NavigationIcon name="home" /><span>首页</span></NavLink>}
         {workspaceEnabled && <NavLink to="/plaza"><NavigationIcon name="plaza" /><span>Agent 广场</span></NavLink>}
+        {workspaceEnabled && <NavLink to="/my-api"><NavigationIcon name="api" /><span>我的 API</span></NavLink>}
         {workspaceEnabled && <NavLink to="/workspace"><NavigationIcon name="workspace" /><span>在线对话</span></NavLink>}
         {workspaceEnabled && <NavLink to="/compare"><NavigationIcon name="compare" /><span>多 Agent 对比</span></NavLink>}
         <NavLink to="/leaderboard"><NavigationIcon name="leaderboard" /><span>排行榜</span></NavLink>
@@ -108,6 +111,7 @@ const shellSections = [
   { prefix: "/workspace", label: "Agent 在线运行", code: "PLAYGROUND" },
   { prefix: "/home", label: "首页", code: "USER HOME" },
   { prefix: "/plaza", label: "Agent 广场", code: "AGENT PLAZA" },
+  { prefix: "/my-api", label: "我的 API", code: "PRIVATE API" },
   { prefix: "/compare", label: "多 Agent 对比", code: "LIVE COMPARE" },
   { prefix: "/records", label: "我的记录", code: "MY RECORDS" },
   { prefix: "/templates", label: "Prompt 模板", code: "PROMPT LIBRARY" },
@@ -181,6 +185,7 @@ function AuthenticatedApp({ session }: { session: SessionInfo }) {
         <Route path="/home" element={workspaceEnabled ? <UserHomePage session={session} /> : <Navigate to="/leaderboard" replace />} />
         <Route path="/plaza" element={workspaceEnabled ? <AgentPlazaPage userId={session.user_id} /> : <Navigate to="/leaderboard" replace />} />
         <Route path="/plaza/:agentId" element={workspaceEnabled ? <AgentPlazaDetailPage userId={session.user_id} /> : <Navigate to="/leaderboard" replace />} />
+        <Route path="/my-api" element={workspaceEnabled ? <MyApiPage userId={session.user_id} isShared={session.is_shared} /> : <Navigate to="/leaderboard" replace />} />
         <Route path="/records" element={workspaceEnabled ? <RecordsPage userId={session.user_id} /> : <Navigate to="/leaderboard" replace />} />
         <Route path="/templates" element={workspaceEnabled ? <PromptTemplatesPage userId={session.user_id} /> : <Navigate to="/leaderboard" replace />} />
         <Route path="/experience" element={workspaceEnabled ? <ExperiencePage userId={session.user_id} /> : <Navigate to="/leaderboard" replace />} />

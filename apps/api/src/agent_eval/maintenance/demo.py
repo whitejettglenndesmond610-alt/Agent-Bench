@@ -58,7 +58,11 @@ TERMINAL_RUN_STATUSES = {
 async def seed_fake_agents(session: AsyncSession) -> list[UUID]:
     version_ids: list[UUID] = []
     for config in FAKE_AGENTS:
-        agent = await session.scalar(select(Agent).where(Agent.name == config["name"]))
+        agent = await session.scalar(
+            select(Agent).where(
+                Agent.name == config["name"], Agent.owner_user_id.is_(None)
+            )
+        )
         if agent is None:
             agent = Agent(
                 name=config["name"],
@@ -120,7 +124,10 @@ async def queue_fake_run(
     )
     await session.execute(
         update(Agent)
-        .where(Agent.name.in_([config["name"] for config in FAKE_AGENTS]))
+        .where(
+            Agent.name.in_([config["name"] for config in FAKE_AGENTS]),
+            Agent.owner_user_id.is_(None),
+        )
         .values(status=AgentStatus.DISABLED)
     )
     return run_id
@@ -154,6 +161,7 @@ async def queue_agent_pair_run(
             .where(
                 Agent.name == agent_name,
                 Agent.status == AgentStatus.ENABLED,
+                Agent.owner_user_id.is_(None),
                 AgentVersion.enabled.is_(True),
                 AgentVersion.lifecycle_status == AgentVersionLifecycle.ACTIVE,
             )

@@ -9,7 +9,7 @@ import {
   createEvaluationCase,
   createWorkspaceComparison,
   EvaluationCaseList,
-  fetchWorkspaceAgents,
+  fetchWorkspaceAgentOptions,
   fetchWorkspaceComparison,
   fetchWorkspaceComparisons,
   fetchWorkspaceExperienceTasks,
@@ -32,7 +32,6 @@ import {
   userQueryKeys
 } from "./userProduct";
 
-const workspaceAgentsKey = (userId: string) => ["workspace", userId, "agents"] as const;
 const workspaceComparisonsKey = (userId: string) => ["workspace", userId, "comparisons"] as const;
 const workspaceComparisonKey = (userId: string, comparisonId: string) =>
   ["workspace", userId, "comparison", comparisonId] as const;
@@ -127,7 +126,7 @@ function MetricsMatrix({ items }: { items: WorkspaceComparisonItem[] }) {
         <thead>
           <tr>
             <th>METRIC</th>
-            {items.map((item) => <th key={item.position}>{item.agent.name}<small>V{item.agent.version}</small></th>)}
+            {items.map((item) => <th key={item.position}>{item.agent.name}{item.agent.visibility === "private" && <b className="private-api-badge">私人 API</b>}<small>{item.agent.model ? `${item.agent.model} · ` : ""}V{item.agent.version}</small></th>)}
           </tr>
         </thead>
         <tbody>
@@ -166,7 +165,7 @@ function AnswerCard({
     <article className={`comparison-answer is-${attempt.status}`}>
       <header>
         <span>{String(item.position).padStart(2, "0")}</span>
-        <div><strong>{item.agent.name}</strong><small>{item.agent.provider} / V{item.agent.version}</small></div>
+        <div><strong>{item.agent.name}{item.agent.visibility === "private" && <b className="private-api-badge">私人 API</b>}</strong><small>{item.agent.provider}{item.agent.model ? ` / ${item.agent.model}` : ""} / V{item.agent.version}</small></div>
         <b>{attemptLabels[attempt.status]}</b>
       </header>
       {attempt.status === "succeeded" && attempt.assistant_message ? (
@@ -191,7 +190,7 @@ function AnswerCard({
               {attempt.cancel_requested_at ? "停止中" : canceling ? "停止中" : "停止"}
             </button>
           )}
-          {canDraft && (item.evaluation_case_id ? (
+          {canDraft && item.agent.visibility !== "private" && (item.evaluation_case_id ? (
               <Link to={`/evaluation-cases/${item.evaluation_case_id}`}>查看评测草稿</Link>
             ) : attempt.status === "succeeded" ? (
               <button type="button" disabled={drafting} onClick={onDraft}>
@@ -224,8 +223,8 @@ export function WorkspaceComparePage({ userId, canDraft }: { userId: string; can
   const initialPromptAppliedRef = useRef(false);
 
   const agentsQuery = useQuery({
-    queryKey: workspaceAgentsKey(userId),
-    queryFn: fetchWorkspaceAgents,
+    queryKey: userQueryKeys.agentOptions(userId),
+    queryFn: fetchWorkspaceAgentOptions,
     enabled: !comparisonId
   });
   const historyQuery = useQuery({
@@ -536,7 +535,7 @@ export function WorkspaceComparePage({ userId, canDraft }: { userId: string; can
               <button type="button" disabled={rerunMutation.isPending} onClick={() => rerunMutation.mutate(comparison)}>{rerunMutation.isPending ? "创建中" : "再次运行"}</button>
               <button type="button" onClick={() => downloadMarkdown(comparison.title, comparisonMarkdown(comparison))}>导出 Markdown</button>
               <button type="button" onClick={() => downloadJson(comparison.title, comparison)}>导出 JSON</button>
-              {comparison.items.length >= 2 && comparison.items.length <= 5 && <Link to={`/leaderboard/compare?agents=${comparison.items.map((item) => item.agent.agent_id).join(",")}`}>对比正式成绩</Link>}
+              {comparison.items.length >= 2 && comparison.items.length <= 5 && comparison.items.every((item) => item.agent.visibility !== "private") && <Link to={`/leaderboard/compare?agents=${comparison.items.map((item) => item.agent.agent_id).join(",")}`}>对比正式成绩</Link>}
             </nav>
             <header className="comparison-detail-status">
               <div><span>STATUS</span><strong>{comparisonLabels[comparison.status]}</strong></div>

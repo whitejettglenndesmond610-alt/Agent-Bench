@@ -32,6 +32,7 @@ from agent_eval.auth.identity import legacy_subject_key
 from agent_eval.db.base import ensure_utc
 from agent_eval.db.enums import Ability, RunStatus
 from agent_eval.db.models import (
+    Agent,
     AgentVersion,
     EvaluationExperiment,
     EvaluationRun,
@@ -164,6 +165,12 @@ async def load_experiment(
         .options(*experiment_detail_options())
         .where(EvaluationExperiment.id == experiment_id)
     )
+    if experiment is not None and any(
+        run_agent.agent_version.agent.owner_user_id is not None
+        for run in experiment.runs
+        for run_agent in run.run_agents
+    ):
+        return None
     return experiment
 
 
@@ -363,6 +370,10 @@ async def create_evaluation_experiment(
                 raise RunConfigurationError(
                     "agent_version_not_found", "一个或多个 Agent 配置版本不存在"
                 )
+            if any(version.agent.owner_user_id is not None for version in versions):
+                raise RunConfigurationError(
+                    "private_agent_not_allowed", "私有 Agent 不能用于正式评测"
+                )
             if len({version.agent_id for version in versions}) != len(versions):
                 raise RunConfigurationError(
                     "duplicate_logical_agent", "同一实验只能选择同一 Agent 的一个配置版本"
@@ -454,6 +465,15 @@ async def list_evaluation_experiments(
         await database.scalars(
             select(EvaluationExperiment)
             .options(*experiment_summary_options())
+            .where(
+                ~EvaluationExperiment.runs.any(
+                    EvaluationRun.run_agents.any(
+                        RunAgent.agent_version.has(
+                            AgentVersion.agent.has(Agent.owner_user_id.is_not(None))
+                        )
+                    )
+                )
+            )
             .order_by(EvaluationExperiment.created_at.desc(), EvaluationExperiment.id.desc())
             .limit(limit)
         )

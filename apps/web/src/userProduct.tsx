@@ -14,6 +14,8 @@ import {
 
 export const userQueryKeys = {
   agents: (userId: string) => ["workspace", userId, "agents"] as const,
+  agentOptions: (userId: string) => ["workspace", userId, "agent-options"] as const,
+  privateAgents: (userId: string) => ["workspace", userId, "private-agents"] as const,
   conversations: (userId: string) => ["workspace", userId, "conversations"] as const,
   conversation: (userId: string, id: string) => ["workspace", userId, "conversation", id] as const,
   comparisons: (userId: string) => ["workspace", userId, "comparisons"] as const,

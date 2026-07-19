@@ -24,7 +24,7 @@ const conversation = {
   archived_at: null,
   created_at: "2026-07-18T08:00:00Z",
   updated_at: "2026-07-19T08:00:00Z",
-  agent: { agent_id: "agent-a", agent_version_id: "version-a", name: "Agent Alpha", provider: "Provider A", version: 3 }
+  agent: { agent_id: "agent-a", agent_version_id: "version-a", name: "Agent Alpha", provider: "Provider A", version: 3, visibility: "public", model: null }
 };
 
 const attempt = {
@@ -47,7 +47,7 @@ const comparison = {
   items: [{
     position: 0,
     conversation_id: "conversation-2",
-    agent: { agent_id: "agent-a", agent_version_id: "version-a", name: "Agent Alpha", provider: "Provider A", version: 3 },
+    agent: { agent_id: "agent-a", agent_version_id: "version-a", name: "Agent Alpha", provider: "Provider A", version: 3, visibility: "public", model: null },
     attempt,
     evaluation_case_id: null
   }]

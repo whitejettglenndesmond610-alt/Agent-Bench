@@ -74,6 +74,7 @@ async def favorite_agent(
             .join(AgentVersion, AgentVersion.agent_id == Agent.id)
             .where(
                 Agent.id == agent_id,
+                Agent.owner_user_id.is_(None),
                 Agent.status == AgentStatus.ENABLED,
                 AgentVersion.enabled.is_(True),
                 AgentVersion.lifecycle_status == AgentVersionLifecycle.ACTIVE,

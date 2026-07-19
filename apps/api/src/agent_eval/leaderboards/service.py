@@ -96,7 +96,9 @@ async def get_global_leaderboard(
                 (AgentVersion.id == LeaderboardResult.agent_version_id)
                 & (AgentVersion.agent_id == LeaderboardResult.agent_id),
             )
+            .join(Agent, Agent.id == AgentVersion.agent_id)
             .where(LeaderboardResult.metric == metric)
+            .where(Agent.owner_user_id.is_(None))
             .where(RunAgent.validity_status == ResultValidityStatus.VALID)
             .where(EvaluationRun.status == RunStatus.PUBLISHED)
             .where(EvaluationRun.ranking_eligible.is_(True))
@@ -115,6 +117,7 @@ async def get_global_leaderboard(
             select(Agent)
             .options(selectinload(Agent.versions))
             .where(Agent.status == AgentStatus.ENABLED)
+            .where(Agent.owner_user_id.is_(None))
             .order_by(Agent.name, Agent.id)
         )
     )
@@ -152,6 +155,7 @@ async def get_global_leaderboard(
                 (AgentVersion.id == LeaderboardResult.agent_version_id)
                 & (AgentVersion.agent_id == LeaderboardResult.agent_id),
             )
+            .join(Agent, Agent.id == AgentVersion.agent_id)
             .join(
                 RunAgent,
                 (RunAgent.id == LeaderboardResult.run_agent_id)
@@ -165,6 +169,7 @@ async def get_global_leaderboard(
                 EvaluationRun.ranking_eligible.is_(True),
                 EvaluationRun.profile_key.in_(UNIFIED_V3_PROFILE_KEYS),
                 RunAgent.validity_status == ResultValidityStatus.VALID,
+                Agent.owner_user_id.is_(None),
             )
         )
     ).all()
@@ -418,7 +423,11 @@ async def get_agent_leaderboard_detail(
     agent = await session.scalar(
         select(Agent)
         .options(selectinload(Agent.versions))
-        .where(Agent.id == agent_id, Agent.status == AgentStatus.ENABLED)
+        .where(
+            Agent.id == agent_id,
+            Agent.status == AgentStatus.ENABLED,
+            Agent.owner_user_id.is_(None),
+        )
     )
     if agent is None:
         return None
@@ -497,12 +506,14 @@ async def _agent_score_history(
             (AgentVersion.id == LeaderboardResult.agent_version_id)
             & (AgentVersion.agent_id == LeaderboardResult.agent_id),
         )
+        .join(Agent, Agent.id == AgentVersion.agent_id)
         .where(
             LeaderboardResult.agent_id == agent_id,
             LeaderboardResult.metric.in_(STATUS_METRICS),
             RunAgent.validity_status == ResultValidityStatus.VALID,
             EvaluationRun.status == RunStatus.PUBLISHED,
             EvaluationRun.ranking_eligible.is_(True),
+            Agent.owner_user_id.is_(None),
         )
         .subquery()
     )
@@ -571,6 +582,7 @@ async def _agent_evaluation_statuses(
             select(Agent)
             .options(selectinload(Agent.versions))
             .where(Agent.status == AgentStatus.ENABLED)
+            .where(Agent.owner_user_id.is_(None))
         )
     )
     identities = {

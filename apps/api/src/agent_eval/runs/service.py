@@ -211,6 +211,10 @@ async def prepare_evaluation_run(
     )
     if {version.id for version in agent_versions} != set(agent_version_ids):
         raise RunConfigurationError("agent_version_not_found", "一个或多个 Agent 配置版本不存在")
+    if any(version.agent.owner_user_id is not None for version in agent_versions):
+        raise RunConfigurationError(
+            "private_agent_not_allowed", "私有 Agent 不能用于正式评测"
+        )
     invalid_lifecycle = [
         version
         for version in agent_versions
