@@ -144,7 +144,7 @@ paste them into tickets, logs, or reports.
    period. Rollback means stopping all PostgreSQL writers and restoring the retained SQLite and
    Artifact snapshots together; never merge writes from both databases.
 
-Both databases must report Alembic head `d7b3e5f9a024`. The target must have a schema matching the
+Both databases must report Alembic head `f8a1c3d5e702`. The target must have a schema matching the
 current SQLAlchemy model metadata and no rows beyond its two deterministic shared AuthUser seeds.
 There is intentionally no
 general-purpose command to clear a migration target; recreate a disposable target when rehearsing.

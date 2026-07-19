@@ -17,6 +17,7 @@ import {
   WorkspaceComparisonItem
 } from "./api";
 import { AgentPicker } from "./AgentPicker";
+import { LoadingState } from "./components";
 import { Citations, MarkdownContent } from "./WorkspacePage";
 
 const workspaceAgentsKey = (userId: string) => ["workspace", userId, "agents"] as const;
@@ -404,7 +405,7 @@ export function WorkspaceComparePage({ userId, canDraft }: { userId: string; can
             </button>
           </form>
         ) : comparisonQuery.isPending ? (
-          <div className="workspace-detail-state"><span className="status-dot" />正在装载对比账本</div>
+          <LoadingState label="正在装载对比账本" />
         ) : comparisonQuery.error || !comparison ? (
           <div className="workspace-detail-state is-error"><strong>无法读取此对比</strong><span>{comparisonQuery.error?.message ?? "对比不存在"}</span></div>
         ) : (

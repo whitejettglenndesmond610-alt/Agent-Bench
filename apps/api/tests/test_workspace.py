@@ -747,8 +747,8 @@ async def test_workspace_api_context_regeneration_and_ownership(tmp_path: Path) 
             json={"role": "read_only", "password": "read-only-secret"},
         )
         assert read_only.status_code == 200
-        assert read_only.json()["workspace_enabled"] is False
-        assert (await client.get("/api/v1/workspace/agents")).status_code == 403
+        assert read_only.json()["workspace_enabled"] is True
+        assert (await client.get("/api/v1/workspace/agents")).status_code == 200
 
         headers = await login_operator(client)
         catalog = await client.get("/api/v1/workspace/agents")
@@ -1030,6 +1030,73 @@ async def test_workspace_api_context_regeneration_and_ownership(tmp_path: Path) 
         }
         isolated = await client.get(f"/api/v1/workspace/conversations/{conversation_id}")
         assert isolated.status_code == 404
+
+
+async def test_shared_browser_workspaces_are_isolated(tmp_path: Path) -> None:
+    async with workspace_client(tmp_path) as (client, app, _, version_id, _):
+        first_login = await client.post(
+            "/api/v1/auth/login",
+            headers={"Origin": "http://test"},
+            json={"role": "read_only", "password": "read-only-secret"},
+        )
+        assert first_login.status_code == 200
+        first_user_id = first_login.json()["user_id"]
+        first_csrf = client.cookies.get("agent_eval_csrf")
+        assert first_csrf is not None
+        first_headers = {"Origin": "http://test", "X-CSRF-Token": first_csrf}
+
+        first_conversation = await client.post(
+            "/api/v1/workspace/conversations",
+            headers=first_headers,
+            json={"agent_version_id": str(version_id), "title": "First browser"},
+        )
+        assert first_conversation.status_code == 201
+        first_conversation_id = first_conversation.json()["id"]
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as second_client:
+            second_login = await second_client.post(
+                "/api/v1/auth/login",
+                headers={"Origin": "http://test"},
+                json={"role": "read_only", "password": "read-only-secret"},
+            )
+            assert second_login.status_code == 200
+            assert second_login.json()["user_id"] != first_user_id
+            second_csrf = second_client.cookies.get("agent_eval_csrf")
+            assert second_csrf is not None
+            second_headers = {"Origin": "http://test", "X-CSRF-Token": second_csrf}
+
+            catalog = await second_client.get("/api/v1/workspace/agents")
+            assert catalog.status_code == 200
+            catalog_ids = {item["agent_version_id"] for item in catalog.json()}
+            assert len(catalog_ids) == 2
+            assert str(version_id) in catalog_ids
+            assert (await second_client.get("/api/v1/agents")).status_code == 403
+            assert (await second_client.get("/api/v1/evaluation-runs")).status_code == 403
+
+            second_conversation = await second_client.post(
+                "/api/v1/workspace/conversations",
+                headers=second_headers,
+                json={"agent_version_id": str(version_id), "title": "Second browser"},
+            )
+            assert second_conversation.status_code == 201
+            second_conversation_id = second_conversation.json()["id"]
+
+            second_list = await second_client.get("/api/v1/workspace/conversations")
+            assert [item["id"] for item in second_list.json()["items"]] == [
+                second_conversation_id
+            ]
+            assert (
+                await second_client.get(
+                    f"/api/v1/workspace/conversations/{first_conversation_id}"
+                )
+            ).status_code == 404
+
+        first_list = await client.get("/api/v1/workspace/conversations")
+        assert [item["id"] for item in first_list.json()["items"]] == [
+            first_conversation_id
+        ]
 
 
 async def test_workspace_running_cancel_stale_fencing_and_concurrent_claims(

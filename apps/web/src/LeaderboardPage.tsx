@@ -9,6 +9,7 @@ import {
   GlobalOverviewAgent,
   GlobalOverviewMetric
 } from "./api";
+import { LoadingState } from "./components";
 import { leaderboardMetrics, metricByKey, profileKeyForMetric } from "./metrics";
 
 type BoardView = "overview" | GlobalLeaderboardMetric;
@@ -165,7 +166,7 @@ export function LeaderboardPage() {
   });
 
   if (overviewQuery.isPending) {
-    return <main className="workspace"><div className="leaderboard-loading"><span className="status-dot" />正在读取全球榜单</div></main>;
+    return <main className="workspace"><LoadingState label="正在读取全球榜单" /></main>;
   }
   if (overviewQuery.error || !overviewQuery.data) {
     return <main className="workspace"><div className="table-state is-error">{overviewQuery.error?.message ?? "榜单读取失败"}</div></main>;

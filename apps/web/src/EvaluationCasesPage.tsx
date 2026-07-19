@@ -14,6 +14,7 @@ import {
   reviewEvaluationCase,
   updateEvaluationCase
 } from "./api";
+import { LoadingState } from "./components";
 import { Citations, MarkdownContent } from "./WorkspacePage";
 import { abilityMetrics } from "./metrics";
 
@@ -396,7 +397,7 @@ export function EvaluationCasesPage({ userId, canPublish }: { userId: string; ca
         {!caseId ? (
           <section className="evaluation-case-placeholder"><span>NO CASE SELECTED</span><h2>选择一条案例开始编辑</h2><p>新的草稿从工作台中的成功回答创建。</p></section>
         ) : caseQuery.isPending ? (
-          <div className="workspace-detail-state"><span className="status-dot" />正在装载案例</div>
+          <LoadingState label="正在装载案例" />
         ) : caseQuery.error || !evaluationCase ? (
           <div className="workspace-detail-state is-error"><strong>无法读取此案例</strong><span>{caseQuery.error?.message ?? "案例不存在"}</span></div>
         ) : (

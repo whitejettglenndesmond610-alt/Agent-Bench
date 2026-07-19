@@ -722,6 +722,10 @@ class AuthUser(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint(
             "(auth_source = 'legacy_shared' AND is_shared = true AND username IS NULL "
             "AND password_hash IS NULL) OR "
+            "(auth_source = 'shared_browser' AND role = 'read_only' "
+            "AND is_shared = true AND username IS NULL AND password_hash IS NULL "
+            "AND workspace_enabled = true AND length(subject_key) = 79 "
+            "AND subject_key LIKE 'shared_browser:%') OR "
             "(auth_source = 'local' AND is_shared = false AND username IS NOT NULL "
             "AND password_hash LIKE '$argon2%')",
             name="source_fields_valid",

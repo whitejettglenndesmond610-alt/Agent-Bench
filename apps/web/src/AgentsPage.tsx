@@ -19,7 +19,7 @@ import {
   promoteAgentVersion,
   testAgentConnection
 } from "./api";
-import { Button, FormField, Input, Modal, Select, Table, Textarea } from "./components";
+import { Button, FormField, Input, LoadingState, Modal, Select, Table, Textarea } from "./components";
 import { leaderboardMetrics, profileKeyForMetric } from "./metrics";
 
 interface BasicForm {
@@ -459,7 +459,7 @@ export function AgentsPage() {
       </section>
 
       {agentsQuery.isPending || statusesQuery.isPending ? (
-        <div className="table-state"><span className="status-dot" />正在读取 Agent</div>
+        <LoadingState label="正在读取 Agent" />
       ) : agentsQuery.error || statusesQuery.error ? (
         <div className="table-state is-error">{agentsQuery.error?.message ?? statusesQuery.error?.message}</div>
       ) : agents.length === 0 ? (

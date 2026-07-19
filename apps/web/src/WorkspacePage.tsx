@@ -35,6 +35,7 @@ import {
   WorkspaceTurn
 } from "./api";
 import { AgentPicker } from "./AgentPicker";
+import { LoadingState } from "./components";
 
 const activeStatuses = new Set(["queued", "running"]);
 const workspaceAgentsKey = (userId: string) => ["workspace", userId, "agents"] as const;
@@ -1094,7 +1095,7 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
 
         <div className="message-ledger" ref={ledgerRef} onScroll={handleLedgerScroll}>
           {conversationQuery.isPending && conversationId && (
-            <div className="workspace-detail-state"><span className="status-dot" />正在装载消息账本</div>
+            <LoadingState label="正在装载消息账本" />
           )}
           {detailError && (
             <div className="workspace-detail-state is-error">

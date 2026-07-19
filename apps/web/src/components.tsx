@@ -47,6 +47,22 @@ export function Table({ children, className = "" }: { children: ReactNode; class
   return <div className={`table-frame ${className}`.trim()}><table>{children}</table></div>;
 }
 
+export function LoadingState({
+  label,
+  compact = false
+}: {
+  label: string;
+  compact?: boolean;
+}) {
+  return (
+    <div className={`loading-state ${compact ? "is-compact" : ""}`.trim()} role="progressbar" aria-label={label}>
+      <span className="loading-spinner" aria-hidden="true" />
+      <div className="loading-copy"><strong>{label}</strong><span>正在同步最新数据，请稍候</span></div>
+      <div className="loading-bars" aria-hidden="true"><i /><i /><i /></div>
+    </div>
+  );
+}
+
 export function Modal({
   title,
   description,

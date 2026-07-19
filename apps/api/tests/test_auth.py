@@ -79,18 +79,34 @@ async def test_login_session_and_csrf_logout(tmp_path: Path) -> None:
         assert response.status_code == 200
         assert response.json()["role"] == "read_only"
         assert response.json()["is_shared"] is True
-        assert response.json()["workspace_enabled"] is False
-        assert response.json()["display_name"] == "Shared read-only"
+        assert response.json()["workspace_enabled"] is True
+        assert response.json()["display_name"] == "普通用户"
         assert any("HttpOnly" in value for value in response.headers.get_list("set-cookie"))
+        identity_cookie = next(
+            value
+            for value in response.headers.get_list("set-cookie")
+            if value.startswith("agent_eval_workspace_identity=")
+        )
+        assert "HttpOnly" in identity_cookie
+        assert "Max-Age=31536000" in identity_cookie
+        assert "Path=/api/v1/auth/login" in identity_cookie
+        assert "SameSite=strict" in identity_cookie
 
         session_token = client.cookies.get("agent_eval_session")
         csrf_token = client.cookies.get("agent_eval_csrf")
+        workspace_identity = client.cookies.get("agent_eval_workspace_identity")
         assert session_token is not None
         assert csrf_token is not None
+        assert workspace_identity is not None
+        first_user_id = response.json()["user_id"]
 
         with sqlite3.connect(database_path) as connection:
             stored_tokens = connection.execute(
                 "SELECT token_hash, csrf_token_hash FROM sessions"
+            ).fetchone()
+            stored_identity = connection.execute(
+                "SELECT subject_key, auth_source FROM auth_users WHERE id = ?",
+                (first_user_id.replace("-", ""),),
             ).fetchone()
 
         assert stored_tokens is not None
@@ -98,6 +114,12 @@ async def test_login_session_and_csrf_logout(tmp_path: Path) -> None:
         assert stored_token_hash == hashlib.sha256(session_token.encode()).hexdigest()
         assert stored_csrf_hash == hashlib.sha256(csrf_token.encode()).hexdigest()
         assert stored_token_hash != session_token
+        assert stored_identity is not None
+        assert stored_identity[0] == (
+            "shared_browser:" + hashlib.sha256(workspace_identity.encode()).hexdigest()
+        )
+        assert stored_identity[1] == "shared_browser"
+        assert workspace_identity not in stored_identity[0]
 
         current = await client.get("/api/v1/auth/session")
         assert current.status_code == 200
@@ -112,6 +134,11 @@ async def test_login_session_and_csrf_logout(tmp_path: Path) -> None:
         )
         assert logout.status_code == 204
         assert (await client.get("/api/v1/auth/session")).status_code == 401
+        assert client.cookies.get("agent_eval_workspace_identity") == workspace_identity
+
+        restored = await login(client, "read_only", READ_ONLY_PASSWORD)
+        assert restored.status_code == 200
+        assert restored.json()["user_id"] == first_user_id
 
 
 async def test_operator_dependency_rejects_read_only_session(tmp_path: Path) -> None:

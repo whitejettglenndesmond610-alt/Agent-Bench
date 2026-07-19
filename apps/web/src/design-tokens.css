@@ -1,0 +1,33 @@
+:root {
+  color: #1e293b;
+  background: #f4f7fb;
+  font-family: Inter, "SF Pro Text", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --bg: #f4f7fb;
+  --surface: #ffffff;
+  --surface-raised: #f3f5ff;
+  --line: #e1e7f0;
+  --line-strong: #cbd5e1;
+  --muted: #64748b;
+  --ink: #16213b;
+  --accent: #4f46e5;
+  --accent-strong: #4338ca;
+  --accent-soft: #eef2ff;
+  --cyan: #0891b2;
+  --violet: #7c3aed;
+  --green: #059669;
+  --rose: #e11d48;
+  --amber: #d97706;
+  --rail-width: 264px;
+  --content-max: 1480px;
+  --page-pad: clamp(24px, 3.5vw, 58px);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --shadow-sm: 0 1px 2px rgb(15 23 42 / 4%), 0 4px 14px rgb(15 23 42 / 4%);
+  --shadow-md: 0 12px 32px rgb(15 23 42 / 8%);
+  --shadow-lg: 0 24px 70px rgb(15 23 42 / 16%);
+  --ease-product: cubic-bezier(.2, .72, .28, 1);
+}

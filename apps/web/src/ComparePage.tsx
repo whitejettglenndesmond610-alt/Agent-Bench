@@ -11,6 +11,7 @@ import {
   GlobalLeaderboardMetric,
   GlobalOverviewAgent
 } from "./api";
+import { LoadingState } from "./components";
 import { abilityMetrics, leaderboardMetrics, metricByKey } from "./metrics";
 
 use([RadarChart, TooltipComponent, LegendComponent, AriaComponent, SVGRenderer]);
@@ -108,7 +109,7 @@ export function ComparePage() {
     return <main className="workspace"><div className="table-state is-error">对比参数无效，请返回榜单重新选择 2 至 5 个 Agent。</div></main>;
   }
   if (comparisonQuery.isPending) {
-    return <main className="workspace"><div className="leaderboard-loading"><span className="status-dot" />正在构建全局对比</div></main>;
+    return <main className="workspace"><LoadingState label="正在构建全局对比" /></main>;
   }
   if (comparisonQuery.error || !comparisonQuery.data) {
     return <main className="workspace"><div className="table-state is-error">{comparisonQuery.error?.message ?? "对比数据读取失败"}</div></main>;

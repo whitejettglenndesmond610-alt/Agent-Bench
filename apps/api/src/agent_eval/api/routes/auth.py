@@ -7,7 +7,11 @@ from sqlalchemy import select
 
 from agent_eval.api.dependencies import CsrfSession, CurrentSession, DatabaseSession
 from agent_eval.api.schemas.auth import LoginRequest, SessionResponse, UserLoginRequest
-from agent_eval.auth.identity import legacy_user_id, normalize_username
+from agent_eval.auth.identity import (
+    legacy_user_id,
+    normalize_username,
+    shared_browser_subject_key,
+)
 from agent_eval.auth.rate_limit import LoginRateLimiter
 from agent_eval.auth.security import (
     client_ip,
@@ -18,7 +22,7 @@ from agent_eval.auth.security import (
 )
 from agent_eval.core.settings import Settings
 from agent_eval.db.base import utc_now
-from agent_eval.db.enums import SessionRole
+from agent_eval.db.enums import AuthSource, SessionRole
 from agent_eval.db.models import AuthUser, Session
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -75,6 +79,20 @@ def clear_auth_cookies(response: Response, settings: Settings) -> None:
     response.delete_cookie(settings.csrf_cookie_name, path="/")
 
 
+def set_workspace_identity_cookie(
+    response: Response, settings: Settings, identity_token: str
+) -> None:
+    response.set_cookie(
+        settings.workspace_identity_cookie_name,
+        identity_token,
+        httponly=True,
+        max_age=settings.workspace_identity_days * 24 * 60 * 60,
+        path="/api/v1/auth/login",
+        secure=settings.secure_cookies,
+        samesite="strict",
+    )
+
+
 def session_response(auth_session: Session) -> SessionResponse:
     user = auth_session.user
     if user is None:
@@ -119,6 +137,41 @@ async def issue_session(
     return session_response(auth_session)
 
 
+async def resolve_shared_browser_user(
+    request: Request,
+    database: DatabaseSession,
+    settings: Settings,
+) -> tuple[AuthUser, str]:
+    identity_token = request.cookies.get(settings.workspace_identity_cookie_name)
+    if identity_token is not None:
+        try:
+            subject_key = shared_browser_subject_key(identity_token)
+        except ValueError:
+            identity_token = None
+        else:
+            user = await database.scalar(
+                select(AuthUser).where(AuthUser.subject_key == subject_key)
+            )
+            if user is not None and user.disabled_at is None:
+                user.updated_at = utc_now()
+                return user, identity_token
+
+    identity_token = generate_token()
+    user = AuthUser(
+        subject_key=shared_browser_subject_key(identity_token),
+        username=None,
+        display_name="普通用户",
+        role=SessionRole.READ_ONLY,
+        auth_source=AuthSource.SHARED_BROWSER,
+        password_hash=None,
+        is_shared=True,
+        workspace_enabled=True,
+    )
+    database.add(user)
+    await database.flush()
+    return user, identity_token
+
+
 def enforce_login_rate_limit(rate_limiter: LoginRateLimiter, limiter_key: str) -> None:
     if retry_after := rate_limiter.retry_after(limiter_key):
         raise HTTPException(
@@ -160,13 +213,19 @@ async def login(
         )
 
     rate_limiter.clear(limiter_key)
-    user = await database.get(AuthUser, legacy_user_id(payload.role))
-    if user is None or user.disabled_at is not None:
+    if payload.role == SessionRole.READ_ONLY:
+        user, identity_token = await resolve_shared_browser_user(request, database, settings)
+        result = await issue_session(database, response, settings, user)
+        set_workspace_identity_cookie(response, settings, identity_token)
+        return result
+
+    operator_user = await database.get(AuthUser, legacy_user_id(payload.role))
+    if operator_user is None or operator_user.disabled_at is not None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"code": "auth_not_configured", "message": "共享登录用户尚未配置"},
         )
-    return await issue_session(database, response, settings, user)
+    return await issue_session(database, response, settings, operator_user)
 
 
 @router.post("/user-login", response_model=SessionResponse)

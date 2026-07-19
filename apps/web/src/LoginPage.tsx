@@ -11,7 +11,7 @@ interface LoginPageProps {
 }
 
 const roles: Array<{ value: SessionRole; label: string; description: string }> = [
-  { value: "read_only", label: "只读访问", description: "查看榜单和对比报告" },
+  { value: "read_only", label: "普通用户", description: "使用 Agent 工作台并查看排行榜" },
   { value: "operator", label: "运营访问", description: "管理 Agent 并发起评测" }
 ];
 
@@ -135,7 +135,7 @@ export function LoginPage({ error, pending, onLogin, onUserLogin, onResetError }
               ? "个人账号可访问已授权的 Agent 工作台"
               : role === "operator"
                 ? "运营会话将在 8 小时后失效"
-                : "只读会话将在 7 天后失效"}
+                : "普通用户会话将在 7 天后失效"}
           </p>
         </form>
       </section>

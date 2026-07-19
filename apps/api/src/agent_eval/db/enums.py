@@ -139,6 +139,7 @@ class SessionRole(StrEnum):
 
 class AuthSource(StrEnum):
     LEGACY_SHARED = "legacy_shared"
+    SHARED_BROWSER = "shared_browser"
     LOCAL = "local"
 
 

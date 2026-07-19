@@ -14,6 +14,7 @@ import {
   fetchPublishedEvaluationCases,
   publishDatasetRelease
 } from "./api";
+import { LoadingState } from "./components";
 import { abilityMetrics } from "./metrics";
 
 const releasesKey = (userId: string) => ["dataset-releases", userId] as const;
@@ -303,7 +304,7 @@ export function DatasetReleasesPage({ userId, canPublish }: { userId: string; ca
         {!releaseId ? (
           <CreateRelease cases={publishedCases} loading={casesQuery.isPending} error={casesQuery.error?.message ?? null} canPublish={canPublish} onCreated={created} />
         ) : releaseQuery.isPending ? (
-          <div className="workspace-detail-state"><span className="status-dot" />正在装载发布清单</div>
+          <LoadingState label="正在装载发布清单" />
         ) : releaseQuery.error || !releaseQuery.data ? (
           <div className="workspace-detail-state is-error"><strong>无法读取发布批次</strong><span>{releaseQuery.error?.message ?? "发布批次不存在"}</span></div>
         ) : (

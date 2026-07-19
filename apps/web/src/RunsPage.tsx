@@ -18,7 +18,7 @@ import {
   fetchRuns,
   retryRunScoring
 } from "./api";
-import { Button, FormField, Input, Modal, Table } from "./components";
+import { Button, FormField, Input, LoadingState, Modal, Table } from "./components";
 import { abilityMetrics, leaderboardMetrics } from "./metrics";
 
 const terminalStatuses = new Set<RunStatus>([
@@ -256,7 +256,7 @@ function LaunchRunModal({
       </ol>
 
       {optionsQuery.isPending ? (
-        <div className="modal-loading"><span className="status-dot" />正在读取评测配置</div>
+        <LoadingState label="正在读取评测配置" compact />
       ) : optionsQuery.error ? (
         <div className="modal-form"><div className="result-banner is-error">{optionsQuery.error.message}</div></div>
       ) : !options?.ready ? (
@@ -406,7 +406,7 @@ function RunsList() {
         <p>运行状态每 3 秒同步；页面不可见时自动降低轮询频率。</p>
       </section>
       {runsQuery.isPending ? (
-        <div className="table-state"><span className="status-dot" />正在读取评测任务</div>
+        <LoadingState label="正在读取评测任务" />
       ) : runsQuery.error ? (
         <div className="table-state is-error">{runsQuery.error.message}</div>
       ) : runs.length === 0 ? (
@@ -457,7 +457,7 @@ function RunDetail({ runId }: { runId: string }) {
     && run.stage === "judging"
     && Boolean(run.system_error?.startsWith("answer_scoring_"));
 
-  if (progressQuery.isPending) return <main className="workspace"><div className="table-state"><span className="status-dot" />正在读取运行状态</div></main>;
+  if (progressQuery.isPending) return <main className="workspace"><LoadingState label="正在读取运行状态" /></main>;
   if (progressQuery.error || !run) return <main className="workspace"><div className="table-state is-error">{progressQuery.error?.message ?? "评测任务不存在"}</div></main>;
 
   return (

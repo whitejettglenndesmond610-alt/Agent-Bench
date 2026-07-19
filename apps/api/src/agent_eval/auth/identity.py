@@ -1,3 +1,4 @@
+import hashlib
 import re
 import unicodedata
 from uuid import UUID
@@ -16,6 +17,8 @@ LEGACY_USER_IDS = {
 }
 
 USERNAME_PATTERN = re.compile(r"[a-z][a-z0-9._-]{2,63}")
+SHARED_BROWSER_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{43}")
+SHARED_BROWSER_SUBJECT_PREFIX = "shared_browser:"
 
 
 def normalize_username(value: str) -> str:
@@ -34,3 +37,10 @@ def legacy_user_id(role: SessionRole) -> UUID:
 
 def legacy_subject_key(role: SessionRole) -> str:
     return LEGACY_SUBJECT_KEYS[role]
+
+
+def shared_browser_subject_key(token: str) -> str:
+    if SHARED_BROWSER_TOKEN_PATTERN.fullmatch(token) is None:
+        raise ValueError("invalid shared browser identity token")
+    digest = hashlib.sha256(token.encode("ascii")).hexdigest()
+    return f"{SHARED_BROWSER_SUBJECT_PREFIX}{digest}"

@@ -39,7 +39,7 @@ test("shows the login form without a session", async () => {
   renderApp();
 
   expect(await screen.findByRole("heading", { name: "选择访问身份" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /只读访问/ })).toHaveAttribute(
+  expect(screen.getByRole("button", { name: /普通用户/ })).toHaveAttribute(
     "aria-pressed",
     "true"
   );
@@ -104,7 +104,7 @@ test("sends a read-only session directly to the global leaderboard", async () =>
             user_id: "shared-read-only",
             display_name: "只读访问",
             is_shared: true,
-            workspace_enabled: false
+            workspace_enabled: true
           })
         );
       }
@@ -134,6 +134,8 @@ test("sends a read-only session directly to the global leaderboard", async () =>
 
   expect(await screen.findByRole("heading", { name: "Agent 排行榜" })).toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "总览" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Agent" })).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "工作台" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "排行榜" })).toBeInTheDocument();
 });
 

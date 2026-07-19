@@ -79,6 +79,8 @@ class Settings(BaseSettings):
     encryption_key_file: Path | None = None
     session_cookie_name: str = "agent_eval_session"
     csrf_cookie_name: str = "agent_eval_csrf"
+    workspace_identity_cookie_name: str = "agent_eval_workspace_identity"
+    workspace_identity_days: int = Field(default=365, gt=0, le=3650)
     read_only_session_hours: int = Field(default=168, gt=0)
     operator_session_hours: int = Field(default=8, gt=0)
     login_max_attempts: int = Field(default=5, gt=0)
