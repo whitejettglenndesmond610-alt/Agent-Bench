@@ -15,7 +15,7 @@ import { abilityMetrics, leaderboardMetrics, metricByKey } from "./metrics";
 
 use([RadarChart, TooltipComponent, LegendComponent, AriaComponent, SVGRenderer]);
 
-const colors = ["#ffca63", "#63d9d0", "#a999ff", "#ef8683", "#6bd89b"];
+const colors = ["#4f46e5", "#0891b2", "#7c3aed", "#e11d48", "#059669"];
 
 function AbilityRadar({ agents }: { agents: GlobalOverviewAgent[] }) {
   const chartRef = useRef<HTMLDivElement>(null);
@@ -37,7 +37,7 @@ function AbilityRadar({ agents }: { agents: GlobalOverviewAgent[] }) {
       tooltip: { trigger: "item" },
       legend: {
         bottom: 0,
-        textStyle: { color: "#aeb7c1", fontSize: 10 },
+        textStyle: { color: "#64748b", fontSize: 10 },
         data: agents.map((agent) => `${agent.agent_name} · V${agent.version}`)
       },
       radar: {
@@ -45,10 +45,10 @@ function AbilityRadar({ agents }: { agents: GlobalOverviewAgent[] }) {
         radius: "62%",
         splitNumber: 5,
         indicator: abilityMetrics.map((ability) => ({ name: ability.label, max: 100, min: 0 })),
-        axisName: { color: "#aeb7c1", fontSize: 10 },
-        splitArea: { areaStyle: { color: ["#111820", "#0e141b"] } },
-        splitLine: { lineStyle: { color: "#2b3541" } },
-        axisLine: { lineStyle: { color: "#35414e" } }
+        axisName: { color: "#64748b", fontSize: 10 },
+        splitArea: { areaStyle: { color: ["#ffffff", "#f4f6ff"] } },
+        splitLine: { lineStyle: { color: "#dce3ee" } },
+        axisLine: { lineStyle: { color: "#cbd5e1" } }
       },
       series: [{
         type: "radar",

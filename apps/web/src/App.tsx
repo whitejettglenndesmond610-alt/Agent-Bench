@@ -103,6 +103,22 @@ function Dashboard() {
   );
 }
 
+type NavigationIconName = "overview" | "agents" | "runs" | "cases" | "datasets" | "workspace" | "leaderboard";
+
+function NavigationIcon({ name }: { name: NavigationIconName }) {
+  return (
+    <svg className="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+      {name === "overview" && <><path d="M4 13h6V4H4v9Z" /><path d="M14 20h6v-9h-6v9Z" /><path d="M4 20h6v-3H4v3Z" /><path d="M14 7h6V4h-6v3Z" /></>}
+      {name === "agents" && <><circle cx="12" cy="8" r="3.5" /><path d="M5 20c.7-4 3-6 7-6s6.3 2 7 6" /><path d="M4 8H2.5M21.5 8H20M12 2.5V1" /></>}
+      {name === "runs" && <><path d="M5 4h14v16H5z" /><path d="M8 9h8M8 13h5M8 17h7" /><path d="m15.5 4 1-2 1 2" /></>}
+      {name === "cases" && <><path d="M7 3h10v4H7z" /><path d="M5 5H3v16h18V5h-2" /><path d="M8 12h8M8 16h5" /></>}
+      {name === "datasets" && <><ellipse cx="12" cy="5" rx="7" ry="3" /><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5" /><path d="M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" /></>}
+      {name === "workspace" && <><path d="M4 4h16v12H8l-4 4V4Z" /><path d="M8 9h8M8 12h5" /></>}
+      {name === "leaderboard" && <><path d="M5 20v-7h4v7M10 20V8h4v12M15 20V4h4v16" /><path d="M3 20h18" /></>}
+    </svg>
+  );
+}
+
 function AppNavigation({ session, onLogout, loggingOut }: { session: SessionInfo; onLogout: () => void; loggingOut: boolean }) {
   const operator = session.role === "operator";
   const workspaceEnabled = session.workspace_enabled ?? operator;
@@ -114,13 +130,13 @@ function AppNavigation({ session, onLogout, loggingOut }: { session: SessionInfo
         <div><strong>Agent Bench</strong><small>Evaluation control</small></div>
       </div>
       <nav className="primary-nav" aria-label="主导航">
-        {operator && <NavLink to="/" end>总览</NavLink>}
-        {operator && <NavLink to="/agents">Agent</NavLink>}
-        {operator && <NavLink to="/runs">评测任务</NavLink>}
-        {operator && <NavLink to="/evaluation-cases">评测案例</NavLink>}
-        {operator && <NavLink to="/dataset-releases">数据集发布</NavLink>}
-        {workspaceEnabled && <NavLink to="/workspace">工作台</NavLink>}
-        <NavLink to="/leaderboard">排行榜</NavLink>
+        {operator && <NavLink to="/" end><NavigationIcon name="overview" /><span>总览</span></NavLink>}
+        {operator && <NavLink to="/agents"><NavigationIcon name="agents" /><span>Agent</span></NavLink>}
+        {operator && <NavLink to="/runs"><NavigationIcon name="runs" /><span>评测任务</span></NavLink>}
+        {operator && <NavLink to="/evaluation-cases"><NavigationIcon name="cases" /><span>评测案例</span></NavLink>}
+        {operator && <NavLink to="/dataset-releases"><NavigationIcon name="datasets" /><span>数据集发布</span></NavLink>}
+        {workspaceEnabled && <NavLink to="/workspace"><NavigationIcon name="workspace" /><span>工作台</span></NavLink>}
+        <NavLink to="/leaderboard"><NavigationIcon name="leaderboard" /><span>排行榜</span></NavLink>
       </nav>
       <footer>
         <div className="session-role">
