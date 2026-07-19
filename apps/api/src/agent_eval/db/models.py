@@ -19,6 +19,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
     text,
     true,
 )
@@ -49,6 +50,7 @@ from agent_eval.db.enums import (
     RunStage,
     RunStatus,
     SessionRole,
+    WorkspaceAttemptFeedback,
     WorkspaceAttemptStatus,
     WorkspaceMessageRole,
 )
@@ -80,6 +82,9 @@ class Agent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     versions: Mapped[list["AgentVersion"]] = relationship(back_populates="agent")
+    workspace_favorites: Mapped[list["WorkspaceAgentFavorite"]] = relationship(
+        back_populates="agent", passive_deletes=True
+    )
 
 
 class AgentVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -306,6 +311,50 @@ class ScoreConfig(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     runs: Mapped[list["EvaluationRun"]] = relationship(back_populates="score_config")
 
 
+class EvaluationExperiment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "evaluation_experiments"
+    __table_args__ = (
+        UniqueConstraint(
+            "creator_subject_key",
+            "idempotency_key",
+            name="uq_evaluation_experiments_creator_idempotency",
+        ),
+        UniqueConstraint(
+            "id", "protocol_hash", name="uq_evaluation_experiments_id_protocol_hash"
+        ),
+        CheckConstraint("length(name) > 0", name="name_nonempty"),
+        CheckConstraint(
+            "length(creator_subject_key) > 0", name="creator_subject_key_nonempty"
+        ),
+        CheckConstraint(
+            "length(creator_display_name) > 0", name="creator_display_name_nonempty"
+        ),
+        CheckConstraint("length(idempotency_key) = 36", name="idempotency_key_uuid"),
+        CheckConstraint(
+            "length(request_fingerprint) = 64", name="request_fingerprint_sha256"
+        ),
+        CheckConstraint("length(protocol_hash) = 64", name="protocol_hash_sha256"),
+        Index(
+            "ix_evaluation_experiments_creator_created",
+            "creator_subject_key",
+            "created_at",
+        ),
+    )
+
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    creator_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("auth_users.id", ondelete="RESTRICT"), index=True
+    )
+    creator_subject_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    creator_display_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(36), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    protocol_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    creator: Mapped["AuthUser | None"] = relationship(back_populates="evaluation_experiments")
+    runs: Mapped[list["EvaluationRun"]] = relationship(back_populates="experiment")
+
+
 class EvaluationRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "evaluation_runs"
     __table_args__ = (
@@ -316,6 +365,24 @@ class EvaluationRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "AND claim_owner_id IS NULL AND claimed_at IS NULL)",
             name="active_slot_matches_status",
         ),
+        CheckConstraint(
+            "(experiment_id IS NULL AND experiment_position IS NULL) OR "
+            "(experiment_id IS NOT NULL AND experiment_position IS NOT NULL "
+            "AND experiment_position BETWEEN 1 AND 50)",
+            name="experiment_fields_valid",
+        ),
+        ForeignKeyConstraint(
+            ["experiment_id", "protocol_hash"],
+            ["evaluation_experiments.id", "evaluation_experiments.protocol_hash"],
+            ondelete="RESTRICT",
+            name="fk_evaluation_runs_experiment_protocol",
+        ),
+        UniqueConstraint(
+            "experiment_id",
+            "experiment_position",
+            name="uq_evaluation_runs_experiment_position",
+        ),
+        Index("ix_evaluation_runs_experiment_id", "experiment_id"),
     )
 
     name: Mapped[str] = mapped_column(String(160), nullable=False)
@@ -357,6 +424,8 @@ class EvaluationRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     protocol_hash: Mapped[str] = mapped_column(
         String(64), default=lambda: "0" * 64, server_default="0" * 64, nullable=False
     )
+    experiment_id: Mapped[UUID | None] = mapped_column()
+    experiment_position: Mapped[int | None] = mapped_column(SmallInteger)
     judge_config_id: Mapped[UUID] = mapped_column(
         ForeignKey("judge_configs.id", ondelete="RESTRICT"), nullable=False
     )
@@ -370,6 +439,7 @@ class EvaluationRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     judge_config: Mapped[JudgeConfig] = relationship(back_populates="runs")
     score_config: Mapped[ScoreConfig] = relationship(back_populates="runs")
+    experiment: Mapped[EvaluationExperiment | None] = relationship(back_populates="runs")
     dataset_links: Mapped[list["RunDatasetVersion"]] = relationship(back_populates="run")
     run_agents: Mapped[list["RunAgent"]] = relationship(back_populates="run")
     snapshots: Mapped[list["LeaderboardSnapshot"]] = relationship(back_populates="run")
@@ -754,6 +824,54 @@ class AuthUser(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     evaluation_cases: Mapped[list["EvaluationCase"]] = relationship(
         back_populates="owner", foreign_keys="EvaluationCase.owner_user_id"
     )
+    evaluation_experiments: Mapped[list[EvaluationExperiment]] = relationship(
+        back_populates="creator"
+    )
+    agent_favorites: Mapped[list["WorkspaceAgentFavorite"]] = relationship(
+        back_populates="owner", passive_deletes=True
+    )
+    prompt_templates: Mapped[list["WorkspacePromptTemplate"]] = relationship(
+        back_populates="owner", passive_deletes=True
+    )
+
+
+class WorkspaceAgentFavorite(Base):
+    __tablename__ = "workspace_agent_favorites"
+
+    owner_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("auth_users.id", ondelete="CASCADE"), primary_key=True
+    )
+    agent_id: Mapped[UUID] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+
+    owner: Mapped[AuthUser] = relationship(back_populates="agent_favorites")
+    agent: Mapped[Agent] = relationship(back_populates="workspace_favorites")
+
+
+class WorkspacePromptTemplate(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "workspace_prompt_templates"
+    __table_args__ = (
+        UniqueConstraint("owner_user_id", "name", name="uq_workspace_prompt_templates_owner_name"),
+        CheckConstraint("length(name) BETWEEN 1 AND 120", name="name_length"),
+        CheckConstraint("length(content) BETWEEN 1 AND 200000", name="content_length"),
+        CheckConstraint("revision >= 0", name="revision_nonnegative"),
+        Index("ix_workspace_prompt_templates_owner_updated", "owner_user_id", "updated_at"),
+    )
+
+    owner_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("auth_users.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    revision: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0"), nullable=False
+    )
+
+    owner: Mapped[AuthUser] = relationship(back_populates="prompt_templates")
 
 
 class WorkspaceComparison(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -769,6 +887,7 @@ class WorkspaceComparison(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint("length(prompt) BETWEEN 1 AND 200000", name="prompt_length"),
         CheckConstraint("length(idempotency_key) = 36", name="idempotency_key_uuid"),
         CheckConstraint("length(request_fingerprint) = 64", name="request_fingerprint_sha256"),
+        CheckConstraint("revision >= 0", name="revision_nonnegative"),
         Index("ix_workspace_comparisons_owner_created", "owner_user_id", "created_at"),
     )
 
@@ -779,6 +898,10 @@ class WorkspaceComparison(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(36), nullable=False)
     request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    revision: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0"), nullable=False
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     owner: Mapped[AuthUser] = relationship(back_populates="comparisons")
@@ -792,7 +915,8 @@ class WorkspaceConversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint("length(title) > 0", name="title_nonempty"),
         CheckConstraint(
             "(comparison_id IS NULL AND comparison_position IS NULL) OR "
-            "(comparison_id IS NOT NULL AND comparison_position BETWEEN 1 AND 5)",
+            "(comparison_id IS NOT NULL AND comparison_position IS NOT NULL "
+            "AND comparison_position BETWEEN 1 AND 5)",
             name="comparison_fields_valid",
         ),
         ForeignKeyConstraint(
@@ -1002,6 +1126,54 @@ class WorkspaceAttempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     artifact: Mapped[ArtifactIndex | None] = relationship()
     evaluation_case: Mapped["EvaluationCase | None"] = relationship(
         back_populates="source_attempt", uselist=False
+    )
+    annotation: Mapped["WorkspaceAttemptAnnotation | None"] = relationship(
+        back_populates="attempt",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+    )
+
+
+class WorkspaceAttemptAnnotation(TimestampMixin, Base):
+    __tablename__ = "workspace_attempt_annotations"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["attempt_id", "conversation_id"],
+            ["workspace_attempts.id", "workspace_attempts.conversation_id"],
+            ondelete="CASCADE",
+            name="fk_workspace_attempt_annotations_attempt_conversation",
+        ),
+        ForeignKeyConstraint(
+            ["conversation_id", "owner_user_id"],
+            ["workspace_conversations.id", "workspace_conversations.owner_user_id"],
+            ondelete="CASCADE",
+            name="fk_workspace_attempt_annotations_conversation_owner",
+        ),
+        CheckConstraint(
+            "feedback IS NOT NULL OR bookmarked = true OR private_note IS NOT NULL",
+            name="meaningful",
+        ),
+        CheckConstraint(
+            "private_note IS NULL OR length(private_note) BETWEEN 1 AND 10000",
+            name="private_note_length",
+        ),
+    )
+
+    attempt_id: Mapped[UUID] = mapped_column(primary_key=True)
+    conversation_id: Mapped[UUID] = mapped_column(nullable=False)
+    owner_user_id: Mapped[UUID] = mapped_column(nullable=False)
+    feedback: Mapped[WorkspaceAttemptFeedback | None] = mapped_column(
+        enum_column(WorkspaceAttemptFeedback, name="workspace_attempt_feedback")
+    )
+    bookmarked: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
+    private_note: Mapped[str | None] = mapped_column(Text)
+
+    attempt: Mapped[WorkspaceAttempt] = relationship(
+        back_populates="annotation",
+        foreign_keys=[attempt_id, conversation_id],
     )
 
 

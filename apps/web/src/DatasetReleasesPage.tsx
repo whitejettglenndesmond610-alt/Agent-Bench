@@ -143,7 +143,7 @@ function CreateRelease({
       {mutation.error && <div className="result-banner is-error" role="alert">{mutation.error.message}</div>}
       {canPublish ? (
         <button className="button" type="submit" disabled={mutation.isPending || !name.trim() || selectedIds.length === 0}>{mutation.isPending ? "正在建稿" : "建立发布草稿"}</button>
-      ) : <small className="release-named-operator-note">共享运营会话不能建立正式发布批次，请使用具名运营账号。</small>}
+      ) : <small className="release-named-operator-note">共享管理会话不能建立正式发布批次，请使用具名评测管理员账号。</small>}
     </form>
   );
 }
@@ -219,7 +219,7 @@ function ReleaseDetail({
           {canPublish ? <>
             <label><input type="checkbox" checked={approveConfirmed} onChange={(event) => setApproveConfirmed(event.target.checked)} />我已逐项核对案例内容、顺序与记录哈希</label>
             <button className="button is-quiet" type="button" disabled={!approveConfirmed || approveMutation.isPending} onClick={() => approveMutation.mutate()}>{approveMutation.isPending ? "批准中" : "批准发布清单"}</button>
-          </> : <small>需要具名运营账号批准。</small>}
+          </> : <small>需要具名评测管理员账号批准。</small>}
         </section>
       )}
       {release.status === "approved" && (
@@ -229,7 +229,7 @@ function ReleaseDetail({
           {canPublish ? <>
             <label><input type="checkbox" checked={publishConfirmed} onChange={(event) => setPublishConfirmed(event.target.checked)} />我确认本次发布不可用于评测运行，也不会影响排行榜</label>
             <button className="button is-danger" type="button" disabled={!publishConfirmed || publishMutation.isPending} onClick={() => publishMutation.mutate()}>{publishMutation.isPending ? "发布中" : "正式发布不可运行版本"}</button>
-          </> : <small>需要具名运营账号发布。</small>}
+          </> : <small>需要具名评测管理员账号发布。</small>}
         </section>
       )}
       {release.status === "published" && (

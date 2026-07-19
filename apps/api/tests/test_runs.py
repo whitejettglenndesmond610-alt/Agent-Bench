@@ -1067,10 +1067,22 @@ async def test_leaderboard_query_and_same_snapshot_compare_apis(tmp_path: Path) 
             run = await session.get(EvaluationRun, run_id)
             assert run is not None
             run.profile_key = "unified-v3"
-            for run_agent in await session.scalars(
-                select(RunAgent).where(RunAgent.run_id == run_id)
-            ):
+            run.status = RunStatus.PUBLISHED
+            run_agents = list(
+                await session.scalars(select(RunAgent).where(RunAgent.run_id == run_id))
+            )
+            for run_agent in run_agents:
                 run_agent.validity_status = ResultValidityStatus.VALID
+            existing_version_ids = {run_agent.agent_version_id for run_agent in run_agents}
+            for version_id in fixture.agent_version_ids:
+                if version_id not in existing_version_ids:
+                    session.add(
+                        RunAgent(
+                            run_id=run_id,
+                            agent_version_id=version_id,
+                            validity_status=ResultValidityStatus.VALID,
+                        )
+                    )
             snapshot = LeaderboardSnapshot(
                 run_id=run_id,
                 rankings_json=rankings,
@@ -1171,6 +1183,10 @@ async def test_unified_epoch_ignores_historical_results_but_preserves_history(
             run_agent = await session.scalar(select(RunAgent).where(RunAgent.run_id == run_id))
             version = await session.get(AgentVersion, fixture.agent_version_ids[0])
             assert run_agent is not None and version is not None
+            historical_run = await session.get(EvaluationRun, run_id)
+            assert historical_run is not None
+            historical_run.status = RunStatus.PUBLISHED
+            run_agent.validity_status = ResultValidityStatus.VALID
             snapshot = LeaderboardSnapshot(
                 run_id=run_id,
                 rankings_json=[],

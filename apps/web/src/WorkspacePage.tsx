@@ -8,7 +8,7 @@ import {
   useState
 } from "react";
 import ReactMarkdown from "react-markdown";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 
@@ -22,6 +22,8 @@ import {
   fetchWorkspaceAgents,
   fetchWorkspaceConversation,
   fetchWorkspaceConversations,
+  fetchWorkspaceExperienceTask,
+  fetchWorkspacePromptTemplates,
   regenerateWorkspaceMessage,
   sendWorkspaceMessage,
   updateWorkspaceConversation,
@@ -36,6 +38,14 @@ import {
 } from "./api";
 import { AgentPicker } from "./AgentPicker";
 import { LoadingState } from "./components";
+import {
+  AttemptAnnotationControls,
+  ClipboardButton,
+  conversationMarkdown,
+  downloadJson,
+  downloadMarkdown,
+  userQueryKeys
+} from "./userProduct";
 
 const activeStatuses = new Set(["queued", "running"]);
 const workspaceAgentsKey = (userId: string) => ["workspace", userId, "agents"] as const;
@@ -120,7 +130,11 @@ function safeHref(href: string | undefined): string | undefined {
   if (href.startsWith("#") || href.startsWith("/")) return href;
   try {
     const url = new URL(href, window.location.origin);
-    return ["http:", "https:", "mailto:"].includes(url.protocol) ? href : undefined;
+    return ["http:", "https:", "mailto:"].includes(url.protocol)
+      && !url.username
+      && !url.password
+      ? href
+      : undefined;
   } catch {
     return undefined;
   }
@@ -166,6 +180,7 @@ export function MarkdownContent({ content }: { content: string }) {
                 title={title}
                 target={external ? "_blank" : undefined}
                 rel={external ? "noopener noreferrer" : undefined}
+                referrerPolicy={external ? "no-referrer" : undefined}
               >
                 {children}
               </a>
@@ -206,6 +221,7 @@ export function Citations({ citations }: { citations: string[] }) {
                   href={href}
                   target={isExternalHref(href) ? "_blank" : undefined}
                   rel={isExternalHref(href) ? "noopener noreferrer" : undefined}
+                  referrerPolicy={isExternalHref(href) ? "no-referrer" : undefined}
                 >
                   {label}
                 </a>
@@ -293,6 +309,7 @@ function AttemptStage({
 }
 
 function TurnLedger({
+  userId,
   turn,
   latestTurn,
   selectedVariant,
@@ -306,6 +323,7 @@ function TurnLedger({
   onCreateDraft,
   onRegenerate
 }: {
+  userId: string;
   turn: WorkspaceTurn;
   latestTurn: boolean;
   selectedVariant: number | undefined;
@@ -344,6 +362,7 @@ function TurnLedger({
           <time dateTime={turn.user_message.created_at}>{formatTime(turn.user_message.created_at)}</time>
         </header>
         <p>{turn.user_message.content}</p>
+        <ClipboardButton className="copy-prompt-button" text={turn.user_message.content}>复制提问</ClipboardButton>
       </section>
 
       {selectedMessage && (
@@ -377,7 +396,7 @@ function TurnLedger({
           <footer className="agent-message-footer">
             <AttemptMeta attempt={selectedAttempt} />
             <div>
-              <button type="button" onClick={() => copyText(selectedMessage.content)}>复制回答</button>
+              <ClipboardButton text={selectedMessage.content}>复制回答</ClipboardButton>
               {canDraft && selectedAttempt?.status === "succeeded" && (
                 evaluationCaseId ? (
                   <Link to={`/evaluation-cases/${evaluationCaseId}`}>查看评测草稿</Link>
@@ -396,6 +415,9 @@ function TurnLedger({
               )}
             </div>
           </footer>
+          {selectedAttempt?.status === "succeeded" && (
+            <AttemptAnnotationControls userId={userId} attempt={selectedAttempt} />
+          )}
         </section>
       )}
 
@@ -515,10 +537,14 @@ function ConversationRail({
 
 export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: boolean }) {
   const { conversationId } = useParams();
+  const [searchParameters] = useSearchParams();
+  const requestedAgentVersionId = searchParameters.get("agentVersion") ?? "";
+  const requestedTemplateId = searchParameters.get("template") ?? "";
+  const requestedTaskSlug = searchParameters.get("task") ?? "";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState("");
-  const [selectedAgentVersionId, setSelectedAgentVersionId] = useState("");
+  const [selectedAgentVersionId, setSelectedAgentVersionId] = useState(requestedAgentVersionId);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -537,6 +563,8 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
   const forceScrollRef = useRef(false);
   const sendLockRef = useRef(false);
   const routeConversationRef = useRef(conversationId);
+  const draftTouchedRef = useRef(false);
+  const prefillHandledRef = useRef("");
 
   const catalogQuery = useQuery({
     queryKey: workspaceAgentsKey(userId),
@@ -545,6 +573,16 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
   const conversationsQuery = useQuery({
     queryKey: workspaceConversationsKey(userId),
     queryFn: fetchWorkspaceConversations
+  });
+  const templatesQuery = useQuery({
+    queryKey: userQueryKeys.templates(userId),
+    queryFn: fetchWorkspacePromptTemplates
+  });
+  const taskQuery = useQuery({
+    queryKey: userQueryKeys.task(userId, requestedTaskSlug || "none"),
+    queryFn: () => fetchWorkspaceExperienceTask(requestedTaskSlug),
+    enabled: Boolean(requestedTaskSlug),
+    retry: false
   });
   const conversationQuery = useQuery({
     queryKey: workspaceConversationKey(userId, conversationId ?? "new"),
@@ -594,8 +632,23 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
     pinnedToBottomRef.current = true;
     forceScrollRef.current = false;
     sendLockRef.current = false;
+    draftTouchedRef.current = false;
     if (ledgerRef.current) ledgerRef.current.scrollTop = 0;
   }, [conversationId]);
+
+  useEffect(() => {
+    if (!requestedTemplateId && !requestedTaskSlug) return;
+    const key = `${conversationId ?? "new"}:${requestedTemplateId}:${requestedTaskSlug}`;
+    if (prefillHandledRef.current === key) return;
+    const template = requestedTemplateId
+      ? templatesQuery.data?.items.find((item) => item.id === requestedTemplateId)
+      : undefined;
+    const loading = (requestedTemplateId && templatesQuery.isPending) || (requestedTaskSlug && taskQuery.isPending);
+    if (loading) return;
+    prefillHandledRef.current = key;
+    const content = template?.content ?? taskQuery.data?.prompt;
+    if (content && !draftTouchedRef.current && !draft) setDraft(content);
+  }, [conversationId, draft, requestedTaskSlug, requestedTemplateId, taskQuery.data, taskQuery.isPending, templatesQuery.data, templatesQuery.isPending]);
 
   useEffect(() => {
     if (!window.matchMedia) return;
@@ -1087,7 +1140,8 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
             )}
           </div>
            <div className="instrument-status">
-            <Link className="instrument-mode-link" to="/workspace/compare">并行对比</Link>
+             <Link className="instrument-mode-link" to="/compare">并行对比</Link>
+             {conversation && <div className="conversation-export-actions"><button type="button" onClick={() => downloadMarkdown(conversation.title, conversationMarkdown(conversation))}>MD</button><button type="button" onClick={() => downloadJson(conversation.title, conversation)}>JSON</button></div>}
              <i className={activeAttempt ? "is-active" : ""} />
             <span>{activeAttempt ? attemptLabel(activeAttempt) : "CHANNEL READY"}</span>
           </div>
@@ -1148,6 +1202,7 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
           {conversation?.turns.map((turn, index) => (
             <TurnLedger
               key={turn.turn_no}
+              userId={userId}
               turn={turn}
               latestTurn={index === conversation.turns.length - 1}
                selectedVariant={variantSelection[turn.turn_no]}
@@ -1175,6 +1230,19 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
           {conversation && !selectedAgent && (
             <div className="composer-notice">此会话固定的 Agent 版本当前不可用，请迁移到当前版本后继续。</div>
           )}
+          <div className="composer-resources">
+            <label><span>Prompt 模板</span><select aria-label="Prompt 模板" value="" disabled={templatesQuery.isPending || !templatesQuery.data?.items.length} onChange={(event) => {
+              const template = templatesQuery.data?.items.find((item) => item.id === event.target.value);
+              if (!template) return;
+              if (draft || draftTouchedRef.current) {
+                setActionError("为避免覆盖已输入内容，请先清空当前草稿再选择模板。");
+                return;
+              }
+              draftTouchedRef.current = true;
+              setDraft(template.content);
+            }}><option value="">{templatesQuery.isPending ? "正在读取模板" : "选择模板填入空白草稿"}</option>{templatesQuery.data?.items.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
+            <Link to="/templates">管理模板</Link><Link to="/experience">体验任务</Link>
+          </div>
           <div className="composer-grid">
             <span className="composer-prompt-mark" aria-hidden="true">›</span>
             <label className="sr-only" htmlFor="workspace-message">发送消息</label>
@@ -1192,7 +1260,7 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
                 || detailBlocked
                 || conversationMutationPending
               }
-              onChange={(event) => setDraft(event.target.value)}
+              onChange={(event) => { draftTouchedRef.current = true; setDraft(event.target.value); }}
               onKeyDown={handleComposerKeyDown}
             />
             <button

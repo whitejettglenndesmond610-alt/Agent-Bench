@@ -2,9 +2,13 @@ from datetime import datetime
 from typing import Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from agent_eval.db.enums import WorkspaceAttemptStatus, WorkspaceMessageRole
+from agent_eval.db.enums import (
+    WorkspaceAttemptFeedback,
+    WorkspaceAttemptStatus,
+    WorkspaceMessageRole,
+)
 
 
 class WorkspaceAgentResponse(BaseModel):
@@ -17,6 +21,7 @@ class WorkspaceAgentResponse(BaseModel):
     version: int
     max_prompt_characters: int | None
     supports_citations: bool
+    is_favorite: bool
 
 
 class WorkspaceConversationCreate(BaseModel):
@@ -107,6 +112,9 @@ class WorkspaceAttemptResponse(BaseModel):
     input_tokens: int | None
     output_tokens: int | None
     total_tokens: int | None
+    feedback: WorkspaceAttemptFeedback | None
+    bookmarked: bool
+    private_note: str | None
     cancel_requested_at: datetime | None
     started_at: datetime | None
     finished_at: datetime | None
@@ -117,6 +125,31 @@ class WorkspaceAttemptResponse(BaseModel):
 class WorkspaceAttemptError(BaseModel):
     type: str
     category: str
+
+
+class WorkspaceAttemptAnnotationPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    feedback: WorkspaceAttemptFeedback | None = None
+    bookmarked: bool | None = None
+    private_note: str | None = Field(default=None, max_length=10_000)
+
+    @field_validator("private_note")
+    @classmethod
+    def normalize_private_note(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        note = value.strip()
+        return note or None
+
+    @model_validator(mode="after")
+    def has_change(self) -> Self:
+        editable = {"feedback", "bookmarked", "private_note"}
+        if not self.model_fields_set & editable:
+            raise ValueError("at least one annotation field is required")
+        if "bookmarked" in self.model_fields_set and self.bookmarked is None:
+            raise ValueError("bookmarked cannot be null")
+        return self
 
 
 class WorkspaceTurnResponse(BaseModel):
@@ -191,6 +224,32 @@ class WorkspaceComparisonCreate(BaseModel):
         return self
 
 
+class WorkspaceComparisonPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: int = Field(ge=0)
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    archived: bool | None = None
+
+    @field_validator("title")
+    @classmethod
+    def normalize_title(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        title = value.strip()
+        if not title:
+            raise ValueError("title cannot be blank")
+        return title
+
+    @model_validator(mode="after")
+    def has_change(self) -> Self:
+        if "title" in self.model_fields_set and self.title is None:
+            raise ValueError("title cannot be null")
+        if self.title is None and self.archived is None:
+            raise ValueError("a title or archived state is required")
+        return self
+
+
 class WorkspaceComparisonCounts(BaseModel):
     queued: int
     running: int
@@ -213,6 +272,8 @@ class WorkspaceComparisonResponse(BaseModel):
     prompt: str
     status: Literal["queued", "running", "canceling", "completed"]
     counts: WorkspaceComparisonCounts
+    revision: int
+    archived_at: datetime | None
     cancel_requested_at: datetime | None
     created_at: datetime
     updated_at: datetime

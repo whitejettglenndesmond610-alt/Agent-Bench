@@ -140,8 +140,14 @@ test("opens the detail drawer and builds a global multi-agent comparison", async
 
   fireEvent.click(screen.getByRole("checkbox", { name: "选择 Agent Alpha" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "选择 Agent Beta" }));
-  const compareLink = screen.getByRole("link", { name: /打开横向对比/ });
-  expect(compareLink).toHaveAttribute("href", "/leaderboard/compare?agents=agent-a,agent-b");
+  expect(screen.getByRole("link", { name: "正式成绩对比" })).toHaveAttribute(
+    "href",
+    "/leaderboard/compare?agents=agent-a,agent-b"
+  );
+  expect(screen.getByRole("link", { name: /实时回答对比/ })).toHaveAttribute(
+    "href",
+    "/compare?agents=agent-a,agent-b"
+  );
 });
 
 test("keeps entirely unranked agents in a collapsed evaluation section", async () => {

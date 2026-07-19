@@ -2,7 +2,7 @@ from collections import Counter
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Header, Query, Request, status
+from fastapi import APIRouter, Header, Query, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +24,7 @@ from agent_eval.api.schemas.workspace import (
     WorkspaceComparisonCreate,
     WorkspaceComparisonItem,
     WorkspaceComparisonList,
+    WorkspaceComparisonPatch,
     WorkspaceComparisonResponse,
     WorkspaceConversationAgent,
 )
@@ -69,6 +70,9 @@ async def comparison_conversations(
                 ),
                 selectinload(WorkspaceConversation.attempts).joinedload(
                     WorkspaceAttempt.assistant_message
+                ),
+                selectinload(WorkspaceConversation.attempts).joinedload(
+                    WorkspaceAttempt.annotation
                 ),
                 selectinload(WorkspaceConversation.attempts).joinedload(
                     WorkspaceAttempt.evaluation_case
@@ -137,6 +141,8 @@ async def comparison_response(
             failed=counts[WorkspaceAttemptStatus.FAILED],
             canceled=counts[WorkspaceAttemptStatus.CANCELED],
         ),
+        revision=comparison.revision,
+        archived_at=comparison.archived_at,
         cancel_requested_at=comparison.cancel_requested_at,
         created_at=comparison.created_at,
         updated_at=updated_at,
@@ -270,6 +276,7 @@ async def create_comparison_locked(
                 prompt_hash=formatted.sha256,
                 prompt_characters=formatted.characters,
                 prompt_format=formatted.format_version,
+                annotation=None,
             )
         )
     try:
@@ -287,18 +294,26 @@ async def create_comparison_locked(
 
 @router.get("/comparisons", response_model=WorkspaceComparisonList)
 async def list_comparisons(
+    response: Response,
     database: DatabaseSession,
     auth_session: WorkspaceSession,
     limit: Annotated[int, Query(ge=1, le=50)] = 30,
+    include_archived: bool = True,
 ) -> WorkspaceComparisonList:
+    statement = select(WorkspaceComparison).where(
+        WorkspaceComparison.owner_user_id == workspace_user_id(auth_session)
+    )
+    if not include_archived:
+        statement = statement.where(WorkspaceComparison.archived_at.is_(None))
     comparisons = list(
         await database.scalars(
-            select(WorkspaceComparison)
-            .where(WorkspaceComparison.owner_user_id == workspace_user_id(auth_session))
-            .order_by(WorkspaceComparison.created_at.desc(), WorkspaceComparison.id.desc())
+            statement.order_by(
+                WorkspaceComparison.created_at.desc(), WorkspaceComparison.id.desc()
+            )
             .limit(limit)
         )
     )
+    response.headers["Cache-Control"] = "private, no-store"
     return WorkspaceComparisonList(
         items=[await comparison_response(database, item) for item in comparisons]
     )
@@ -307,13 +322,44 @@ async def list_comparisons(
 @router.get("/comparisons/{comparison_id}", response_model=WorkspaceComparisonResponse)
 async def get_comparison(
     comparison_id: UUID,
+    response: Response,
     database: DatabaseSession,
     auth_session: WorkspaceSession,
 ) -> WorkspaceComparisonResponse:
     comparison = await owned_comparison(
         database, comparison_id, workspace_user_id(auth_session)
     )
+    response.headers["Cache-Control"] = "private, no-store"
     return await comparison_response(database, comparison)
+
+
+@router.patch(
+    "/comparisons/{comparison_id}", response_model=WorkspaceComparisonResponse
+)
+async def patch_comparison(
+    comparison_id: UUID,
+    payload: WorkspaceComparisonPatch,
+    request: Request,
+    database: DatabaseSession,
+    auth_session: WorkspaceCsrf,
+) -> WorkspaceComparisonResponse:
+    owner_user_id = workspace_user_id(auth_session)
+    async with sqlite_mutation_guard(
+        request, database, f"workspace-comparison:{comparison_id}"
+    ):
+        comparison = await owned_comparison(
+            database, comparison_id, owner_user_id, lock=True
+        )
+        if comparison.revision != payload.expected_revision:
+            raise workspace_error(409, "revision_conflict", "Comparison revision changed")
+        if payload.title is not None:
+            comparison.title = payload.title
+        if payload.archived is not None:
+            comparison.archived_at = utc_now() if payload.archived else None
+        comparison.revision += 1
+        comparison.updated_at = utc_now()
+        await database.commit()
+        return await comparison_response(database, comparison)
 
 
 @router.post(
@@ -365,6 +411,7 @@ async def cancel_comparison_locked(
             attempt.cancel_requested_at = attempt.cancel_requested_at or now
     if active:
         comparison.cancel_requested_at = comparison.cancel_requested_at or now
+        comparison.revision += 1
         comparison.updated_at = now
     await database.commit()
     return await comparison_response(database, comparison)

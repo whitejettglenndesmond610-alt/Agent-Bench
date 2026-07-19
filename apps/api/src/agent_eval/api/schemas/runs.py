@@ -2,13 +2,18 @@ from datetime import datetime
 from typing import Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from agent_eval.db.enums import (
     Ability,
     AgentVersionLifecycle,
+    ArtifactKind,
+    AttemptStatus,
+    CitationFetchStatus,
     DesiredRunState,
+    ExecutionStatus,
     Language,
+    QuestionType,
     ResultValidityStatus,
     RunScope,
     RunStage,
@@ -74,6 +79,8 @@ class EvaluationRunBatchCreate(BaseModel):
 
 class EvaluationRunResponse(BaseModel):
     id: UUID
+    experiment_id: UUID | None
+    experiment_position: int | None
     name: str
     status: RunStatus
     desired_state: DesiredRunState
@@ -129,6 +136,8 @@ class AgentEvaluationStatus(BaseModel):
 
 class EvaluationRunStateResponse(BaseModel):
     id: UUID
+    experiment_id: UUID | None
+    experiment_position: int | None
     name: str
     status: RunStatus
     desired_state: DesiredRunState
@@ -202,6 +211,117 @@ class EvaluationRunProgress(EvaluationRunStateResponse):
     processed: int
     progress_percent: float
     agents: list[RunAgentProgress]
+
+
+class RunEvidenceSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+
+class RunEvidenceQuestionChoice(RunEvidenceSchema):
+    label: str
+    text: str
+
+
+class RunEvidenceArtifactMetadata(RunEvidenceSchema):
+    artifact_id: UUID
+    kind: ArtifactKind
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    size_bytes: int = Field(ge=0)
+    expires_at: datetime
+    retained: bool
+
+
+class RunEvidenceScoreSummary(RunEvidenceSchema):
+    score_id: UUID
+    answer_score: float = Field(ge=0, le=100)
+    citation_score: float | None = Field(default=None, ge=0, le=100)
+    final_score: float = Field(ge=0, le=100)
+
+
+class RunEvidenceScoreDetail(RunEvidenceScoreSummary):
+    judge_reason: str | None
+    judge_artifact: RunEvidenceArtifactMetadata | None
+
+
+class RunEvidenceListItem(RunEvidenceSchema):
+    execution_item_id: UUID
+    run_agent_id: UUID
+    agent_id: UUID
+    agent_version_id: UUID
+    agent_name: str
+    provider: str
+    version: int
+    question_id: UUID
+    question_external_id: str
+    question_type: QuestionType
+    benchmark_id: UUID
+    benchmark_name: str
+    ability: Ability
+    language: Language
+    requires_citations: bool
+    difficulty: str | None
+    domain: str | None
+    status: ExecutionStatus
+    error_type: str | None
+    answer_preview: str | None
+    attempt_count: int = Field(ge=0)
+    latency_ms: int | None = Field(default=None, ge=0)
+    score: RunEvidenceScoreSummary | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class EvaluationRunEvidenceList(RunEvidenceSchema):
+    run_id: UUID
+    items: list[RunEvidenceListItem]
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1, le=100)
+    offset: int = Field(ge=0)
+
+
+class RunEvidenceAttempt(RunEvidenceSchema):
+    attempt_id: UUID
+    attempt_no: int = Field(ge=1, le=2)
+    status: AttemptStatus
+    started_at: datetime
+    finished_at: datetime | None
+    status_code: int | None = Field(default=None, ge=100, le=599)
+    latency_ms: int | None = Field(default=None, ge=0)
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+    total_tokens: int | None = Field(default=None, ge=0)
+    error_type: str | None
+
+
+class RunEvidenceCitation(RunEvidenceSchema):
+    citation_id: UUID
+    position: int = Field(ge=0, le=2)
+    original_url: str
+    final_url: str | None
+    fetch_status: CitationFetchStatus
+    http_status: int | None = Field(default=None, ge=100, le=599)
+    authenticity_score: float | None = Field(default=None, ge=0, le=100)
+    support_score: float | None = Field(default=None, ge=0, le=100)
+    judge_reason: str | None
+    content_artifact: RunEvidenceArtifactMetadata | None
+    judge_artifact: RunEvidenceArtifactMetadata | None
+
+
+RunEvidenceCandidateAnswerStatus = Literal[
+    "available", "not_recorded", "expired", "unavailable"
+]
+
+
+class RunEvidenceDetail(RunEvidenceListItem):
+    prompt: str
+    choices: list[RunEvidenceQuestionChoice] | None
+    reference_answer: str
+    candidate_answer: str | None
+    candidate_answer_status: RunEvidenceCandidateAnswerStatus
+    attempts: list[RunEvidenceAttempt]
+    score: RunEvidenceScoreDetail | None
+    citations: list[RunEvidenceCitation]
+    response_artifact: RunEvidenceArtifactMetadata | None
 
 
 class RunAgentOption(BaseModel):

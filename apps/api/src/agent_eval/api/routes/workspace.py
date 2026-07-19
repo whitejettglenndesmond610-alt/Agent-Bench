@@ -6,8 +6,8 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Header, HTTPException, Query, Request, status
-from sqlalchemy import func, select
+from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, status
+from sqlalchemy import and_, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
@@ -16,8 +16,10 @@ from agent_eval.api.dependencies import (
     WorkspaceCsrf,
     WorkspaceSession,
 )
+from agent_eval.api.mutation_guard import sqlite_mutation_guard
 from agent_eval.api.schemas.workspace import (
     WorkspaceAgentResponse,
+    WorkspaceAttemptAnnotationPatch,
     WorkspaceAttemptError,
     WorkspaceAttemptResponse,
     WorkspaceConversationAgent,
@@ -44,7 +46,9 @@ from agent_eval.db.models import (
     Agent,
     AgentVersion,
     Session,
+    WorkspaceAgentFavorite,
     WorkspaceAttempt,
+    WorkspaceAttemptAnnotation,
     WorkspaceConversation,
     WorkspaceMessage,
 )
@@ -128,6 +132,7 @@ def attempt_response(
     assistant_message: WorkspaceMessage | None = None,
 ) -> WorkspaceAttemptResponse:
     assistant = assistant_message if assistant_message is not None else attempt.assistant_message
+    annotation = attempt.annotation
     return WorkspaceAttemptResponse(
         id=attempt.id,
         conversation_id=attempt.conversation_id,
@@ -152,6 +157,9 @@ def attempt_response(
         input_tokens=attempt.input_tokens,
         output_tokens=attempt.output_tokens,
         total_tokens=attempt.total_tokens,
+        feedback=annotation.feedback if annotation is not None else None,
+        bookmarked=annotation.bookmarked if annotation is not None else False,
+        private_note=annotation.private_note if annotation is not None else None,
         cancel_requested_at=attempt.cancel_requested_at,
         started_at=attempt.started_at,
         finished_at=attempt.finished_at,
@@ -265,7 +273,10 @@ async def existing_idempotent_attempt(
 ) -> WorkspaceAttempt | None:
     attempt = await database.scalar(
         select(WorkspaceAttempt)
-        .options(joinedload(WorkspaceAttempt.assistant_message))
+        .options(
+            joinedload(WorkspaceAttempt.annotation),
+            joinedload(WorkspaceAttempt.assistant_message),
+        )
         .where(
             WorkspaceAttempt.conversation_id == conversation_id,
             WorkspaceAttempt.idempotency_key == key,
@@ -293,13 +304,22 @@ def ensure_prompt_fits(prompt_characters: int, version: AgentVersion) -> None:
 
 @router.get("/agents", response_model=list[WorkspaceAgentResponse])
 async def list_workspace_agents(
+    response: Response,
     database: DatabaseSession,
-    _authorization: WorkspaceSession,
+    auth_session: WorkspaceSession,
 ) -> list[WorkspaceAgentResponse]:
+    owner_user_id = workspace_user_id(auth_session)
     rows = list(
         await database.execute(
-            select(Agent, AgentVersion)
+            select(Agent, AgentVersion, WorkspaceAgentFavorite.owner_user_id)
             .join(AgentVersion, AgentVersion.agent_id == Agent.id)
+            .outerjoin(
+                WorkspaceAgentFavorite,
+                and_(
+                    WorkspaceAgentFavorite.agent_id == Agent.id,
+                    WorkspaceAgentFavorite.owner_user_id == owner_user_id,
+                ),
+            )
             .where(
                 Agent.status == AgentStatus.ENABLED,
                 AgentVersion.enabled.is_(True),
@@ -308,6 +328,7 @@ async def list_workspace_agents(
             .order_by(Agent.name, Agent.id, AgentVersion.version.desc())
         )
     )
+    response.headers["Cache-Control"] = "private, no-store"
     return [
         WorkspaceAgentResponse(
             agent_id=agent.id,
@@ -319,8 +340,9 @@ async def list_workspace_agents(
             version=version.version,
             max_prompt_characters=version.max_prompt_characters,
             supports_citations=version.citations_jsonpath is not None,
+            is_favorite=favorite_owner_user_id is not None,
         )
-        for agent, version in rows
+        for agent, version, favorite_owner_user_id in rows
     ]
 
 
@@ -383,6 +405,7 @@ async def list_conversations(
 @router.get("/conversations/{conversation_id}", response_model=WorkspaceConversationDetail)
 async def get_conversation(
     conversation_id: UUID,
+    response: Response,
     database: DatabaseSession,
     auth_session: WorkspaceSession,
 ) -> WorkspaceConversationDetail:
@@ -403,7 +426,10 @@ async def get_conversation(
     attempts = list(
         await database.scalars(
             select(WorkspaceAttempt)
-            .options(joinedload(WorkspaceAttempt.assistant_message))
+            .options(
+                joinedload(WorkspaceAttempt.annotation),
+                joinedload(WorkspaceAttempt.assistant_message),
+            )
             .where(WorkspaceAttempt.conversation_id == conversation.id)
             .order_by(WorkspaceAttempt.generation_no)
         )
@@ -432,6 +458,7 @@ async def get_conversation(
                 ],
             )
         )
+    response.headers["Cache-Control"] = "private, no-store"
     return WorkspaceConversationDetail(
         **conversation_response(conversation).model_dump(), turns=turns
     )
@@ -519,6 +546,7 @@ async def queue_attempt(
         prompt_hash=prompt.sha256,
         prompt_characters=prompt.characters,
         prompt_format=prompt.format_version,
+        annotation=None,
     )
     database.add(attempt)
     return attempt
@@ -680,21 +708,105 @@ async def send_message_locked(
 @router.get("/attempts/{attempt_id}", response_model=WorkspaceAttemptResponse)
 async def get_attempt(
     attempt_id: UUID,
+    response: Response,
     database: DatabaseSession,
     auth_session: WorkspaceSession,
 ) -> WorkspaceAttemptResponse:
-    attempt = await database.scalar(
+    attempt = await owned_attempt(
+        database, attempt_id, workspace_user_id(auth_session)
+    )
+    response.headers["Cache-Control"] = "private, no-store"
+    return attempt_response(attempt)
+
+
+async def owned_attempt(
+    database: DatabaseSession,
+    attempt_id: UUID,
+    owner_user_id: UUID,
+    *,
+    lock: bool = False,
+) -> WorkspaceAttempt:
+    statement = (
         select(WorkspaceAttempt)
-        .options(joinedload(WorkspaceAttempt.assistant_message))
+        .options(
+            joinedload(WorkspaceAttempt.annotation),
+            joinedload(WorkspaceAttempt.assistant_message),
+        )
         .join(WorkspaceConversation, WorkspaceConversation.id == WorkspaceAttempt.conversation_id)
         .where(
             WorkspaceAttempt.id == attempt_id,
-            WorkspaceConversation.owner_user_id == workspace_user_id(auth_session),
+            WorkspaceConversation.owner_user_id == owner_user_id,
         )
     )
+    if lock:
+        statement = statement.with_for_update(of=WorkspaceAttempt)
+    attempt = await database.scalar(statement)
     if attempt is None:
         raise workspace_error(404, "attempt_not_found", "Attempt not found")
-    return attempt_response(attempt)
+    return attempt
+
+
+@router.patch(
+    "/attempts/{attempt_id}/annotation", response_model=WorkspaceAttemptResponse
+)
+async def patch_attempt_annotation(
+    attempt_id: UUID,
+    payload: WorkspaceAttemptAnnotationPatch,
+    request: Request,
+    database: DatabaseSession,
+    auth_session: WorkspaceCsrf,
+) -> WorkspaceAttemptResponse:
+    owner_user_id = workspace_user_id(auth_session)
+    async with sqlite_mutation_guard(
+        request, database, f"workspace-attempt:{attempt_id}"
+    ):
+        attempt = await owned_attempt(
+            database,
+            attempt_id,
+            owner_user_id,
+            lock=True,
+        )
+        if attempt.status != WorkspaceAttemptStatus.SUCCEEDED:
+            raise workspace_error(
+                409,
+                "attempt_not_succeeded",
+                "Only a successful attempt can be annotated",
+            )
+
+        annotation = attempt.annotation
+        feedback = annotation.feedback if annotation is not None else None
+        bookmarked = annotation.bookmarked if annotation is not None else False
+        private_note = annotation.private_note if annotation is not None else None
+        if "feedback" in payload.model_fields_set:
+            feedback = payload.feedback
+        if "bookmarked" in payload.model_fields_set:
+            bookmarked = bool(payload.bookmarked)
+        if "private_note" in payload.model_fields_set:
+            private_note = payload.private_note
+
+        if feedback is None and not bookmarked and private_note is None:
+            if annotation is not None:
+                attempt.annotation = None
+            await database.commit()
+            return attempt_response(attempt)
+
+        if annotation is None:
+            annotation = WorkspaceAttemptAnnotation(
+                attempt_id=attempt.id,
+                conversation_id=attempt.conversation_id,
+                owner_user_id=owner_user_id,
+                feedback=feedback,
+                bookmarked=bookmarked,
+                private_note=private_note,
+            )
+            attempt.annotation = annotation
+        else:
+            annotation.feedback = feedback
+            annotation.bookmarked = bookmarked
+            annotation.private_note = private_note
+            annotation.updated_at = utc_now()
+        await database.commit()
+        return attempt_response(attempt)
 
 
 @router.post("/attempts/{attempt_id}/cancel", response_model=WorkspaceAttemptResponse)
@@ -703,18 +815,12 @@ async def cancel_attempt(
     database: DatabaseSession,
     auth_session: WorkspaceCsrf,
 ) -> WorkspaceAttemptResponse:
-    attempt = await database.scalar(
-        select(WorkspaceAttempt)
-        .options(joinedload(WorkspaceAttempt.assistant_message))
-        .join(WorkspaceConversation, WorkspaceConversation.id == WorkspaceAttempt.conversation_id)
-        .where(
-            WorkspaceAttempt.id == attempt_id,
-            WorkspaceConversation.owner_user_id == workspace_user_id(auth_session),
-        )
-        .with_for_update(of=WorkspaceAttempt)
+    attempt = await owned_attempt(
+        database,
+        attempt_id,
+        workspace_user_id(auth_session),
+        lock=True,
     )
-    if attempt is None:
-        raise workspace_error(404, "attempt_not_found", "Attempt not found")
     if attempt.status == WorkspaceAttemptStatus.QUEUED:
         now = utc_now()
         attempt.status = WorkspaceAttemptStatus.CANCELED

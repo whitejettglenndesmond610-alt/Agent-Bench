@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import {
@@ -12,7 +12,8 @@ import {
   RunStage,
   RunStatus,
   cancelRun,
-  createRunsBatch,
+  createEvaluationExperiment,
+  createRun,
   fetchRunOptions,
   fetchRunProgress,
   fetchRuns,
@@ -160,6 +161,7 @@ function LaunchRunModal({
     initialAgentVersion ? [initialAgentVersion] : []
   );
   const [formError, setFormError] = useState<string | null>(null);
+  const experimentSubmission = useRef<{ fingerprint: string; key: string } | null>(null);
 
   const mutation = useMutation({
     mutationFn: async (forceRetest: boolean) => {
@@ -173,19 +175,41 @@ function LaunchRunModal({
         throw new Error("请选择运行 Profile");
       }
       if (!profile.score_config_id) throw new Error("该 Profile 的评分配置尚未准备完成");
-      return createRunsBatch({
+      const common = {
         name: name.trim(),
-        agent_version_ids: selectedAgentIds,
         profile_key: profileKey,
         judge_config_id: options.judge_config_id,
         score_config_id: profile.score_config_id,
         ...(forceRetest ? { force_retest: true } : {})
+      };
+      if (selectedAgentIds.length === 1) {
+        const run = await createRun({
+          ...common,
+          agent_version_ids: [selectedAgentIds[0]]
+        });
+        return { kind: "run" as const, id: run.id };
+      }
+      const experimentInput = {
+        ...common,
+        agent_version_ids: selectedAgentIds
+      };
+      const fingerprint = JSON.stringify(experimentInput);
+      if (experimentSubmission.current?.fingerprint !== fingerprint) {
+        experimentSubmission.current = { fingerprint, key: crypto.randomUUID() };
+      }
+      const experiment = await createEvaluationExperiment({
+        ...experimentInput,
+        idempotency_key: experimentSubmission.current.key
       });
+      return { kind: "experiment" as const, id: experiment.id };
     },
-    onSuccess: async ({ runs }) => {
-      await queryClient.invalidateQueries({ queryKey: ["runs"] });
+    onSuccess: async (created) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["runs"] }),
+        queryClient.invalidateQueries({ queryKey: ["evaluation-experiments"] })
+      ]);
       onClose();
-      navigate(runs.length === 1 ? `/runs/${runs[0].id}` : "/runs");
+      navigate(created.kind === "run" ? `/runs/${created.id}` : `/experiments/${created.id}`);
     }
   });
 
@@ -246,7 +270,7 @@ function LaunchRunModal({
     <Modal
       eyebrow="NEW EVALUATION RUN"
       title="发起基准评测"
-      description="选择 1-50 个已启用 Agent 和运行 Profile；系统会为每个 Agent 创建独立任务。"
+      description="选择一个 Agent 创建独立运行；选择两个及以上 Agent 创建可持续比较的评测实验。"
       onClose={onClose}
     >
       <ol className="stepper run-stepper" aria-label="评测步骤">
@@ -266,7 +290,7 @@ function LaunchRunModal({
           <FormField label="任务名称" htmlFor="run-name" required>
             <Input id="run-name" value={name} maxLength={160} onChange={(event) => setName(event.target.value)} />
           </FormField>
-          <div className="independent-run-note"><strong>独立任务模式</strong><span>每个已选 Agent 会创建一个独立评测任务，可分别完成、取消和发布，互不阻塞。</span></div>
+           <div className="independent-run-note"><strong>{selectedAgentIds.length >= 2 ? "评测实验模式" : "单 Agent 运行"}</strong><span>{selectedAgentIds.length >= 2 ? "所选 Agent 将进入同一个持久化实验，每个成员仍保有独立运行与证据。" : "选择一个 Agent 时创建独立评测运行。"}</span></div>
           <fieldset className="agent-picker">
             <legend>Agent 选择 <span>{selectedAgentIds.length}/50 · 至少选择 1 个</span></legend>
             <div>
@@ -333,9 +357,9 @@ function LaunchRunModal({
         </form>
       ) : selectedProfile ? (
         <div className="modal-form run-review">
-          <div className="review-banner"><span>READY TO QUEUE · INDEPENDENT TASKS</span><strong>{name}</strong><small>以下 {selectedAgentIds.length} 个任务会独立执行、取消、完成和发布。</small></div>
+           <div className="review-banner"><span>{selectedAgentIds.length >= 2 ? "READY TO QUEUE · PERSISTED EXPERIMENT" : "READY TO QUEUE · SINGLE RUN"}</span><strong>{name}</strong><small>{selectedAgentIds.length >= 2 ? `以下 ${selectedAgentIds.length} 个 Agent 将在同一实验中比较，每个成员运行可独立查看。` : "将创建一个可独立跟踪与检查证据的评测运行。"}</small></div>
           <dl className="review-metrics">
-            <div><dt>独立任务</dt><dd>{selectedAgentIds.length} 个</dd></div>
+             <div><dt>{selectedAgentIds.length >= 2 ? "实验成员" : "独立运行"}</dt><dd>{selectedAgentIds.length} 个</dd></div>
             <div><dt>每任务题目</dt><dd>{selectedProfile.question_count}</dd></div>
             <div><dt>预计总调用</dt><dd>{selectedProfile.question_count * selectedAgentIds.length}</dd></div>
             <div><dt>运行 Profile</dt><dd>{selectedProfile.name}</dd></div>
@@ -353,7 +377,7 @@ function LaunchRunModal({
           </section>
           {!selectedProfile.ranking_eligible && <div className="smoke-review-warning"><strong>Smoke Profile</strong><span>本次结果用于快速验证，不会进入排行榜。</span></div>}
           {duplicateCode === "evaluation_already_active" ? <div className="result-banner is-error" role="alert">所选 Agent 已有相同 Profile 的评测正在排队或运行，不能强制覆盖。请等待现有任务结束后再试。</div> : duplicateCode === "evaluation_result_exists" ? <div className="duplicate-confirm" role="alert"><div><strong>已有可用评测结果</strong><span>重新评测会创建全新独立任务，不会覆盖历史结果。确认后才会强制复测。</span></div><Button type="button" className="is-danger" disabled={mutation.isPending} onClick={() => mutation.mutate(true)}>{mutation.isPending ? "正在重新提交" : "确认重新评测"}</Button></div> : mutation.error ? <div className="result-banner is-error" role="alert">{mutation.error instanceof ApiError ? mutation.error.message : "任务创建失败"}</div> : null}
-          <div className="modal-actions"><Button type="button" className="is-ghost" onClick={() => { mutation.reset(); setStep(2); }}>返回修改</Button><Button type="button" disabled={mutation.isPending || Boolean(duplicateCode)} onClick={() => mutation.mutate(false)}>{mutation.isPending ? "正在提交" : `提交 ${selectedAgentIds.length} 个独立任务`}</Button></div>
+           <div className="modal-actions"><Button type="button" className="is-ghost" onClick={() => { mutation.reset(); setStep(2); }}>返回修改</Button><Button type="button" disabled={mutation.isPending || Boolean(duplicateCode)} onClick={() => mutation.mutate(false)}>{mutation.isPending ? "正在提交" : selectedAgentIds.length >= 2 ? `创建 ${selectedAgentIds.length} Agent 评测实验` : "创建单 Agent 评测运行"}</Button></div>
         </div>
       ) : null}
     </Modal>
@@ -396,7 +420,7 @@ function RunsList() {
   return (
     <main className="workspace runs-workspace">
       <header className="section-header">
-        <div><p className="eyebrow">EVALUATION PIPELINE</p><h1>评测任务</h1><p>按运行 Profile 为每个 Agent 创建独立基准测试，分别跟踪推理、裁判、引用和发布进度。</p></div>
+        <div><p className="eyebrow">EVALUATION RUNS</p><h1>评测运行</h1><p>跟踪每个 Agent 的推理、裁判、引用、证据与结果发布进度。</p></div>
         <Button type="button" onClick={openLaunch}>+ 发起评测</Button>
       </header>
       <section className="run-summary-strip">
@@ -410,7 +434,7 @@ function RunsList() {
       ) : runsQuery.error ? (
         <div className="table-state is-error">{runsQuery.error.message}</div>
       ) : runs.length === 0 ? (
-        <section className="empty-state"><span>NO RUNS</span><h2>尚未发起评测</h2><p>选择 1-50 个已启用 Agent 和运行 Profile，创建彼此独立的评测任务。</p><Button type="button" onClick={openLaunch}>发起首个评测</Button></section>
+        <section className="empty-state"><span>NO RUNS</span><h2>尚未发起评测</h2><p>选择一个 Agent 创建运行，或选择多个 Agent 创建持久化评测实验。</p><Button type="button" onClick={openLaunch}>发起首个评测</Button></section>
       ) : (
         <Table className="runs-table">
           <thead><tr><th>任务</th><th>状态</th><th>处理进度</th><th>失败 / 重试</th><th>创建时间</th><th><span className="sr-only">查看</span></th></tr></thead>
@@ -465,7 +489,11 @@ function RunDetail({ runId }: { runId: string }) {
       <Link className="back-link" to="/runs">← 返回任务列表</Link>
       <header className="run-detail-header">
         <div><p className="eyebrow">RUN / {run.id.slice(0, 8).toUpperCase()}</p><h1>{run.name}</h1><div className="run-meta"><span className={`run-status ${statusClass(run.status)}`}><i />{run.desired_state === "canceled" && run.status !== "canceled" ? "取消处理中" : statusLabels[run.status]}</span><span>{runProfileLabel(run)}</span><span>{stageLabels[run.stage]}</span><span>创建于 {formatDate(run.created_at)}</span></div></div>
-        {cancelable ? <Button type="button" className="is-danger" onClick={() => setConfirmCancel(true)}>取消任务</Button> : scoringRetryable ? <Button type="button" onClick={() => setConfirmRetryScoring(true)}>重试评分</Button> : null}
+        <div className="run-detail-actions">
+          {run.experiment_id && <Link className="button is-ghost" to={`/experiments/${run.experiment_id}`}>所属实验</Link>}
+          <Link className="button is-ghost" to={`/runs/${run.id}/evidence`}>查看运行证据</Link>
+          {cancelable ? <Button type="button" className="is-danger" onClick={() => setConfirmCancel(true)}>取消任务</Button> : scoringRetryable ? <Button type="button" onClick={() => setConfirmRetryScoring(true)}>重试评分</Button> : null}
+        </div>
       </header>
 
       <section className={`run-terminal ${terminalStatuses.has(run.status) ? "is-visible" : ""} ${statusClass(run.status)}`}>
@@ -483,7 +511,7 @@ function RunDetail({ runId }: { runId: string }) {
       <section className="agent-progress-grid">
         {run.agents.map((agent, index) => {
           const percent = agent.total ? agent.processed * 100 / agent.total : 0;
-          return <article key={agent.run_agent_id}><header><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{agent.agent_name}</strong><small>{agent.provider} · V{agent.version}</small></div></header><div className="agent-progress-value"><strong>{percent.toFixed(0)}%</strong><span>{agent.processed} / {agent.total}</span></div><div className="agent-progress-bar"><i style={{ width: `${percent}%` }} /></div><footer><span>成功 <b>{agent.completed}</b></span><span>失败 <b>{agent.failed}</b></span><span>重试 <b>{agent.retried}</b></span></footer>{agent.validity_status === "invalid" && <div className="result-validity-invalid"><strong>接入配置无效，不进入排行榜</strong><span>{validityReasonLabels[agent.validity_reason ?? ""] ?? agent.validity_reason} · {agent.configuration_failure_count} 项 / {agent.configuration_failure_rate.toFixed(2)}%</span></div>}{agent.result && <section className="run-result-summary six-metric-grid">{leaderboardMetrics.map((metric) => <div key={metric.key}><span>{metric.shortLabel}</span><strong>{metric.key === "overall" ? agent.result?.overall_score.toFixed(2) : agent.result?.ability_scores[metric.key]?.toFixed(2) ?? "—"}</strong></div>)}<footer><span>成功率 {agent.result.success_rate.toFixed(2)}%</span><span>HTTP {agent.result.http_call_count}</span><span>Token {formatCount(agent.result.total_tokens)}</span><span>P50/P95 {agent.result.latency_p50_ms ?? "—"}/{agent.result.latency_p95_ms ?? "—"} ms</span></footer></section>}{Object.keys(agent.failure_categories ?? {}).length > 0 && <div className="failure-category-list">{Object.entries(agent.failure_categories).map(([category, count]) => <span key={category}>{failureLabels[category] ?? category}<b>{count}</b></span>)}</div>}</article>;
+          return <article key={agent.run_agent_id}><header><span>{String(index + 1).padStart(2, "0")}</span><div><strong><Link to={`/agents/${agent.agent_id}`}>{agent.agent_name}</Link></strong><small>{agent.provider} · V{agent.version}</small></div><Link className="agent-evidence-link" to={`/runs/${run.id}/evidence?run_agent_id=${encodeURIComponent(agent.run_agent_id)}`}>此 Agent 证据</Link></header><div className="agent-progress-value"><strong>{percent.toFixed(0)}%</strong><span>{agent.processed} / {agent.total}</span></div><div className="agent-progress-bar"><i style={{ width: `${percent}%` }} /></div><footer><span>成功 <b>{agent.completed}</b></span><span>失败 <b>{agent.failed}</b></span><span>重试 <b>{agent.retried}</b></span></footer>{agent.validity_status === "invalid" && <div className="result-validity-invalid"><strong>接入配置无效，不进入排行榜</strong><span>{validityReasonLabels[agent.validity_reason ?? ""] ?? agent.validity_reason} · {agent.configuration_failure_count} 项 / {agent.configuration_failure_rate.toFixed(2)}%</span></div>}{agent.result && <section className="run-result-summary six-metric-grid">{leaderboardMetrics.map((metric) => <div key={metric.key}><span>{metric.shortLabel}</span><strong>{metric.key === "overall" ? agent.result?.overall_score.toFixed(2) : agent.result?.ability_scores[metric.key]?.toFixed(2) ?? "—"}</strong></div>)}<footer><span>成功率 {agent.result.success_rate.toFixed(2)}%</span><span>HTTP {agent.result.http_call_count}</span><span>Token {formatCount(agent.result.total_tokens)}</span><span>P50/P95 {agent.result.latency_p50_ms ?? "—"}/{agent.result.latency_p95_ms ?? "—"} ms</span></footer></section>}{Object.keys(agent.failure_categories ?? {}).length > 0 && <div className="failure-category-list">{Object.entries(agent.failure_categories).map(([category, count]) => <span key={category}>{failureLabels[category] ?? category}<b>{count}</b></span>)}</div>}</article>;
         })}
       </section>
 

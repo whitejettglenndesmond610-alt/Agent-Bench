@@ -30,6 +30,7 @@ from agent_eval.db.enums import (
     RunAgentStatus,
     RunStatus,
     SessionRole,
+    WorkspaceAttemptFeedback,
     WorkspaceAttemptStatus,
     WorkspaceMessageRole,
 )
@@ -42,6 +43,7 @@ from agent_eval.db.models import (
     CitationRecord,
     DatasetVersion,
     EvaluationCase,
+    EvaluationExperiment,
     EvaluationRun,
     ExecutionItem,
     HttpAttempt,
@@ -57,10 +59,13 @@ from agent_eval.db.models import (
     ScoreRecord,
     Session,
     WorkerLease,
+    WorkspaceAgentFavorite,
     WorkspaceAttempt,
+    WorkspaceAttemptAnnotation,
     WorkspaceComparison,
     WorkspaceConversation,
     WorkspaceMessage,
+    WorkspacePromptTemplate,
 )
 from agent_eval.db.session import create_session_factory, session_scope
 from agent_eval.evaluation_cases.service import canonical_sha256
@@ -359,7 +364,33 @@ async def seed_representative_source(source_url: str) -> None:
                 status=DatasetStatus.FROZEN,
                 frozen_at=now,
             )
-            session.add_all([agent_version, dataset])
+            experiment = EvaluationExperiment(
+                name="Migration experiment",
+                creator_user_id=workspace_user.id,
+                creator_subject_key=workspace_user.subject_key,
+                creator_display_name=workspace_user.display_name,
+                idempotency_key="00000000-0000-4000-8000-000000000005",
+                request_fingerprint="c" * 64,
+                protocol_hash="5" * 64,
+            )
+            session.add_all(
+                [
+                    agent_version,
+                    dataset,
+                    experiment,
+                    WorkspaceAgentFavorite(
+                        owner_user_id=workspace_user.id,
+                        agent_id=agent.id,
+                        created_at=now,
+                    ),
+                    WorkspacePromptTemplate(
+                        owner_user_id=workspace_user.id,
+                        name="Migration prompt",
+                        content="A representative private prompt template",
+                        revision=2,
+                    ),
+                ]
+            )
             await session.flush()
 
             comparison = WorkspaceComparison(
@@ -426,6 +457,16 @@ async def seed_representative_source(source_url: str) -> None:
             )
             session.add(workspace_attempt)
             await session.flush()
+            session.add(
+                WorkspaceAttemptAnnotation(
+                    attempt_id=workspace_attempt.id,
+                    conversation_id=conversation.id,
+                    owner_user_id=workspace_user.id,
+                    feedback=WorkspaceAttemptFeedback.UP,
+                    bookmarked=True,
+                    private_note="Private migration note",
+                )
+            )
             source_snapshot = {
                 "agent": {
                     "agent_id": str(agent.id),
@@ -482,6 +523,8 @@ async def seed_representative_source(source_url: str) -> None:
                 status=RunStatus.PUBLISHED,
                 dataset_bundle_hash="4" * 64,
                 protocol_hash="5" * 64,
+                experiment_id=experiment.id,
+                experiment_position=1,
                 judge_config_id=judge.id,
                 score_config_id=score_config.id,
                 started_at=now - timedelta(minutes=2),

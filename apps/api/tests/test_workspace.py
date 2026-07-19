@@ -22,6 +22,7 @@ from agent_eval.core.settings import Settings
 from agent_eval.db.base import utc_now
 from agent_eval.db.engine import create_engine
 from agent_eval.db.enums import (
+    AgentStatus,
     AgentVersionLifecycle,
     AuthType,
     DatasetReleaseStatus,
@@ -45,6 +46,7 @@ from agent_eval.db.models import (
     RunDatasetVersion,
     ScoreConfig,
     WorkspaceAttempt,
+    WorkspaceAttemptAnnotation,
     WorkspaceComparison,
     WorkspaceConversation,
     WorkspaceMessage,
@@ -174,6 +176,536 @@ async def run_next_attempt(
     )
     assert completed
     return claim.attempt_id
+
+
+async def test_workspace_personalization_templates_and_experience_tasks(
+    tmp_path: Path,
+) -> None:
+    async with workspace_client(tmp_path) as (client, app, _, version_id, _):
+        assert (await client.get("/api/v1/workspace/prompt-templates")).status_code == 401
+        assert (await client.get("/api/v1/workspace/experience-tasks")).status_code == 401
+
+        login = await client.post(
+            "/api/v1/auth/login",
+            headers={"Origin": "http://test"},
+            json={"role": "read_only", "password": "read-only-secret"},
+        )
+        assert login.status_code == 200
+        browser_user_id = login.json()["user_id"]
+        csrf = client.cookies.get("agent_eval_csrf")
+        assert csrf is not None
+        headers = {"Origin": "http://test", "X-CSRF-Token": csrf}
+        browser_cookies = dict(client.cookies)
+
+        catalog = await client.get("/api/v1/workspace/agents")
+        assert catalog.headers["cache-control"] == "private, no-store"
+        catalog_agent = next(
+            item for item in catalog.json() if item["agent_version_id"] == str(version_id)
+        )
+        agent_id = catalog_agent["agent_id"]
+        assert catalog_agent["is_favorite"] is False
+
+        missing_csrf = await client.put(
+            f"/api/v1/workspace/agents/{agent_id}/favorite",
+            headers={"Origin": "http://test"},
+        )
+        assert missing_csrf.status_code == 403
+        for _ in range(2):
+            favorited = await client.put(
+                f"/api/v1/workspace/agents/{agent_id}/favorite", headers=headers
+            )
+            assert favorited.status_code == 204
+        updated_catalog = await client.get("/api/v1/workspace/agents")
+        assert next(
+            item for item in updated_catalog.json() if item["agent_id"] == agent_id
+        )["is_favorite"] is True
+
+        async with session_scope(app.state.session_factory) as session:
+            hidden_agent = Agent(
+                name="Hidden Favorite Agent",
+                provider="Workspace Provider",
+                status=AgentStatus.DISABLED,
+            )
+            session.add(hidden_agent)
+            await session.flush()
+            hidden_agent_id = hidden_agent.id
+        hidden_favorite = await client.put(
+            f"/api/v1/workspace/agents/{hidden_agent_id}/favorite", headers=headers
+        )
+        assert hidden_favorite.status_code == 404
+
+        no_csrf_template = await client.post(
+            "/api/v1/workspace/prompt-templates",
+            headers={"Origin": "http://test"},
+            json={"name": "Research", "content": "Use primary sources."},
+        )
+        assert no_csrf_template.status_code == 403
+        strict_template = await client.post(
+            "/api/v1/workspace/prompt-templates",
+            headers=headers,
+            json={"name": "Research", "content": "Use primary sources.", "extra": True},
+        )
+        assert strict_template.status_code == 422
+        created = await client.post(
+            "/api/v1/workspace/prompt-templates",
+            headers=headers,
+            json={"name": "  Research  ", "content": "Use primary sources."},
+        )
+        assert created.status_code == 201
+        template_id = created.json()["id"]
+        assert created.json()["name"] == "Research"
+        assert created.json()["revision"] == 0
+        duplicate = await client.post(
+            "/api/v1/workspace/prompt-templates",
+            headers=headers,
+            json={"name": "Research", "content": "Different"},
+        )
+        assert duplicate.status_code == 409
+        assert duplicate.json()["detail"]["code"] == "prompt_template_name_conflict"
+
+        listed = await client.get("/api/v1/workspace/prompt-templates")
+        assert listed.headers["cache-control"] == "private, no-store"
+        assert [item["id"] for item in listed.json()["items"]] == [template_id]
+        detail = await client.get(f"/api/v1/workspace/prompt-templates/{template_id}")
+        assert detail.json()["content"] == "Use primary sources."
+        patched = await client.patch(
+            f"/api/v1/workspace/prompt-templates/{template_id}",
+            headers=headers,
+            json={"expected_revision": 0, "content": "Preserve source dates."},
+        )
+        assert patched.status_code == 200
+        assert patched.json()["revision"] == 1
+        stale = await client.patch(
+            f"/api/v1/workspace/prompt-templates/{template_id}",
+            headers=headers,
+            json={"expected_revision": 0, "name": "Stale"},
+        )
+        assert stale.status_code == 409
+        assert stale.json()["detail"]["code"] == "revision_conflict"
+
+        second = await client.post(
+            "/api/v1/workspace/prompt-templates",
+            headers=headers,
+            json={"name": "Second", "content": "Another prompt"},
+        )
+        rename_conflict = await client.patch(
+            f"/api/v1/workspace/prompt-templates/{second.json()['id']}",
+            headers=headers,
+            json={"expected_revision": 0, "name": "Research"},
+        )
+        assert rename_conflict.status_code == 409
+        assert rename_conflict.json()["detail"]["code"] == "prompt_template_name_conflict"
+
+        tasks = await client.get("/api/v1/workspace/experience-tasks")
+        assert tasks.status_code == 200
+        assert tasks.headers["cache-control"] == "private, no-store"
+        assert len(tasks.json()) >= 6
+        assert {item["category"] for item in tasks.json()} >= {
+            "analysis",
+            "retrieval_citations",
+            "structured_extraction",
+            "writing_instruction_following",
+            "data_reasoning",
+            "long_context_synthesis",
+        }
+        assert all(item["ranking_eligible"] is False for item in tasks.json())
+        assert all("reference_answer" not in item for item in tasks.json())
+        task = await client.get(
+            f"/api/v1/workspace/experience-tasks/{tasks.json()[0]['slug']}"
+        )
+        assert task.status_code == 200
+        assert task.json() == tasks.json()[0]
+        assert (
+            await client.get("/api/v1/workspace/experience-tasks/not-a-task")
+        ).status_code == 404
+
+        async with session_scope(app.state.session_factory) as session:
+            named = await create_workspace_user(
+                session,
+                username="personalization.named",
+                display_name="Personalization Named",
+                role=SessionRole.READ_ONLY,
+                password="personalization-secret",
+            )
+        named_login = await client.post(
+            "/api/v1/auth/user-login",
+            headers={"Origin": "http://test"},
+            json={
+                "username": "personalization.named",
+                "password": "personalization-secret",
+            },
+        )
+        assert named_login.status_code == 200
+        assert named_login.json()["user_id"] == str(named.id)
+        assert named_login.json()["user_id"] != browser_user_id
+        assert (await client.get("/api/v1/workspace/prompt-templates")).json() == {
+            "items": []
+        }
+        assert (
+            await client.get(f"/api/v1/workspace/prompt-templates/{template_id}")
+        ).status_code == 404
+        named_catalog = await client.get("/api/v1/workspace/agents")
+        assert next(item for item in named_catalog.json() if item["agent_id"] == agent_id)[
+            "is_favorite"
+        ] is False
+
+        client.cookies.clear()
+        client.cookies.update(browser_cookies)
+        stale_delete = await client.request(
+            "DELETE",
+            f"/api/v1/workspace/prompt-templates/{template_id}",
+            headers=headers,
+            json={"expected_revision": 0},
+        )
+        assert stale_delete.status_code == 409
+        deleted = await client.request(
+            "DELETE",
+            f"/api/v1/workspace/prompt-templates/{template_id}",
+            headers=headers,
+            json={"expected_revision": 1},
+        )
+        assert deleted.status_code == 204
+
+        async with session_scope(app.state.session_factory) as session:
+            old_version = await session.get(AgentVersion, version_id)
+            assert old_version is not None
+            old_version.lifecycle_status = AgentVersionLifecycle.RETIRED
+            replacement = AgentVersion(
+                agent_id=old_version.agent_id,
+                version=2,
+                endpoint_url=old_version.endpoint_url,
+                auth_type=old_version.auth_type,
+                request_template=old_version.request_template,
+                answer_jsonpath=old_version.answer_jsonpath,
+                citations_jsonpath=old_version.citations_jsonpath,
+                lifecycle_status=AgentVersionLifecycle.ACTIVE,
+            )
+            session.add(replacement)
+            await session.flush()
+            replacement_id = replacement.id
+        promoted_catalog = await client.get("/api/v1/workspace/agents")
+        promoted = next(item for item in promoted_catalog.json() if item["agent_id"] == agent_id)
+        assert promoted["agent_version_id"] == str(replacement_id)
+        assert promoted["is_favorite"] is True
+
+        for _ in range(2):
+            unfavorited = await client.delete(
+                f"/api/v1/workspace/agents/{agent_id}/favorite", headers=headers
+            )
+            assert unfavorited.status_code == 204
+        final_catalog = await client.get("/api/v1/workspace/agents")
+        assert next(item for item in final_catalog.json() if item["agent_id"] == agent_id)[
+            "is_favorite"
+        ] is False
+
+
+async def test_workspace_annotations_are_owned_and_do_not_enter_evaluation_sources(
+    tmp_path: Path,
+) -> None:
+    private_marker = "PRIVATE-NOTE-MUST-NOT-LEAK"
+    provider_requests: list[bytes] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        provider_requests.append(request.content)
+        return httpx.Response(200, json={"answer": "Successful answer", "citations": []})
+
+    async with workspace_client(tmp_path) as (
+        client,
+        app,
+        settings,
+        version_id,
+        small_version_id,
+    ):
+        async with session_scope(app.state.session_factory) as session:
+            named = await create_workspace_user(
+                session,
+                username="annotations.operator",
+                display_name="Annotations Operator",
+                role=SessionRole.OPERATOR,
+                password="annotations-secret",
+            )
+        login = await client.post(
+            "/api/v1/auth/user-login",
+            headers={"Origin": "http://test"},
+            json={"username": "annotations.operator", "password": "annotations-secret"},
+        )
+        assert login.status_code == 200
+        csrf = client.cookies.get("agent_eval_csrf")
+        assert csrf is not None
+        headers = {"Origin": "http://test", "X-CSRF-Token": csrf}
+
+        conversation = await client.post(
+            "/api/v1/workspace/conversations",
+            headers=headers,
+            json={"agent_version_id": str(version_id), "title": "Annotated chat"},
+        )
+        sent = await client.post(
+            f"/api/v1/workspace/conversations/{conversation.json()['id']}/messages",
+            headers={**headers, "Idempotency-Key": str(uuid4())},
+            json={"content": "Explain this", "expected_revision": 0},
+        )
+        attempt_id = sent.json()["attempt"]["id"]
+        queued_annotation = await client.patch(
+            f"/api/v1/workspace/attempts/{attempt_id}/annotation",
+            headers=headers,
+            json={"bookmarked": True},
+        )
+        assert queued_annotation.status_code == 409
+        assert queued_annotation.json()["detail"]["code"] == "attempt_not_succeeded"
+        await run_next_attempt(app, settings, httpx.MockTransport(handler))
+
+        missing_csrf = await client.patch(
+            f"/api/v1/workspace/attempts/{attempt_id}/annotation",
+            headers={"Origin": "http://test"},
+            json={"feedback": "up"},
+        )
+        assert missing_csrf.status_code == 403
+        empty_patch = await client.patch(
+            f"/api/v1/workspace/attempts/{attempt_id}/annotation",
+            headers=headers,
+            json={},
+        )
+        assert empty_patch.status_code == 422
+        annotated = await client.patch(
+            f"/api/v1/workspace/attempts/{attempt_id}/annotation",
+            headers=headers,
+            json={
+                "feedback": "up",
+                "bookmarked": True,
+                "private_note": f"  {private_marker}  ",
+            },
+        )
+        assert annotated.status_code == 200
+        assert annotated.json()["feedback"] == "up"
+        assert annotated.json()["bookmarked"] is True
+        assert annotated.json()["private_note"] == private_marker
+
+        attempt_detail = await client.get(f"/api/v1/workspace/attempts/{attempt_id}")
+        assert attempt_detail.json()["private_note"] == private_marker
+        conversation_detail = await client.get(
+            f"/api/v1/workspace/conversations/{conversation.json()['id']}"
+        )
+        assert conversation_detail.json()["turns"][0]["attempts"][0][
+            "private_note"
+        ] == private_marker
+
+        draft = await client.post(
+            "/api/v1/evaluation-cases",
+            headers=headers,
+            json={"source_attempt_id": attempt_id, "idempotency_key": str(uuid4())},
+        )
+        assert draft.status_code == 201
+        assert private_marker not in draft.text
+        async with app.state.session_factory() as session:
+            stored_case = await session.get(EvaluationCase, UUID(draft.json()["id"]))
+            assert stored_case is not None
+            assert private_marker not in json.dumps(stored_case.source_payload_json)
+
+        updated = await client.patch(
+            f"/api/v1/workspace/attempts/{attempt_id}/annotation",
+            headers=headers,
+            json={"feedback": "down"},
+        )
+        assert updated.json()["feedback"] == "down"
+        assert updated.json()["bookmarked"] is True
+        assert updated.json()["private_note"] == private_marker
+
+        queued_second = await client.post(
+            f"/api/v1/workspace/conversations/{conversation.json()['id']}/messages",
+            headers={**headers, "Idempotency-Key": str(uuid4())},
+            json={"content": "Queued follow-up", "expected_revision": 1},
+        )
+        assert queued_second.status_code == 202
+        assert (
+            await client.patch(
+                f"/api/v1/workspace/attempts/{queued_second.json()['attempt']['id']}/annotation",
+                headers=headers,
+                json={"private_note": "not yet"},
+            )
+        ).status_code == 409
+        second_attempt_id = UUID(queued_second.json()["attempt"]["id"])
+        await run_next_attempt(app, settings, httpx.MockTransport(handler))
+        assert all(private_marker.encode() not in request for request in provider_requests)
+        async with app.state.session_factory() as session:
+            stored_second = await session.get(WorkspaceAttempt, second_attempt_id)
+            assert stored_second is not None and stored_second.artifact_id is not None
+            stored_artifact = await session.get(ArtifactIndex, stored_second.artifact_id)
+            assert stored_artifact is not None
+        artifact_content = await asyncio.to_thread(
+            app.state.artifact_store.read,
+            stored_artifact.relative_path,
+            expected_sha256=stored_artifact.sha256,
+            expected_size=stored_artifact.size_bytes,
+        )
+        assert private_marker.encode() not in artifact_content
+
+        comparison = await client.post(
+            "/api/v1/workspace/comparisons",
+            headers=headers,
+            json={
+                "prompt": "Compare",
+                "agent_version_ids": [str(version_id), str(small_version_id)],
+                "idempotency_key": str(uuid4()),
+            },
+        )
+        assert comparison.status_code == 202
+        await run_next_attempt(app, settings, httpx.MockTransport(handler))
+        await run_next_attempt(app, settings, httpx.MockTransport(handler))
+        comparison_detail = await client.get(
+            f"/api/v1/workspace/comparisons/{comparison.json()['id']}"
+        )
+        comparison_attempt_id = comparison_detail.json()["items"][0]["attempt"]["id"]
+        comparison_annotation = await client.patch(
+            f"/api/v1/workspace/attempts/{comparison_attempt_id}/annotation",
+            headers=headers,
+            json={"bookmarked": True, "private_note": "comparison-only note"},
+        )
+        assert comparison_annotation.status_code == 200
+        refreshed_comparison = await client.get(
+            f"/api/v1/workspace/comparisons/{comparison.json()['id']}"
+        )
+        assert refreshed_comparison.json()["items"][0]["attempt"]["bookmarked"] is True
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as foreign_client:
+            foreign_login = await foreign_client.post(
+                "/api/v1/auth/login",
+                headers={"Origin": "http://test"},
+                json={"role": "read_only", "password": "read-only-secret"},
+            )
+            assert foreign_login.status_code == 200
+            foreign_csrf = foreign_client.cookies.get("agent_eval_csrf")
+            assert foreign_csrf is not None
+            foreign_update = await foreign_client.patch(
+                f"/api/v1/workspace/attempts/{attempt_id}/annotation",
+                headers={"Origin": "http://test", "X-CSRF-Token": foreign_csrf},
+                json={"bookmarked": False},
+            )
+            assert foreign_update.status_code == 404
+
+        cleared = await client.patch(
+            f"/api/v1/workspace/attempts/{attempt_id}/annotation",
+            headers=headers,
+            json={"feedback": None, "bookmarked": False, "private_note": "   "},
+        )
+        assert cleared.status_code == 200
+        assert cleared.json()["feedback"] is None
+        assert cleared.json()["bookmarked"] is False
+        assert cleared.json()["private_note"] is None
+        async with app.state.session_factory() as session:
+            assert await session.get(WorkspaceAttemptAnnotation, UUID(attempt_id)) is None
+            assert await session.scalar(
+                select(func.count()).select_from(WorkspaceAttemptAnnotation)
+            ) == 1
+            remaining_annotation = await session.scalar(
+                select(WorkspaceAttemptAnnotation)
+            )
+            assert remaining_annotation is not None
+            assert remaining_annotation.owner_user_id == named.id
+
+
+async def test_workspace_comparison_rename_archive_revision_and_ownership(
+    tmp_path: Path,
+) -> None:
+    async with workspace_client(tmp_path) as (
+        client,
+        app,
+        _,
+        version_id,
+        small_version_id,
+    ):
+        headers = await login_operator(client)
+        comparison = await client.post(
+            "/api/v1/workspace/comparisons",
+            headers=headers,
+            json={
+                "prompt": "Archive",
+                "agent_version_ids": [str(version_id), str(small_version_id)],
+                "idempotency_key": str(uuid4()),
+                "title": "Original comparison",
+            },
+        )
+        assert comparison.status_code == 202
+        comparison_id = comparison.json()["id"]
+        assert comparison.json()["revision"] == 0
+        assert comparison.json()["archived_at"] is None
+
+        missing_csrf = await client.patch(
+            f"/api/v1/workspace/comparisons/{comparison_id}",
+            headers={"Origin": "http://test"},
+            json={"expected_revision": 0, "title": "No CSRF"},
+        )
+        assert missing_csrf.status_code == 403
+        strict = await client.patch(
+            f"/api/v1/workspace/comparisons/{comparison_id}",
+            headers=headers,
+            json={"expected_revision": 0, "title": "Strict", "unknown": True},
+        )
+        assert strict.status_code == 422
+        archived = await client.patch(
+            f"/api/v1/workspace/comparisons/{comparison_id}",
+            headers=headers,
+            json={
+                "expected_revision": 0,
+                "title": "Archived comparison",
+                "archived": True,
+            },
+        )
+        assert archived.status_code == 200
+        assert archived.json()["title"] == "Archived comparison"
+        assert archived.json()["revision"] == 1
+        assert archived.json()["archived_at"] is not None
+
+        stale = await client.patch(
+            f"/api/v1/workspace/comparisons/{comparison_id}",
+            headers=headers,
+            json={"expected_revision": 0, "archived": False},
+        )
+        assert stale.status_code == 409
+        assert stale.json()["detail"]["code"] == "revision_conflict"
+        all_comparisons = await client.get("/api/v1/workspace/comparisons")
+        assert comparison_id in {item["id"] for item in all_comparisons.json()["items"]}
+        active_comparisons = await client.get(
+            "/api/v1/workspace/comparisons?include_archived=false"
+        )
+        assert comparison_id not in {
+            item["id"] for item in active_comparisons.json()["items"]
+        }
+
+        restored = await client.patch(
+            f"/api/v1/workspace/comparisons/{comparison_id}",
+            headers=headers,
+            json={"expected_revision": 1, "archived": False},
+        )
+        assert restored.json()["revision"] == 2
+        assert restored.json()["archived_at"] is None
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as foreign_client:
+            await foreign_client.post(
+                "/api/v1/auth/login",
+                headers={"Origin": "http://test"},
+                json={"role": "read_only", "password": "read-only-secret"},
+            )
+            foreign_csrf = foreign_client.cookies.get("agent_eval_csrf")
+            assert foreign_csrf is not None
+            assert (
+                await foreign_client.get(
+                    f"/api/v1/workspace/comparisons/{comparison_id}"
+                )
+            ).status_code == 404
+            foreign_patch = await foreign_client.patch(
+                f"/api/v1/workspace/comparisons/{comparison_id}",
+                headers={"Origin": "http://test", "X-CSRF-Token": foreign_csrf},
+                json={"expected_revision": 2, "title": "Foreign"},
+            )
+            assert foreign_patch.status_code == 404
+
+        await client.post(
+            f"/api/v1/workspace/comparisons/{comparison_id}/cancel", headers=headers
+        )
 
 
 async def test_concurrent_sqlite_send_is_idempotent_and_conflict_safe(

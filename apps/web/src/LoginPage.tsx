@@ -11,8 +11,8 @@ interface LoginPageProps {
 }
 
 const roles: Array<{ value: SessionRole; label: string; description: string }> = [
-  { value: "read_only", label: "普通用户", description: "使用 Agent 工作台并查看排行榜" },
-  { value: "operator", label: "运营访问", description: "管理 Agent 并发起评测" }
+  { value: "read_only", label: "普通用户", description: "在线运行 Agent 并查看排行榜" },
+  { value: "operator", label: "评测管理员", description: "管理 Agent、实验与正式评测" }
 ];
 
 export function LoginPage({ error, pending, onLogin, onUserLogin, onResetError }: LoginPageProps) {
@@ -132,9 +132,9 @@ export function LoginPage({ error, pending, onLogin, onUserLogin, onResetError }
 
           <p className="session-note">
             {mode === "account"
-              ? "个人账号可访问已授权的 Agent 工作台"
+              ? "个人账号可访问已授权的 Agent 在线运行"
               : role === "operator"
-                ? "运营会话将在 8 小时后失效"
+                ? "评测管理会话将在 8 小时后失效"
                 : "普通用户会话将在 7 天后失效"}
           </p>
         </form>

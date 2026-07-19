@@ -9,7 +9,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import select
 
-from agent_eval.auth.identity import LEGACY_OPERATOR_USER_ID
+from agent_eval.auth.identity import LEGACY_OPERATOR_USER_ID, LEGACY_READ_ONLY_USER_ID
 from agent_eval.core.settings import Settings
 from agent_eval.db.engine import create_engine
 from agent_eval.db.enums import AgentStatus, AuthType
@@ -25,6 +25,7 @@ BUSINESS_TABLES = {
     "citation_records",
     "dataset_versions",
     "evaluation_cases",
+    "evaluation_experiments",
     "evaluation_runs",
     "execution_items",
     "http_attempts",
@@ -41,9 +42,12 @@ BUSINESS_TABLES = {
     "sessions",
     "worker_leases",
     "workspace_attempts",
+    "workspace_attempt_annotations",
+    "workspace_agent_favorites",
     "workspace_comparisons",
     "workspace_conversations",
     "workspace_messages",
+    "workspace_prompt_templates",
 }
 
 
@@ -149,6 +153,207 @@ def test_comparison_migration_preserves_populated_workspace_conversations(
     assert title == ("Existing conversation",)
     assert attempt_count == (1,)
     assert not {"comparison_id", "comparison_position"} & columns
+
+
+def test_personalization_migration_is_safe_reversible_and_constrained(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "personalization-migration.db"
+    config = alembic_config(database_path)
+    command.upgrade(config, "fa6d2c8e4b10")
+    comparison_id = "10000000000000000000000000000001"
+    agent_id = "30000000000000000000000000000002"
+    version_id = "30000000000000000000000000000003"
+    existing_lane_id = "30000000000000000000000000000009"
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute(
+            "INSERT INTO workspace_comparisons (owner_user_id, title, prompt, "
+            "idempotency_key, request_fingerprint, id, created_at, updated_at) VALUES "
+            "(?, 'Existing comparison', 'Existing prompt', "
+            "'00000000-0000-4000-8000-000000000001', ?, ?, CURRENT_TIMESTAMP, "
+            "CURRENT_TIMESTAMP)",
+            (LEGACY_OPERATOR_USER_ID.hex, "a" * 64, comparison_id),
+        )
+        connection.execute(
+            "INSERT INTO agents (name, provider, status, id, created_at, updated_at) VALUES "
+            "('Annotation Agent', 'Provider', 'enabled', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            (agent_id,),
+        )
+        connection.execute(
+            "INSERT INTO agent_versions (agent_id, version, endpoint_url, auth_type, "
+            "request_template, answer_jsonpath, timeout_seconds, concurrency, lifecycle_status, "
+            "preflight_status, enabled, id, created_at, updated_at) VALUES (?, 1, "
+            "'https://agent.invalid', 'none', '{}', '$.answer', 120, 1, 'active', 'not_run', 1, "
+            "?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            (agent_id, version_id),
+        )
+        connection.execute(
+            "INSERT INTO workspace_conversations (owner_user_id, pinned_agent_version_id, title, "
+            "last_turn_no, revision, comparison_id, comparison_position, id, created_at, "
+            "updated_at) VALUES (?, ?, 'Existing lane', 0, 0, ?, 1, ?, CURRENT_TIMESTAMP, "
+            "CURRENT_TIMESTAMP)",
+            (LEGACY_OPERATOR_USER_ID.hex, version_id, comparison_id, existing_lane_id),
+        )
+
+    command.upgrade(config, "head")
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        assert connection.execute(
+            "SELECT title, revision, archived_at FROM workspace_comparisons WHERE id = ?",
+            (comparison_id,),
+        ).fetchone() == ("Existing comparison", 0, None)
+        assert connection.execute(
+            "SELECT title, comparison_position FROM workspace_conversations WHERE id = ?",
+            (existing_lane_id,),
+        ).fetchone() == ("Existing lane", 1)
+        assert {
+            "workspace_agent_favorites",
+            "workspace_prompt_templates",
+            "workspace_attempt_annotations",
+        } <= table_names(database_path)
+
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                "UPDATE workspace_comparisons SET revision = -1 WHERE id = ?",
+                (comparison_id,),
+            )
+
+        template_id = "20000000000000000000000000000001"
+        connection.execute(
+            "INSERT INTO workspace_prompt_templates (owner_user_id, name, content, revision, "
+            "id, created_at, updated_at) VALUES (?, 'Reusable', 'Prompt body', 0, ?, "
+            "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            (LEGACY_OPERATOR_USER_ID.hex, template_id),
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                "INSERT INTO workspace_prompt_templates (owner_user_id, name, content, "
+                "revision, id, created_at, updated_at) VALUES (?, 'Reusable', 'Duplicate', 0, "
+                "?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                (
+                    LEGACY_OPERATOR_USER_ID.hex,
+                    "20000000000000000000000000000002",
+                ),
+            )
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                "INSERT INTO workspace_prompt_templates (owner_user_id, name, content, "
+                "revision, id, created_at, updated_at) VALUES (?, 'Bad revision', 'Prompt', -1, "
+                "?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                (
+                    LEGACY_OPERATOR_USER_ID.hex,
+                    "20000000000000000000000000000003",
+                ),
+            )
+
+        favorite_agent_id = "30000000000000000000000000000001"
+        connection.execute(
+            "INSERT INTO agents (name, provider, status, id, created_at, updated_at) VALUES "
+            "('Favorite only', 'Provider', 'enabled', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            (favorite_agent_id,),
+        )
+        connection.execute(
+            "INSERT INTO workspace_agent_favorites (owner_user_id, agent_id, created_at) "
+            "VALUES (?, ?, CURRENT_TIMESTAMP)",
+            (LEGACY_OPERATOR_USER_ID.hex, favorite_agent_id),
+        )
+        connection.execute("DELETE FROM agents WHERE id = ?", (favorite_agent_id,))
+        assert connection.execute(
+            "SELECT COUNT(*) FROM workspace_agent_favorites WHERE agent_id = ?",
+            (favorite_agent_id,),
+        ).fetchone() == (0,)
+
+        conversation_id = "30000000000000000000000000000004"
+        user_message_id = "30000000000000000000000000000005"
+        assistant_message_id = "30000000000000000000000000000006"
+        attempt_id = "30000000000000000000000000000007"
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                "INSERT INTO workspace_conversations (owner_user_id, pinned_agent_version_id, "
+                "title, last_turn_no, revision, comparison_id, comparison_position, id, "
+                "created_at, updated_at) VALUES (?, ?, 'Invalid lane', 0, 0, ?, NULL, ?, "
+                "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                (
+                    LEGACY_OPERATOR_USER_ID.hex,
+                    version_id,
+                    comparison_id,
+                    "30000000000000000000000000000008",
+                ),
+            )
+        connection.execute(
+            "INSERT INTO workspace_conversations (owner_user_id, pinned_agent_version_id, title, "
+            "last_turn_no, revision, id, created_at, updated_at) VALUES (?, ?, 'Annotation', 1, "
+            "1, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            (LEGACY_OPERATOR_USER_ID.hex, version_id, conversation_id),
+        )
+        connection.executemany(
+            "INSERT INTO workspace_messages (conversation_id, turn_no, role, variant_no, active, "
+            "content, id, created_at) VALUES (?, 1, ?, 1, 1, ?, ?, CURRENT_TIMESTAMP)",
+            [
+                (conversation_id, "user", "Question", user_message_id),
+                (conversation_id, "assistant", "Answer", assistant_message_id),
+            ],
+        )
+        connection.execute(
+            "INSERT INTO workspace_attempts (conversation_id, user_message_id, "
+            "assistant_message_id, agent_version_id, generation_no, idempotency_key, "
+            "request_fingerprint, status, finished_at, http_attempt_count, prompt_hash, "
+            "prompt_characters, prompt_format, id, created_at, updated_at) VALUES (?, ?, ?, ?, 1, "
+            "'00000000-0000-4000-8000-000000000002', ?, 'succeeded', CURRENT_TIMESTAMP, 1, ?, "
+            "10, 'workspace-chat-v2', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            (
+                conversation_id,
+                user_message_id,
+                assistant_message_id,
+                version_id,
+                "b" * 64,
+                "c" * 64,
+                attempt_id,
+            ),
+        )
+        connection.commit()
+
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                "INSERT INTO workspace_attempt_annotations (attempt_id, conversation_id, "
+                "owner_user_id, feedback, bookmarked, private_note, created_at, updated_at) "
+                "VALUES (?, ?, ?, NULL, 0, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                (attempt_id, conversation_id, LEGACY_OPERATOR_USER_ID.hex),
+            )
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                "INSERT INTO workspace_attempt_annotations (attempt_id, conversation_id, "
+                "owner_user_id, feedback, bookmarked, private_note, created_at, updated_at) "
+                "VALUES (?, ?, ?, 'up', 0, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                (attempt_id, conversation_id, LEGACY_READ_ONLY_USER_ID.hex),
+            )
+        connection.execute(
+            "INSERT INTO workspace_attempt_annotations (attempt_id, conversation_id, "
+            "owner_user_id, feedback, bookmarked, private_note, created_at, updated_at) "
+            "VALUES (?, ?, ?, 'up', 1, 'Private', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            (attempt_id, conversation_id, LEGACY_OPERATOR_USER_ID.hex),
+        )
+        connection.execute("DELETE FROM workspace_attempts WHERE id = ?", (attempt_id,))
+        assert connection.execute(
+            "SELECT COUNT(*) FROM workspace_attempt_annotations WHERE attempt_id = ?",
+            (attempt_id,),
+        ).fetchone() == (0,)
+
+    command.downgrade(config, "fa6d2c8e4b10")
+    assert not {
+        "workspace_agent_favorites",
+        "workspace_prompt_templates",
+        "workspace_attempt_annotations",
+    } & table_names(database_path)
+    with sqlite3.connect(database_path) as connection:
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(workspace_comparisons)")
+        }
+        assert not {"revision", "archived_at"} & columns
+        assert connection.execute(
+            "SELECT title FROM workspace_comparisons WHERE id = ?", (comparison_id,)
+        ).fetchone() == ("Existing comparison",)
 
 
 def test_csrf_migration_invalidates_existing_sessions(tmp_path: Path) -> None:

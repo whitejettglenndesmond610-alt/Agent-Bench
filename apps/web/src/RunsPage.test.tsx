@@ -162,6 +162,30 @@ function progress(
   };
 }
 
+function experimentDetail() {
+  return {
+    id: "experiment-1",
+    name: "专项独立评测",
+    creator: { user_id: null, subject_key: "operator", display_name: "Shared operator" },
+    status: "queued",
+    protocol_hash: "protocol-1",
+    profile_key: "unified-v3-reasoning",
+    run_scope: "specialist",
+    target_ability: "reasoning",
+    member_count: 2,
+    run_counts: { draft: 0, queued: 2, running: 0, paused: 0, scoring: 0, completed: 0, published: 0, system_failed: 0, canceled: 0 },
+    total: 80,
+    processed: 0,
+    completed: 0,
+    failed: 0,
+    progress_percent: 0,
+    created_at: "2026-07-16T08:00:00Z",
+    updated_at: "2026-07-16T08:00:00Z",
+    members: [],
+    comparison_metrics: []
+  };
+}
+
 function renderPage(initialEntry = "/runs") {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
@@ -172,6 +196,7 @@ function renderPage(initialEntry = "/runs") {
         <Routes>
           <Route path="/runs" element={<RunsPage />} />
           <Route path="/runs/:runId" element={<RunsPage />} />
+          <Route path="/experiments/:experimentId" element={<h1>专项独立评测</h1>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -192,19 +217,18 @@ async function reachReview(agentNames: string[], profileName = "推理专项 Pro
   fireEvent.click(screen.getByRole("button", { name: "下一步：确认配置" }));
 }
 
-test("creates independent tasks for multiple selected Agents through the batch endpoint", async () => {
+test("creates one persisted experiment for multiple selected Agents with a stable idempotency key", async () => {
+  vi.spyOn(crypto, "randomUUID").mockReturnValue("00000000-0000-4000-8000-000000000301");
   let createBody: Record<string, unknown> | null = null;
   vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string, init?: RequestInit) => {
     if (input === "/api/v1/evaluation-runs" && !init?.method) return Promise.resolve(response([]));
     if (input === "/api/v1/evaluation-runs/options") return Promise.resolve(response(runOptions()));
-    if (input === "/api/v1/evaluation-runs/batch" && init?.method === "POST") {
+    if (input === "/api/v1/evaluation-experiments" && init?.method === "POST") {
       createBody = JSON.parse(String(init.body));
       expect(init.headers).toMatchObject({ "X-CSRF-Token": "csrf-token" });
-      return Promise.resolve(response({ runs: [
-        { id: "run-1", name: "Agent Alpha - 专项独立评测", status: "queued", question_count: 40, execution_item_count: 40 },
-        { id: "run-2", name: "Agent Beta - 专项独立评测", status: "queued", question_count: 40, execution_item_count: 40 }
-      ] }, 201));
+      return Promise.resolve(response(experimentDetail(), 201));
     }
+    if (input === "/api/v1/evaluation-experiments/experiment-1") return Promise.resolve(response(experimentDetail()));
     throw new Error(`Unexpected request: ${input}`);
   }));
   document.cookie = "agent_eval_csrf=csrf-token";
@@ -213,17 +237,17 @@ test("creates independent tasks for multiple selected Agents through the batch e
   expect(await screen.findByRole("heading", { name: "尚未发起评测" })).toBeInTheDocument();
   await reachReview(["Agent Alpha", "Agent Beta"]);
 
-  expect(screen.getByText("独立任务").parentElement).toHaveTextContent("2 个");
+  expect(screen.getByText("实验成员").parentElement).toHaveTextContent("2 个");
   expect(screen.getByText("每任务题目").parentElement).toHaveTextContent("40");
   expect(screen.getByText("预计总调用").parentElement).toHaveTextContent("80");
   expect(screen.getByText("C-Eval 专项集")).toBeInTheDocument();
   expect(screen.getByText("specialist-leaderboard")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "提交 2 个独立任务" }));
+  fireEvent.click(screen.getByRole("button", { name: "创建 2 Agent 评测实验" }));
 
-  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-  expect(screen.getByRole("heading", { name: "评测任务" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "专项独立评测" })).toBeInTheDocument();
   expect(createBody).toEqual({
     name: "专项独立评测",
+    idempotency_key: "00000000-0000-4000-8000-000000000301",
     agent_version_ids: ["version-1", "version-2"],
     profile_key: "unified-v3-reasoning",
     judge_config_id: "judge-1",
@@ -231,14 +255,12 @@ test("creates independent tasks for multiple selected Agents through the batch e
   });
 });
 
-test("navigates directly to the detail page when batch creation returns one task", async () => {
+test("keeps a one-Agent launch on the single-run endpoint and navigates to run detail", async () => {
   vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string, init?: RequestInit) => {
     if (input === "/api/v1/evaluation-runs" && !init?.method) return Promise.resolve(response([]));
     if (input === "/api/v1/evaluation-runs/options") return Promise.resolve(response(runOptions()));
-    if (input === "/api/v1/evaluation-runs/batch" && init?.method === "POST") {
-      return Promise.resolve(response({ runs: [
-        { id: "run-1", name: "专项独立评测", status: "queued", question_count: 40, execution_item_count: 40 }
-      ] }, 201));
+    if (input === "/api/v1/evaluation-runs" && init?.method === "POST") {
+      return Promise.resolve(response({ id: "run-1", name: "专项独立评测", status: "queued", question_count: 40, execution_item_count: 40 }, 201));
     }
     if (input === "/api/v1/evaluation-runs/run-1/progress") {
       return Promise.resolve(response(progress("running", "专项独立评测")));
@@ -249,7 +271,7 @@ test("navigates directly to the detail page when batch creation returns one task
 
   await screen.findByRole("heading", { name: "尚未发起评测" });
   await reachReview(["Agent Alpha"]);
-  fireEvent.click(screen.getByRole("button", { name: "提交 1 个独立任务" }));
+  fireEvent.click(screen.getByRole("button", { name: "创建单 Agent 评测运行" }));
 
   expect(await screen.findByRole("heading", { name: "专项独立评测" })).toBeInTheDocument();
   expect(screen.getByText("37.50%")).toBeInTheDocument();
@@ -265,15 +287,13 @@ test("requires explicit confirmation before forcing a duplicate result retest", 
   vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string, init?: RequestInit) => {
     if (input === "/api/v1/evaluation-runs" && !init?.method) return Promise.resolve(response([]));
     if (input === "/api/v1/evaluation-runs/options") return Promise.resolve(response(runOptions()));
-    if (input === "/api/v1/evaluation-runs/batch" && init?.method === "POST") {
+    if (input === "/api/v1/evaluation-runs" && init?.method === "POST") {
       const body = JSON.parse(String(init.body));
       requestBodies.push(body);
       if (!body.force_retest) {
         return Promise.resolve(response({ detail: { code: "evaluation_result_exists", message: "result exists" } }, 409));
       }
-      return Promise.resolve(response({ runs: [
-        { id: "run-1", name: "专项独立评测", status: "queued", question_count: 40, execution_item_count: 40 }
-      ] }, 201));
+       return Promise.resolve(response({ id: "run-1", name: "专项独立评测", status: "queued", question_count: 40, execution_item_count: 40 }, 201));
     }
     if (input === "/api/v1/evaluation-runs/run-1/progress") return Promise.resolve(response(progress()));
     throw new Error(`Unexpected request: ${input}`);
@@ -282,7 +302,7 @@ test("requires explicit confirmation before forcing a duplicate result retest", 
 
   await screen.findByRole("heading", { name: "尚未发起评测" });
   await reachReview(["Agent Alpha"]);
-  fireEvent.click(screen.getByRole("button", { name: "提交 1 个独立任务" }));
+  fireEvent.click(screen.getByRole("button", { name: "创建单 Agent 评测运行" }));
 
   expect(await screen.findByText("已有可用评测结果")).toBeInTheDocument();
   expect(requestBodies).toHaveLength(1);

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from agent_eval.api.schemas.leaderboards import (
+    AgentLeaderboardDetailResponse,
+    AgentScoreHistoryPoint,
     BenchmarkRanking,
     GlobalLeaderboardOverviewResponse,
     GlobalLeaderboardResponse,
@@ -83,9 +85,20 @@ async def get_global_leaderboard(
             select(LeaderboardResult, LeaderboardSnapshot, EvaluationRun)
             .join(LeaderboardSnapshot, LeaderboardSnapshot.id == LeaderboardResult.snapshot_id)
             .join(EvaluationRun, EvaluationRun.id == LeaderboardSnapshot.run_id)
-            .join(RunAgent, RunAgent.id == LeaderboardResult.run_agent_id)
+            .join(
+                RunAgent,
+                (RunAgent.id == LeaderboardResult.run_agent_id)
+                & (RunAgent.agent_version_id == LeaderboardResult.agent_version_id)
+                & (RunAgent.run_id == EvaluationRun.id),
+            )
+            .join(
+                AgentVersion,
+                (AgentVersion.id == LeaderboardResult.agent_version_id)
+                & (AgentVersion.agent_id == LeaderboardResult.agent_id),
+            )
             .where(LeaderboardResult.metric == metric)
             .where(RunAgent.validity_status == ResultValidityStatus.VALID)
+            .where(EvaluationRun.status == RunStatus.PUBLISHED)
             .where(EvaluationRun.ranking_eligible.is_(True))
             .where(EvaluationRun.profile_key.in_(UNIFIED_V3_PROFILE_KEYS))
             .order_by(
@@ -134,11 +147,21 @@ async def get_global_leaderboard(
             .options(joinedload(AgentVersion.agent))
             .join(LeaderboardSnapshot, LeaderboardSnapshot.id == LeaderboardResult.snapshot_id)
             .join(EvaluationRun, EvaluationRun.id == LeaderboardSnapshot.run_id)
-            .join(AgentVersion, AgentVersion.id == LeaderboardResult.agent_version_id)
-            .join(RunAgent, RunAgent.id == LeaderboardResult.run_agent_id)
+            .join(
+                AgentVersion,
+                (AgentVersion.id == LeaderboardResult.agent_version_id)
+                & (AgentVersion.agent_id == LeaderboardResult.agent_id),
+            )
+            .join(
+                RunAgent,
+                (RunAgent.id == LeaderboardResult.run_agent_id)
+                & (RunAgent.agent_version_id == LeaderboardResult.agent_version_id)
+                & (RunAgent.run_id == EvaluationRun.id),
+            )
             .where(
                 LeaderboardResult.metric == metric,
                 LeaderboardResult.protocol_hash == latest_result.protocol_hash,
+                EvaluationRun.status == RunStatus.PUBLISHED,
                 EvaluationRun.ranking_eligible.is_(True),
                 EvaluationRun.profile_key.in_(UNIFIED_V3_PROFILE_KEYS),
                 RunAgent.validity_status == ResultValidityStatus.VALID,
@@ -384,6 +407,159 @@ async def get_global_leaderboard_overview(
         ],
         agents=agents,
     )
+
+
+async def get_agent_leaderboard_detail(
+    session: AsyncSession,
+    agent_id: UUID,
+    *,
+    history_limit: int,
+) -> AgentLeaderboardDetailResponse | None:
+    agent = await session.scalar(
+        select(Agent)
+        .options(selectinload(Agent.versions))
+        .where(Agent.id == agent_id, Agent.status == AgentStatus.ENABLED)
+    )
+    if agent is None:
+        return None
+
+    current_version = max(
+        (
+            version
+            for version in agent.versions
+            if version.enabled and version.lifecycle_status == AgentVersionLifecycle.ACTIVE
+        ),
+        key=lambda version: (version.version, str(version.id)),
+        default=None,
+    )
+    overview = await get_global_leaderboard_overview(session)
+    overview_agent = next(
+        (item for item in overview.agents if item.agent_id == agent_id),
+        None,
+    )
+    if overview_agent is None:
+        return None
+
+    protocols = {item.metric: item.protocol_hash for item in overview.protocols}
+    history = await _agent_score_history(
+        session,
+        agent_id,
+        history_limit=history_limit,
+        current_metrics=overview_agent.metrics,
+        current_protocols=protocols,
+    )
+    return AgentLeaderboardDetailResponse(
+        agent_id=agent.id,
+        agent_version_id=current_version.id if current_version is not None else None,
+        agent_name=agent.name,
+        provider=agent.provider,
+        description=agent.description,
+        logo_url=agent.logo_url,
+        version=current_version.version if current_version is not None else None,
+        metrics=overview_agent.metrics,
+        score_history=history,
+    )
+
+
+async def _agent_score_history(
+    session: AsyncSession,
+    agent_id: UUID,
+    *,
+    history_limit: int,
+    current_metrics: dict[LeaderboardMetric, GlobalOverviewMetric],
+    current_protocols: dict[LeaderboardMetric, str | None],
+) -> dict[LeaderboardMetric, list[AgentScoreHistoryPoint]]:
+    ranked_result_ids = (
+        select(
+            LeaderboardResult.id.label("result_id"),
+            func.row_number()
+            .over(
+                partition_by=LeaderboardResult.metric,
+                order_by=(
+                    LeaderboardSnapshot.published_at.desc(),
+                    LeaderboardSnapshot.id.desc(),
+                    LeaderboardResult.id.desc(),
+                ),
+            )
+            .label("history_rank"),
+        )
+        .select_from(LeaderboardResult)
+        .join(LeaderboardSnapshot, LeaderboardSnapshot.id == LeaderboardResult.snapshot_id)
+        .join(EvaluationRun, EvaluationRun.id == LeaderboardSnapshot.run_id)
+        .join(
+            RunAgent,
+            (RunAgent.id == LeaderboardResult.run_agent_id)
+            & (RunAgent.agent_version_id == LeaderboardResult.agent_version_id)
+            & (RunAgent.run_id == EvaluationRun.id),
+        )
+        .join(
+            AgentVersion,
+            (AgentVersion.id == LeaderboardResult.agent_version_id)
+            & (AgentVersion.agent_id == LeaderboardResult.agent_id),
+        )
+        .where(
+            LeaderboardResult.agent_id == agent_id,
+            LeaderboardResult.metric.in_(STATUS_METRICS),
+            RunAgent.validity_status == ResultValidityStatus.VALID,
+            EvaluationRun.status == RunStatus.PUBLISHED,
+            EvaluationRun.ranking_eligible.is_(True),
+        )
+        .subquery()
+    )
+    rows = (
+        await session.execute(
+            select(
+                LeaderboardResult,
+                LeaderboardSnapshot,
+                EvaluationRun,
+                AgentVersion,
+            )
+            .join(
+                ranked_result_ids,
+                ranked_result_ids.c.result_id == LeaderboardResult.id,
+            )
+            .join(LeaderboardSnapshot, LeaderboardSnapshot.id == LeaderboardResult.snapshot_id)
+            .join(EvaluationRun, EvaluationRun.id == LeaderboardSnapshot.run_id)
+            .join(AgentVersion, AgentVersion.id == LeaderboardResult.agent_version_id)
+            .where(ranked_result_ids.c.history_rank <= history_limit)
+            .order_by(
+                LeaderboardResult.metric,
+                LeaderboardSnapshot.published_at,
+                LeaderboardSnapshot.id,
+                LeaderboardResult.id,
+            )
+        )
+    ).all()
+
+    history: dict[LeaderboardMetric, list[AgentScoreHistoryPoint]] = {
+        metric: [] for metric in STATUS_METRICS
+    }
+    for result, snapshot, run, version in rows:
+        metric = cast(LeaderboardMetric, result.metric)
+        current_metric = current_metrics[metric]
+        history[metric].append(
+            AgentScoreHistoryPoint(
+                score=float(result.score),
+                protocol_hash=result.protocol_hash,
+                protocol_matches_current=(
+                    current_protocols[metric] is not None
+                    and result.protocol_hash == current_protocols[metric]
+                ),
+                is_current_source=(
+                    current_metric.source_snapshot_id == snapshot.id
+                    and current_metric.source_agent_version_id == version.id
+                ),
+                agent_version_id=version.id,
+                version=version.version,
+                source_snapshot_id=snapshot.id,
+                source_run_id=run.id,
+                source_run_name=run.name,
+                source_profile_key=run.profile_key,
+                source_published_at=snapshot.published_at,
+                benchmark_count=result.benchmark_count,
+            )
+        )
+    return history
 
 
 async def _agent_evaluation_statuses(

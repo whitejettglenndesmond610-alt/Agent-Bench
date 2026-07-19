@@ -112,14 +112,14 @@ function comparison(status: "queued" | "completed") {
   };
 }
 
-function renderPage(initialEntry = "/workspace/compare", canDraft = true) {
+function renderPage(initialEntry = "/compare", canDraft = true) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const rendered = render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
-          <Route path="/workspace/compare" element={<WorkspaceComparePage userId="user-1" canDraft={canDraft} />} />
-          <Route path="/workspace/compare/:comparisonId" element={<WorkspaceComparePage userId="user-1" canDraft={canDraft} />} />
+          <Route path="/compare" element={<WorkspaceComparePage userId="user-1" canDraft={canDraft} />} />
+          <Route path="/compare/:comparisonId" element={<WorkspaceComparePage userId="user-1" canDraft={canDraft} />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -162,6 +162,20 @@ test("creates one persisted comparison batch for two unique Agents", async () =>
   expect(screen.getByText("解释可重复评测", { selector: ".comparison-prompt-readonly p" })).toBeInTheDocument();
 });
 
+test("preselects a query Agent only when its version is available", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => {
+    if (input === "/api/v1/workspace/agents") return Promise.resolve(response(agents));
+    if (input === "/api/v1/workspace/comparisons") return Promise.resolve(response({ items: [] }));
+    throw new Error(`Unexpected request: ${input}`);
+  }));
+
+  renderPage("/compare?agentVersion=version-2");
+
+  expect(await screen.findByLabelText("已选择 Agent")).toHaveTextContent("Beta Agent");
+  expect(screen.getByLabelText("已选择 Agent")).not.toHaveTextContent("Alpha Agent");
+  expect(screen.getByRole("button", { name: "选择对比 Agent" })).toHaveTextContent("已选择 1 个 Agent");
+});
+
 test("polls mixed results without hiding success and saves the successful answer as a draft", async () => {
   vi.spyOn(crypto, "randomUUID").mockReturnValue("00000000-0000-4000-8000-000000000102");
   let detailCalls = 0;
@@ -182,7 +196,7 @@ test("polls mixed results without hiding success and saves the successful answer
   });
   vi.stubGlobal("fetch", fetchMock);
 
-  const { queryClient } = renderPage("/workspace/compare/comparison-1");
+  const { queryClient } = renderPage("/compare/comparison-1");
 
   expect(await screen.findByText("Alpha 的完整回答", {}, { timeout: 2500 })).toBeInTheDocument();
   expect(screen.getByRole("alert")).toHaveTextContent("provider / upstream_error");
@@ -232,7 +246,7 @@ test("hides existing evaluation-case links from users without drafting permissio
     throw new Error(`Unexpected request: ${input}`);
   }));
 
-  renderPage("/workspace/compare/comparison-1", false);
+  renderPage("/compare/comparison-1", false);
 
   expect(await screen.findByText("Alpha 的完整回答")).toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "查看评测草稿" })).not.toBeInTheDocument();
@@ -256,7 +270,7 @@ test("applies a late draft response to its origin after switching comparisons", 
   });
   vi.stubGlobal("fetch", fetchMock);
 
-  const { queryClient } = renderPage("/workspace/compare/comparison-1");
+  const { queryClient } = renderPage("/compare/comparison-1");
   fireEvent.click(await screen.findByRole("button", { name: "保存为评测草稿" }));
   fireEvent.click(screen.getByRole("link", { name: /第二对比/ }));
   expect(await screen.findByRole("heading", { name: "第二对比" })).toBeInTheDocument();
@@ -289,7 +303,7 @@ test("applies a late cancel response to its origin after switching comparisons",
     throw new Error(`Unexpected request: ${input}`);
   }));
 
-  const { queryClient } = renderPage("/workspace/compare/comparison-1");
+  const { queryClient } = renderPage("/compare/comparison-1");
   fireEvent.click((await screen.findAllByRole("button", { name: "停止" }))[0]);
   fireEvent.click(screen.getByRole("link", { name: /第二已完成对比/ }));
   expect(await screen.findByRole("heading", { name: "第二已完成对比" })).toBeInTheDocument();

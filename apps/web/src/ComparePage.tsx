@@ -13,6 +13,7 @@ import {
 } from "./api";
 import { LoadingState } from "./components";
 import { abilityMetrics, leaderboardMetrics, metricByKey } from "./metrics";
+import { downloadJson, downloadMarkdown } from "./userProduct";
 
 use([RadarChart, TooltipComponent, LegendComponent, AriaComponent, SVGRenderer]);
 
@@ -127,13 +128,17 @@ export function ComparePage() {
     ))
   ).values());
   const gridStyle = { gridTemplateColumns: `180px repeat(${agents.length}, minmax(170px, 1fr))` };
+  const markdown = `# Agent 正式成绩对比\n\n${agents.map((agent) => [
+    `## ${agent.agent_name} V${agent.version}`,
+    ...leaderboardMetrics.map((metric) => `- ${metric.label}: ${agent.metrics[metric.key].score?.toFixed(2) ?? "暂无"}`)
+  ].join("\n")).join("\n\n")}\n`;
 
   return (
     <main className="workspace compare-workspace">
       <Link className="back-link" to="/leaderboard">← 返回能力总览</Link>
-      <header className="section-header compare-header"><div><p className="eyebrow">GLOBAL PROTOCOL COMPARISON</p><h1>Agent 横向对比</h1><p>各维度采用当前兼容协议下的最新正式成绩，缺失能力不按 0 分处理。</p></div><aside><span>GLOBAL RESULT</span><strong>{agents.length} 个 Agent</strong><small>{overview.protocols.filter((protocol) => protocol.protocol_hash).length} 项有效协议</small></aside></header>
+      <header className="section-header compare-header"><div><p className="eyebrow">GLOBAL PROTOCOL COMPARISON</p><h1>Agent 横向对比</h1><p>各维度采用当前兼容协议下的最新正式成绩，缺失能力不按 0 分处理。</p><div className="official-compare-actions"><button type="button" onClick={() => downloadMarkdown("Agent-正式成绩对比", markdown)}>导出 Markdown</button><button type="button" onClick={() => downloadJson("Agent-正式成绩对比", overview)}>导出 JSON</button></div></div><aside><span>GLOBAL RESULT</span><strong>{agents.length} 个 Agent</strong><small>{overview.protocols.filter((protocol) => protocol.protocol_hash).length} 项有效协议</small></aside></header>
 
-      <section className="compare-agent-strip" style={gridStyle}><div className="compare-axis-label"><span>对比对象</span><small>颜色与雷达图一致</small></div>{agents.map((agent, index) => <article key={agent.agent_id} style={{ "--agent-color": colors[index] } as CSSProperties}><i /><div><strong>{agent.agent_name}</strong><small>{agent.provider} · V{agent.version}</small></div><b>{agent.metrics.overall.rank === null ? "—" : `#${String(agent.metrics.overall.rank).padStart(2, "0")}`}</b></article>)}</section>
+      <section className="compare-agent-strip" style={gridStyle}><div className="compare-axis-label"><span>对比对象</span><small>颜色与雷达图一致</small></div>{agents.map((agent, index) => <article key={agent.agent_id} style={{ "--agent-color": colors[index] } as CSSProperties}><i /><div><Link to={`/plaza/${agent.agent_id}`}><strong>{agent.agent_name}</strong></Link><small>{agent.provider} · V{agent.version}</small></div><b>{agent.metrics.overall.rank === null ? "—" : `#${String(agent.metrics.overall.rank).padStart(2, "0")}`}</b></article>)}</section>
 
       <section className="compare-primary-grid">
         <article className="radar-panel"><header><div><p className="eyebrow">ABILITY SHAPE</p><h2>五项能力雷达</h2></div><span>固定范围 0—100</span></header>{radarAgents.length ? <AbilityRadar agents={radarAgents} /> : <div className="compare-radar-empty">所选 Agent 尚未同时完成五项专项评测，暂不绘制雷达图。</div>}</article>

@@ -338,5 +338,7 @@ test("renders the Agent evaluation matrix with active-run and quick-evaluate lin
   expect(screen.queryByRole("link", { name: /评测 Agent Disabled/ })).not.toBeInTheDocument();
   expect(screen.getByText("停用")).toBeInTheDocument();
   expect(screen.getByText(/V3 · ≤ 4000 字符 · 无引用/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Agent Alpha" })).toHaveAttribute("href", "/agents/agent-1");
+  expect(screen.getAllByRole("link", { name: "查看详情" })[0]).toHaveAttribute("href", "/agents/agent-1");
   expect(screen.getAllByRole("button", { name: "配置新版本" })).toHaveLength(2);
 });

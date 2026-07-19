@@ -336,7 +336,7 @@ function CaseEditor({
                 {publishMutation.isPending ? "发布中" : "发布到精选案例库"}
               </button>
             </>
-          ) : <small>共享运营会话不能发布；请使用具名运营账号完成最终发布。</small>}
+          ) : <small>共享管理会话不能发布；请使用具名评测管理员账号完成最终发布。</small>}
         </section>
       )}
     </div>
@@ -384,7 +384,7 @@ export function EvaluationCasesPage({ userId, canPublish }: { userId: string; ca
     <main className="workspace evaluation-cases-page">
       <header className="evaluation-cases-header">
         <div><p className="eyebrow">CURATED EVALUATION CASES</p><h1>精选评测案例</h1><p>从真实 Agent 回答建立独立、可复核、可追溯的精选案例。</p></div>
-        <div className="evaluation-header-actions"><Link className="back-link" to="/dataset-releases">正式数据集发布 →</Link><Link className="back-link" to="/workspace">← 返回工作台</Link></div>
+        <div className="evaluation-header-actions"><Link className="back-link" to="/dataset-releases">正式数据集发布 →</Link><Link className="back-link" to="/workspace">← 返回 Agent 在线运行</Link></div>
       </header>
       {pageError && <div className="result-banner is-error" role="alert">{pageError}</div>}
       <div className="evaluation-cases-layout">
@@ -395,7 +395,7 @@ export function EvaluationCasesPage({ userId, canPublish }: { userId: string; ca
           error={casesQuery.error?.message ?? null}
         />
         {!caseId ? (
-          <section className="evaluation-case-placeholder"><span>NO CASE SELECTED</span><h2>选择一条案例开始编辑</h2><p>新的草稿从工作台中的成功回答创建。</p></section>
+          <section className="evaluation-case-placeholder"><span>NO CASE SELECTED</span><h2>选择一条案例开始编辑</h2><p>新的草稿从 Agent 在线运行中的成功回答创建。</p></section>
         ) : caseQuery.isPending ? (
           <LoadingState label="正在装载案例" />
         ) : caseQuery.error || !evaluationCase ? (

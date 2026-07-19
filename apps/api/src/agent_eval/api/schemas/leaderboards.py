@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from agent_eval.db.enums import Ability, Language, ResultValidityStatus
 
@@ -179,3 +179,34 @@ class GlobalLeaderboardOverviewResponse(BaseModel):
     eligible_agent_count: int
     protocols: list[GlobalMetricProtocol]
     agents: list[GlobalOverviewAgent]
+
+
+class AgentScoreHistoryPoint(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    score: float = Field(ge=0, le=100)
+    protocol_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    protocol_matches_current: bool
+    is_current_source: bool
+    agent_version_id: UUID
+    version: int = Field(ge=1)
+    source_snapshot_id: UUID
+    source_run_id: UUID
+    source_run_name: str
+    source_profile_key: str
+    source_published_at: datetime
+    benchmark_count: int = Field(ge=0)
+
+
+class AgentLeaderboardDetailResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    agent_id: UUID
+    agent_version_id: UUID | None
+    agent_name: str
+    provider: str
+    description: str | None
+    logo_url: str | None
+    version: int | None = Field(default=None, ge=1)
+    metrics: dict[LeaderboardMetric, GlobalOverviewMetric]
+    score_history: dict[LeaderboardMetric, list[AgentScoreHistoryPoint]]

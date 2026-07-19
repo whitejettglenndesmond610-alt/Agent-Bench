@@ -165,6 +165,42 @@ test("loads the catalog and history and creates a persisted empty conversation",
   }));
 });
 
+test("preselects only an available Agent version from the query parameter", async () => {
+  const betaAgent = {
+    ...agent,
+    agent_id: "agent-2",
+    agent_version_id: "version-2",
+    name: "Beta Agent",
+    provider: "Beta",
+    description: "Query selected Agent",
+    version: 5
+  };
+  vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => {
+    if (input === "/api/v1/workspace/agents") return Promise.resolve(response([agent, betaAgent]));
+    if (input === "/api/v1/workspace/conversations") return Promise.resolve(response({ items: [] }));
+    throw new Error(`Unexpected request: ${input}`);
+  }));
+
+  renderWorkspace("/workspace?agentVersion=version-2", false);
+
+  expect(await screen.findByText("Query selected Agent")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "选择 Agent" })).toHaveTextContent("Beta Agent");
+  expect(screen.queryByText("带引用的研究助手")).not.toBeInTheDocument();
+});
+
+test("ignores an unavailable Agent version query and preserves the default selection", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => {
+    if (input === "/api/v1/workspace/agents") return Promise.resolve(response([agent]));
+    if (input === "/api/v1/workspace/conversations") return Promise.resolve(response({ items: [] }));
+    throw new Error(`Unexpected request: ${input}`);
+  }));
+
+  renderWorkspace("/workspace?agentVersion=missing-version", false);
+
+  expect(await screen.findByText("带引用的研究助手")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "选择 Agent" })).toHaveTextContent("Atlas Agent");
+});
+
 test("uses Enter to lazily create and send once while Shift+Enter remains a newline command", async () => {
   document.cookie = "agent_eval_csrf=csrf-token; path=/";
   vi.spyOn(crypto, "randomUUID").mockReturnValue("00000000-0000-4000-8000-000000000001");
@@ -756,7 +792,7 @@ test("keeps comparison available without showing draft controls to read-only use
 
   renderWorkspace("/workspace/conversation-1", false);
 
-  expect(await screen.findByRole("link", { name: "并行对比" })).toHaveAttribute("href", "/workspace/compare");
+  expect(await screen.findByRole("link", { name: "并行对比" })).toHaveAttribute("href", "/compare");
   expect(screen.queryByRole("button", { name: "保存为评测草稿" })).not.toBeInTheDocument();
 });
 

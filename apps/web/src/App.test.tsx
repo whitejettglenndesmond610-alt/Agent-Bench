@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -45,7 +45,7 @@ test("shows the login form without a session", async () => {
   );
 });
 
-test("shows the live platform baseline for an operator", async () => {
+test("shows real evaluation readiness and prioritized operator navigation", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn().mockImplementation((input: string) => {
@@ -61,38 +61,47 @@ test("shows the live platform baseline for an operator", async () => {
           })
         );
       }
-      return Promise.resolve(
-        response({
-          name: "Agent Evaluation Platform",
-          version: "0.1.0",
-          environment: "test",
-          status: "ready"
-        })
-      );
+       if (input === "/api/v1/dashboard/summary") return Promise.resolve(response({
+         active_profile: {
+           key: "unified-v4",
+           name: "统一综合评测",
+           ready: true,
+           question_count: 210,
+           dataset_version_count: 15,
+           language_counts: { zh: 120, en: 90 },
+           ability_counts: { reasoning: 50, retrieval: 45, data_reasoning: 40, instruction_following: 35, long_context: 40 },
+           ability_weights: { reasoning: 20, retrieval: 20, data_reasoning: 20, instruction_following: 20, long_context: 20 }
+         },
+         ranking_profiles: [{ key: "unified-v4", name: "统一综合评测", ready: true, question_count: 210 }],
+         judge_model: "judge-current"
+       }));
+       if (input === "/api/v1/evaluation-runs") return Promise.resolve(response([]));
+       if (input === "/api/v1/evaluation-runs/agent-statuses") return Promise.resolve(response([]));
+       throw new Error(`Unexpected request: ${input}`);
     })
   );
 
   renderApp();
 
-  expect(await screen.findByText("服务在线")).toBeInTheDocument();
-  expect(screen.getByText("test")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Agent" })).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "评测案例" })).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "工作台" })).toBeInTheDocument();
-  expect(screen.queryByText("legacy-v1")).not.toBeInTheDocument();
-  expect(screen.getByText("unified-v3")).toBeInTheDocument();
-  expect(screen.getByText("UNIFIED V3 / ACTIVE")).toBeInTheDocument();
-  expect(screen.getByText("13")).toBeInTheDocument();
-  expect(screen.getByLabelText("Unified V3 协议状态")).toHaveTextContent("中文 100");
-  expect(screen.getByLabelText("Unified V3 协议状态")).toHaveTextContent("英文 75");
-  expect(screen.getByRole("link", { name: "发起综合评测" })).toHaveAttribute(
-    "href",
-    "/runs?launch=1&profile=unified-v3"
-  );
-  expect(screen.getByRole("link", { name: "查看排行榜" })).toHaveAttribute("href", "/leaderboard");
+  expect(await screen.findByText("统一综合评测")).toBeInTheDocument();
+  expect(screen.getAllByText("210").length).toBeGreaterThanOrEqual(2);
+  expect(screen.getByText("judge-current", { exact: false })).toBeInTheDocument();
+  expect(screen.queryByText("服务在线")).not.toBeInTheDocument();
+  expect(screen.queryByText("SYSTEM READY")).not.toBeInTheDocument();
+  const navigation = screen.getByRole("navigation", { name: "主导航" });
+  expect(within(navigation).getByRole("link", { name: "评测总览" })).toBeInTheDocument();
+  expect(within(navigation).getByRole("link", { name: "Agent 中心" })).toBeInTheDocument();
+  expect(within(navigation).getByRole("link", { name: "在线对话" })).toBeInTheDocument();
+  expect(within(navigation).getByRole("link", { name: "首页" })).toBeInTheDocument();
+  expect(within(navigation).getByRole("link", { name: "Agent 广场" })).toBeInTheDocument();
+  expect(within(navigation).getByRole("link", { name: "评测实验" })).toBeInTheDocument();
+  expect(within(navigation).getByRole("link", { name: "评测运行" })).toBeInTheDocument();
+  expect(within(navigation).getByRole("link", { name: "案例策展" })).toBeInTheDocument();
+  expect(within(navigation).getByRole("link", { name: "排行榜" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "发起评测" })).toHaveAttribute("href", "/runs?launch=1");
 });
 
-test("sends a read-only session directly to the global leaderboard", async () => {
+test("sends a read-only session without workspace access to the global leaderboard", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn().mockImplementation((input: string) => {
@@ -104,7 +113,7 @@ test("sends a read-only session directly to the global leaderboard", async () =>
             user_id: "shared-read-only",
             display_name: "只读访问",
             is_shared: true,
-            workspace_enabled: true
+             workspace_enabled: false
           })
         );
       }
@@ -133,9 +142,9 @@ test("sends a read-only session directly to the global leaderboard", async () =>
   renderApp();
 
   expect(await screen.findByRole("heading", { name: "Agent 排行榜" })).toBeInTheDocument();
-  expect(screen.queryByRole("link", { name: "总览" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("link", { name: "Agent" })).not.toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "工作台" })).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "评测总览" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Agent 中心" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "在线对话" })).not.toBeInTheDocument();
   expect(screen.getByRole("link", { name: "排行榜" })).toBeInTheDocument();
 });
 
@@ -152,14 +161,8 @@ test("uses the named account login endpoint in personal account mode", async () 
         workspace_enabled: true
       }));
     }
-    if (input === "/api/v1/leaderboards/global/overview") {
-      return Promise.resolve(response({
-        generated_at: "2026-07-19T08:00:00Z",
-        eligible_agent_count: 0,
-        protocols: [],
-        agents: []
-      }));
-    }
+    if (input === "/api/v1/workspace/agents") return Promise.resolve(response([]));
+    if (input === "/api/v1/workspace/conversations") return Promise.resolve(response({ items: [] }));
     throw new Error(`Unexpected request: ${input} ${init?.method ?? "GET"}`);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -201,14 +204,14 @@ test("lets an entitled named read-only user open workspace without operator navi
   renderApp("/workspace");
 
   expect(await screen.findByText("当前账号没有可用的 Agent 版本。")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "工作台" })).toBeInTheDocument();
-  expect(screen.queryByRole("link", { name: "总览" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("link", { name: "Agent" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("link", { name: "评测任务" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("link", { name: "评测案例" })).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "在线对话" })).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "评测总览" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Agent 中心" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "评测运行" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "案例策展" })).not.toBeInTheDocument();
 });
 
-test("keeps operator routes guarded from named read-only workspace users", async () => {
+test("keeps operator routes guarded and sends entitled users to their product home", async () => {
   vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => {
     if (input === "/api/v1/auth/session") {
       return Promise.resolve(response({
@@ -220,15 +223,18 @@ test("keeps operator routes guarded from named read-only workspace users", async
         workspace_enabled: true
       }));
     }
-    if (input === "/api/v1/leaderboards/global/overview") {
-      return Promise.resolve(response({ generated_at: "2026-07-19T08:00:00Z", eligible_agent_count: 0, protocols: [], agents: [] }));
-    }
+    if (input === "/api/v1/workspace/agents") return Promise.resolve(response([]));
+    if (input === "/api/v1/workspace/conversations") return Promise.resolve(response({ items: [] }));
+    if (input === "/api/v1/workspace/comparisons") return Promise.resolve(response({ items: [] }));
+    if (input === "/api/v1/workspace/prompt-templates") return Promise.resolve(response({ items: [] }));
+    if (input === "/api/v1/workspace/experience-tasks") return Promise.resolve(response([]));
+    if (input === "/api/v1/leaderboards/global/overview") return Promise.resolve(response({ generated_at: "2026-07-20T08:00:00Z", eligible_agent_count: 0, protocols: [], agents: [] }));
     throw new Error(`Unexpected request: ${input}`);
   }));
 
   renderApp("/runs");
 
-  expect(await screen.findByRole("heading", { name: "Agent 排行榜" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: /今天想让 Agent 做什么/ })).toBeInTheDocument();
   expect(screen.queryByText("评测任务控制")).not.toBeInTheDocument();
 });
 

@@ -1,6 +1,7 @@
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload, selectinload
@@ -11,6 +12,7 @@ from agent_eval.api.schemas.runs import (
     EvaluationRunBatchCreate,
     EvaluationRunBatchResponse,
     EvaluationRunCreate,
+    EvaluationRunEvidenceList,
     EvaluationRunListItem,
     EvaluationRunOptions,
     EvaluationRunProgress,
@@ -20,6 +22,7 @@ from agent_eval.api.schemas.runs import (
     RunAgentProgress,
     RunAgentResultSummary,
     RunDatasetOption,
+    RunEvidenceDetail,
     RunProfileCompatibility,
     RunProfileOption,
 )
@@ -28,6 +31,7 @@ from agent_eval.db.enums import (
     AgentStatus,
     AgentVersionLifecycle,
     ExecutionStatus,
+    Language,
     RunScope,
 )
 from agent_eval.db.models import (
@@ -43,6 +47,12 @@ from agent_eval.db.models import (
 )
 from agent_eval.leaderboards.service import get_agent_evaluation_statuses
 from agent_eval.runs.compatibility import analyze_profile_compatibility
+from agent_eval.runs.evidence import (
+    RunEvidenceFilters,
+    RunEvidenceNotFoundError,
+    get_run_evidence_detail,
+    list_run_evidence,
+)
 from agent_eval.runs.lifecycle import (
     RunStateError,
     request_run_cancellation,
@@ -62,6 +72,8 @@ router = APIRouter(prefix="/api/v1", tags=["evaluation-runs"])
 def state_response(run: EvaluationRun) -> EvaluationRunStateResponse:
     return EvaluationRunStateResponse(
         id=run.id,
+        experiment_id=run.experiment_id,
+        experiment_position=run.experiment_position,
         name=run.name,
         status=run.status,
         desired_state=run.desired_state,
@@ -96,6 +108,8 @@ def run_response(prepared: PreparedRun) -> EvaluationRunResponse:
     run = prepared.run
     return EvaluationRunResponse(
         id=run.id,
+        experiment_id=run.experiment_id,
+        experiment_position=run.experiment_position,
         name=run.name,
         status=run.status,
         desired_state=run.desired_state,
@@ -586,6 +600,78 @@ async def get_evaluation_run_progress(
         progress_percent=round(processed * 100 / total, 2) if total else 0,
         agents=agents,
     )
+
+
+@router.get("/evaluation-runs/{run_id}/evidence", response_model=EvaluationRunEvidenceList)
+async def get_evaluation_run_evidence(
+    run_id: UUID,
+    database: DatabaseSession,
+    _authorization: OperatorSession,
+    response: Response,
+    run_agent_id: UUID | None = None,
+    item_status: Annotated[ExecutionStatus | None, Query(alias="status")] = None,
+    ability: Ability | None = None,
+    language: Language | None = None,
+    error_type: Annotated[str | None, Query(min_length=1, max_length=80)] = None,
+    min_score: Annotated[float | None, Query(ge=0, le=100)] = None,
+    max_score: Annotated[float | None, Query(ge=0, le=100)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> EvaluationRunEvidenceList:
+    response.headers["Cache-Control"] = "private, no-store"
+    if min_score is not None and max_score is not None and min_score > max_score:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "invalid_score_range", "message": "最低分不能高于最高分"},
+        )
+    try:
+        return await list_run_evidence(
+            database,
+            run_id,
+            filters=RunEvidenceFilters(
+                run_agent_id=run_agent_id,
+                status=item_status,
+                ability=ability,
+                language=language,
+                error_type=error_type,
+                min_score=min_score,
+                max_score=max_score,
+            ),
+            limit=limit,
+            offset=offset,
+        )
+    except RunEvidenceNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "run_not_found", "message": "评测任务不存在"},
+        ) from error
+
+
+@router.get(
+    "/evaluation-runs/{run_id}/evidence/{execution_item_id}",
+    response_model=RunEvidenceDetail,
+)
+async def get_evaluation_run_evidence_item(
+    run_id: UUID,
+    execution_item_id: UUID,
+    request: Request,
+    response: Response,
+    database: DatabaseSession,
+    _authorization: OperatorSession,
+) -> RunEvidenceDetail:
+    response.headers["Cache-Control"] = "private, no-store"
+    try:
+        return await get_run_evidence_detail(
+            database,
+            request.app.state.artifact_store,
+            run_id,
+            execution_item_id,
+        )
+    except RunEvidenceNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "evidence_not_found", "message": "评测题目证据不存在"},
+        ) from error
 
 
 @router.post("/evaluation-runs/{run_id}/cancel", response_model=EvaluationRunStateResponse)

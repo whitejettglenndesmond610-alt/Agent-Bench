@@ -225,7 +225,7 @@ export interface AgentVersionPreflight {
   preflight_at: string;
 }
 
-function jsonMutation<T>(path: string, method: "POST" | "PATCH", body: unknown): Promise<T> {
+function jsonMutation<T>(path: string, method: "POST" | "PATCH" | "PUT" | "DELETE", body?: unknown): Promise<T> {
   const token = csrfToken();
   return requestJson<T>(path, {
     method,
@@ -233,8 +233,23 @@ function jsonMutation<T>(path: string, method: "POST" | "PATCH", body: unknown):
       "Content-Type": "application/json",
       ...(token ? { "X-CSRF-Token": token } : {})
     },
-    body: JSON.stringify(body)
+    ...(body === undefined ? {} : { body: JSON.stringify(body) })
   });
+}
+
+async function voidMutation(path: string, method: "PUT" | "DELETE", body?: unknown): Promise<void> {
+  const token = csrfToken();
+  const response = await fetch(path, {
+    method,
+    credentials: "same-origin",
+    headers: {
+      Accept: "application/json",
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      ...(token ? { "X-CSRF-Token": token } : {})
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) })
+  });
+  if (!response.ok) throw await errorFromResponse(response);
 }
 
 export interface WorkspaceAgent {
@@ -247,6 +262,7 @@ export interface WorkspaceAgent {
   version: number;
   max_prompt_characters: number | null;
   supports_citations: boolean;
+  is_favorite?: boolean;
 }
 
 export interface WorkspaceConversationAgent {
@@ -312,6 +328,9 @@ export interface WorkspaceAttempt {
   input_tokens: number | null;
   output_tokens: number | null;
   total_tokens: number | null;
+  feedback?: "up" | "down" | null;
+  bookmarked?: boolean;
+  private_note?: string | null;
   error: WorkspaceAttemptError | null;
   cancel_requested_at: string | null;
   started_at: string | null;
@@ -366,6 +385,8 @@ export interface WorkspaceComparison {
   prompt: string;
   status: WorkspaceComparisonStatus;
   counts: WorkspaceComparisonCounts;
+  revision?: number;
+  archived_at?: string | null;
   cancel_requested_at: string | null;
   created_at: string;
   updated_at: string;
@@ -378,6 +399,87 @@ export interface WorkspaceComparisonList {
 
 export function fetchWorkspaceAgents(): Promise<WorkspaceAgent[]> {
   return requestJson<WorkspaceAgent[]>("/api/v1/workspace/agents");
+}
+
+export function setWorkspaceAgentFavorite(agentId: string, favorite: boolean): Promise<void> {
+  return voidMutation(`/api/v1/workspace/agents/${agentId}/favorite`, favorite ? "PUT" : "DELETE");
+}
+
+export interface WorkspacePromptTemplate {
+  id: string;
+  name: string;
+  content: string;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspacePromptTemplateList {
+  items: WorkspacePromptTemplate[];
+}
+
+export function fetchWorkspacePromptTemplates(): Promise<WorkspacePromptTemplateList> {
+  return requestJson<WorkspacePromptTemplateList>("/api/v1/workspace/prompt-templates");
+}
+
+export function fetchWorkspacePromptTemplate(templateId: string): Promise<WorkspacePromptTemplate> {
+  return requestJson<WorkspacePromptTemplate>(`/api/v1/workspace/prompt-templates/${templateId}`);
+}
+
+export function createWorkspacePromptTemplate(input: {
+  name: string;
+  content: string;
+}): Promise<WorkspacePromptTemplate> {
+  return jsonMutation<WorkspacePromptTemplate>("/api/v1/workspace/prompt-templates", "POST", input);
+}
+
+export function updateWorkspacePromptTemplate(
+  templateId: string,
+  input: { expected_revision: number; name?: string; content?: string }
+): Promise<WorkspacePromptTemplate> {
+  return jsonMutation<WorkspacePromptTemplate>(
+    `/api/v1/workspace/prompt-templates/${templateId}`,
+    "PATCH",
+    input
+  );
+}
+
+export function deleteWorkspacePromptTemplate(
+  templateId: string,
+  expectedRevision: number
+): Promise<void> {
+  return voidMutation(`/api/v1/workspace/prompt-templates/${templateId}`, "DELETE", {
+    expected_revision: expectedRevision
+  });
+}
+
+export type WorkspaceExperienceCategory =
+  | "analysis"
+  | "retrieval_citations"
+  | "structured_extraction"
+  | "writing_instruction_following"
+  | "data_reasoning"
+  | "long_context_synthesis";
+
+export interface WorkspaceExperienceTask {
+  slug: string;
+  title: string;
+  summary: string;
+  prompt: string;
+  category: WorkspaceExperienceCategory;
+  difficulty: "beginner" | "intermediate" | "advanced";
+  recommended_mode: "chat" | "comparison";
+  min_agents: number;
+  max_agents: number;
+  ranking_eligible: false;
+}
+
+export function fetchWorkspaceExperienceTasks(): Promise<WorkspaceExperienceTask[]> {
+  return requestJson<WorkspaceExperienceTask[]>("/api/v1/workspace/experience-tasks");
+}
+
+export function fetchWorkspaceExperienceTask(slug: string): Promise<WorkspaceExperienceTask> {
+  return requestJson<WorkspaceExperienceTask>(`/api/v1/workspace/experience-tasks/${slug}`);
 }
 
 export function fetchWorkspaceConversations(): Promise<WorkspaceConversationList> {
@@ -446,6 +548,21 @@ export function cancelWorkspaceAttempt(attemptId: string): Promise<WorkspaceAtte
   );
 }
 
+export function updateWorkspaceAttemptAnnotation(
+  attemptId: string,
+  input: {
+    feedback?: "up" | "down" | null;
+    bookmarked?: boolean;
+    private_note?: string | null;
+  }
+): Promise<WorkspaceAttempt> {
+  return jsonMutation<WorkspaceAttempt>(
+    `/api/v1/workspace/attempts/${attemptId}/annotation`,
+    "PATCH",
+    input
+  );
+}
+
 export function createWorkspaceComparison(input: {
   prompt: string;
   agent_version_ids: string[];
@@ -455,8 +572,12 @@ export function createWorkspaceComparison(input: {
   return jsonMutation<WorkspaceComparison>("/api/v1/workspace/comparisons", "POST", input);
 }
 
-export function fetchWorkspaceComparisons(): Promise<WorkspaceComparisonList> {
-  return requestJson<WorkspaceComparisonList>("/api/v1/workspace/comparisons");
+export function fetchWorkspaceComparisons(includeArchived = true): Promise<WorkspaceComparisonList> {
+  return requestJson<WorkspaceComparisonList>(
+    includeArchived
+      ? "/api/v1/workspace/comparisons"
+      : "/api/v1/workspace/comparisons?include_archived=false"
+  );
 }
 
 export function fetchWorkspaceComparison(comparisonId: string): Promise<WorkspaceComparison> {
@@ -468,6 +589,17 @@ export function cancelWorkspaceComparison(comparisonId: string): Promise<Workspa
     `/api/v1/workspace/comparisons/${comparisonId}/cancel`,
     "POST",
     {}
+  );
+}
+
+export function updateWorkspaceComparison(
+  comparisonId: string,
+  input: { expected_revision: number; title?: string; archived?: boolean }
+): Promise<WorkspaceComparison> {
+  return jsonMutation<WorkspaceComparison>(
+    `/api/v1/workspace/comparisons/${comparisonId}`,
+    "PATCH",
+    input
   );
 }
 
@@ -526,6 +658,8 @@ export type RunStage =
 
 export interface RunState {
   id: string;
+  experiment_id?: string | null;
+  experiment_position?: number | null;
   name: string;
   status: RunStatus;
   desired_state: "running" | "paused" | "canceled";
@@ -581,6 +715,8 @@ export interface RunAgentResultSummary {
   http_call_count: number;
   validity_status: ResultValidityStatus;
   validity_reason: string | null;
+  configuration_failure_count?: number;
+  configuration_failure_rate?: number;
   total_input_tokens?: number | null;
   total_output_tokens?: number | null;
   total_tokens?: number | null;
@@ -878,6 +1014,8 @@ export interface RunCreateInput {
 
 export interface RunCreateResult {
   id: string;
+  experiment_id?: string | null;
+  experiment_position?: number | null;
   name: string;
   status: RunStatus;
   question_count: number;
@@ -898,6 +1036,266 @@ export function fetchRunProgress(runId: string): Promise<RunProgress> {
 
 export function createRun(input: RunCreateInput): Promise<RunCreateResult> {
   return jsonMutation<RunCreateResult>("/api/v1/evaluation-runs", "POST", input);
+}
+
+export interface DashboardProfileSummary {
+  key: string;
+  name: string;
+  ready: boolean;
+  question_count: number;
+}
+
+export interface DashboardActiveProfile extends DashboardProfileSummary {
+  dataset_version_count: number;
+  language_counts: Record<"zh" | "en", number>;
+  ability_counts: Record<Ability, number>;
+  ability_weights: Record<Ability, number>;
+}
+
+export interface DashboardSummary {
+  active_profile: DashboardActiveProfile;
+  ranking_profiles: DashboardProfileSummary[];
+  judge_model: string | null;
+}
+
+export function fetchDashboardSummary(): Promise<DashboardSummary> {
+  return requestJson<DashboardSummary>("/api/v1/dashboard/summary");
+}
+
+export type ExecutionStatus =
+  | "pending"
+  | "in_progress"
+  | "answered"
+  | "failed"
+  | "scored"
+  | "canceled";
+
+export type EvidenceAttemptStatus = "in_progress" | "succeeded" | "failed" | "abandoned";
+export type CitationFetchStatus =
+  | "pending"
+  | "fetching"
+  | "fetched"
+  | "blocked"
+  | "unreachable"
+  | "unsupported";
+export type EvidenceArtifactKind = "agent_response" | "citation_content" | "judge_response";
+
+export interface RunEvidenceArtifactMetadata {
+  artifact_id: string;
+  kind: EvidenceArtifactKind;
+  sha256: string;
+  size_bytes: number;
+  expires_at: string;
+  retained: boolean;
+}
+
+export interface RunEvidenceScoreSummary {
+  score_id: string;
+  answer_score: number;
+  citation_score: number | null;
+  final_score: number;
+}
+
+export interface RunEvidenceListItem {
+  execution_item_id: string;
+  run_agent_id: string;
+  agent_id: string;
+  agent_version_id: string;
+  agent_name: string;
+  provider: string;
+  version: number;
+  question_id: string;
+  question_external_id: string;
+  question_type: "multiple_choice" | "short_answer" | "open_ended";
+  benchmark_id: string;
+  benchmark_name: string;
+  ability: Ability;
+  language: "zh" | "en";
+  requires_citations: boolean;
+  difficulty: string | null;
+  domain: string | null;
+  status: ExecutionStatus;
+  error_type: string | null;
+  answer_preview: string | null;
+  attempt_count: number;
+  latency_ms: number | null;
+  score: RunEvidenceScoreSummary | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EvaluationRunEvidenceList {
+  run_id: string;
+  items: RunEvidenceListItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface RunEvidenceAttempt {
+  attempt_id: string;
+  attempt_no: number;
+  status: EvidenceAttemptStatus;
+  started_at: string;
+  finished_at: string | null;
+  status_code: number | null;
+  latency_ms: number | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
+  error_type: string | null;
+}
+
+export interface RunEvidenceCitation {
+  citation_id: string;
+  position: number;
+  original_url: string;
+  final_url: string | null;
+  fetch_status: CitationFetchStatus;
+  http_status: number | null;
+  authenticity_score: number | null;
+  support_score: number | null;
+  judge_reason: string | null;
+  content_artifact: RunEvidenceArtifactMetadata | null;
+  judge_artifact: RunEvidenceArtifactMetadata | null;
+}
+
+export interface RunEvidenceDetail extends RunEvidenceListItem {
+  prompt: string;
+  choices: Array<{ label: string; text: string }> | null;
+  reference_answer: string;
+  candidate_answer: string | null;
+  candidate_answer_status: "available" | "not_recorded" | "expired" | "unavailable";
+  attempts: RunEvidenceAttempt[];
+  score: (RunEvidenceScoreSummary & {
+    judge_reason: string | null;
+    judge_artifact: RunEvidenceArtifactMetadata | null;
+  }) | null;
+  citations: RunEvidenceCitation[];
+  response_artifact: RunEvidenceArtifactMetadata | null;
+}
+
+export interface RunEvidenceFilters {
+  run_agent_id?: string;
+  status?: ExecutionStatus;
+  ability?: Ability;
+  language?: "zh" | "en";
+  error_type?: string;
+  min_score?: number;
+  max_score?: number;
+  limit?: number;
+  offset?: number;
+}
+
+export function fetchRunEvidence(
+  runId: string,
+  filters: RunEvidenceFilters = {}
+): Promise<EvaluationRunEvidenceList> {
+  const parameters = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== "") parameters.set(key, String(value));
+  }
+  const query = parameters.toString();
+  return requestJson<EvaluationRunEvidenceList>(
+    `/api/v1/evaluation-runs/${runId}/evidence${query ? `?${query}` : ""}`
+  );
+}
+
+export function fetchRunEvidenceDetail(
+  runId: string,
+  executionItemId: string
+): Promise<RunEvidenceDetail> {
+  return requestJson<RunEvidenceDetail>(
+    `/api/v1/evaluation-runs/${runId}/evidence/${executionItemId}`
+  );
+}
+
+export interface EvaluationExperimentRunCounts {
+  draft: number;
+  queued: number;
+  running: number;
+  paused: number;
+  scoring: number;
+  completed: number;
+  published: number;
+  system_failed: number;
+  canceled: number;
+}
+
+export interface EvaluationExperimentSummary {
+  id: string;
+  name: string;
+  creator: { user_id: string | null; subject_key: string; display_name: string };
+  status: RunStatus;
+  protocol_hash: string;
+  profile_key: string;
+  run_scope: RunScope;
+  target_ability: Ability | null;
+  member_count: number;
+  run_counts: EvaluationExperimentRunCounts;
+  total: number;
+  processed: number;
+  completed: number;
+  failed: number;
+  progress_percent: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EvaluationExperimentMember {
+  position: number;
+  run_id: string;
+  run_name: string;
+  status: RunStatus;
+  stage: RunStage;
+  agent_id: string;
+  agent_version_id: string;
+  agent_name: string;
+  provider: string;
+  version: number;
+  total: number;
+  processed: number;
+  completed: number;
+  failed: number;
+  retried: number;
+  progress_percent: number;
+  result: RunAgentResultSummary | null;
+  metric_scores: Record<string, number>;
+  metric_ranks: Record<string, number>;
+}
+
+export interface EvaluationExperimentDetail extends EvaluationExperimentSummary {
+  members: EvaluationExperimentMember[];
+  comparison_metrics: Array<{ metric: string; protocol_hash: string; compared_count: number }>;
+}
+
+export interface EvaluationExperimentCreateInput {
+  name: string;
+  idempotency_key: string;
+  agent_version_ids: string[];
+  profile_key: string;
+  dataset_version_ids?: string[];
+  judge_config_id: string;
+  score_config_id: string;
+  force_retest?: boolean;
+}
+
+export function createEvaluationExperiment(
+  input: EvaluationExperimentCreateInput
+): Promise<EvaluationExperimentDetail> {
+  return jsonMutation<EvaluationExperimentDetail>("/api/v1/evaluation-experiments", "POST", input);
+}
+
+export function fetchEvaluationExperiments(): Promise<EvaluationExperimentSummary[]> {
+  return requestJson<EvaluationExperimentSummary[]>("/api/v1/evaluation-experiments");
+}
+
+export function fetchEvaluationExperiment(
+  experimentId: string
+): Promise<EvaluationExperimentDetail> {
+  return requestJson<EvaluationExperimentDetail>(
+    `/api/v1/evaluation-experiments/${experimentId}`
+  );
 }
 
 export interface RunBatchCreateResult {
@@ -1005,8 +1403,25 @@ export interface LeaderboardSnapshot {
   rankings: AgentRanking[];
 }
 
+export interface LeaderboardHistoryItem {
+  id: string;
+  run_id: string;
+  run_name: string;
+  published_at: string;
+  agent_count: number;
+  is_current: boolean;
+}
+
 export function fetchCurrentLeaderboard(): Promise<LeaderboardSnapshot> {
   return requestJson<LeaderboardSnapshot>("/api/v1/leaderboards/current");
+}
+
+export function fetchLeaderboardHistory(): Promise<LeaderboardHistoryItem[]> {
+  return requestJson<LeaderboardHistoryItem[]>("/api/v1/leaderboards/history");
+}
+
+export function fetchLeaderboardSnapshot(snapshotId: string): Promise<LeaderboardSnapshot> {
+  return requestJson<LeaderboardSnapshot>(`/api/v1/leaderboards/${snapshotId}`);
 }
 
 export type GlobalLeaderboardMetric = "overall" | Ability;
@@ -1111,8 +1526,41 @@ export interface GlobalLeaderboardOverview {
   agents: GlobalOverviewAgent[];
 }
 
+export interface AgentScoreHistoryPoint {
+  score: number;
+  protocol_hash: string;
+  protocol_matches_current: boolean;
+  is_current_source: boolean;
+  agent_version_id: string;
+  version: number;
+  source_snapshot_id: string;
+  source_run_id: string;
+  source_run_name: string;
+  source_profile_key: string;
+  source_published_at: string;
+  benchmark_count: number;
+}
+
+export interface AgentLeaderboardDetail {
+  agent_id: string;
+  agent_version_id: string | null;
+  agent_name: string;
+  provider: string;
+  description: string | null;
+  logo_url: string | null;
+  version: number | null;
+  metrics: Record<GlobalLeaderboardMetric, GlobalOverviewMetric>;
+  score_history: Record<GlobalLeaderboardMetric, AgentScoreHistoryPoint[]>;
+}
+
 export function fetchGlobalLeaderboardOverview(): Promise<GlobalLeaderboardOverview> {
   return requestJson<GlobalLeaderboardOverview>("/api/v1/leaderboards/global/overview");
+}
+
+export function fetchAgentLeaderboardDetail(agentId: string): Promise<AgentLeaderboardDetail> {
+  return requestJson<AgentLeaderboardDetail>(
+    `/api/v1/leaderboards/agents/${agentId}?history_limit=50`
+  );
 }
 
 export function fetchGlobalLeaderboardComparison(

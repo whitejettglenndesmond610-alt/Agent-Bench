@@ -61,11 +61,13 @@ function evaluationLink(agent: GlobalOverviewAgent, metric: GlobalLeaderboardMet
 function MetricCell({
   metric,
   agent,
-  compact = false
+  compact = false,
+  isOperator
 }: {
   metric: GlobalLeaderboardMetric;
   agent: GlobalOverviewAgent;
   compact?: boolean;
+  isOperator: boolean;
 }) {
   const result = agent.metrics[metric];
   const label = metricByKey[metric].shortLabel;
@@ -74,7 +76,7 @@ function MetricCell({
       <div className={`overview-metric-cell is-${result.status}`} data-metric-label={label} title={result.message ?? undefined} style={{ "--metric-color": metricByKey[metric].color } as CSSProperties}>
         <strong>—</strong>
         <span>{statusLabels[result.status]}</span>
-        {!compact && result.status === "not_evaluated" && <Link to={evaluationLink(agent, metric)}>开始评测</Link>}
+        {!compact && isOperator && result.status === "not_evaluated" && <Link to={evaluationLink(agent, metric)}>开始评测</Link>}
       </div>
     );
   }
@@ -104,10 +106,14 @@ function BenchmarkBreakdown({ result }: { result: GlobalOverviewMetric }) {
 function AgentDetail({
   agent,
   focusMetric,
+  isOperator,
+  workspaceEnabled,
   onClose
 }: {
   agent: GlobalOverviewAgent;
   focusMetric: GlobalLeaderboardMetric;
+  isOperator: boolean;
+  workspaceEnabled: boolean;
   onClose: () => void;
 }) {
   const focus = agent.metrics[focusMetric];
@@ -119,7 +125,7 @@ function AgentDetail({
           <button type="button" aria-label="关闭详情" onClick={onClose}>×</button>
         </header>
         <section className="drawer-metric-grid">
-          {leaderboardMetrics.map((metric) => <article key={metric.key}><span>{metric.shortLabel}</span><MetricCell metric={metric.key} agent={agent} compact /></article>)}
+          {leaderboardMetrics.map((metric) => <article key={metric.key}><span>{metric.shortLabel}</span><MetricCell metric={metric.key} agent={agent} compact isOperator={isOperator} /></article>)}
         </section>
         <section className="drawer-section">
           <div className="drawer-section-heading"><div><p className="eyebrow">FOCUS METRIC</p><h3>{metricByKey[focusMetric].boardLabel}</h3></div>{focus.score !== null && <strong>{focus.score.toFixed(2)}</strong>}</div>
@@ -145,13 +151,19 @@ function AgentDetail({
           <span>{formatPublished(focus.source_published_at)}</span>
           {focus.source_run_id && <small>RUN {focus.source_run_id.slice(0, 12)}</small>}
         </section>
-        <footer><Link className="button is-ghost" to={evaluationLink(agent, focusMetric)}>重新评测</Link>{focus.source_run_id && <Link className="button" to={`/runs/${focus.source_run_id}`}>查看任务</Link>}</footer>
+        <footer>
+          {isOperator ? <><Link className="button is-ghost" to={evaluationLink(agent, focusMetric)}>重新评测</Link>{focus.source_run_id && <Link className="button" to={`/runs/${focus.source_run_id}`}>查看任务</Link>}</> : <>
+            <Link className="button is-ghost" to={`/plaza/${agent.agent_id}`}>公开详情与趋势</Link>
+            {workspaceEnabled && agent.agent_version_id && <Link className="button" to={`/workspace?agentVersion=${agent.agent_version_id}`}>在线运行</Link>}
+            {workspaceEnabled && agent.agent_version_id && <Link className="button is-ghost" to={`/compare?agentVersion=${agent.agent_version_id}`}>加入实时对比</Link>}
+          </>}
+        </footer>
       </aside>
     </div>
   );
 }
 
-export function LeaderboardPage() {
+export function LeaderboardPage({ isOperator = true, workspaceEnabled = true }: { isOperator?: boolean; workspaceEnabled?: boolean }) {
   const [view, setView] = useState<BoardView>("overview");
   const [sortMetric, setSortMetric] = useState<GlobalLeaderboardMetric>("overall");
   const [search, setSearch] = useState("");
@@ -213,7 +225,7 @@ export function LeaderboardPage() {
   return (
     <main className="workspace leaderboard-workspace">
       <header className="section-header leaderboard-compact-header">
-        <div><p className="eyebrow">GLOBAL AGENT INDEX</p><h1>Agent 排行榜</h1><p>横向查看综合与专项能力，选择更适合工作方向的 Agent。</p></div>
+        <div><p className="eyebrow">GLOBAL AGENT INDEX</p><h1>Agent 排行榜</h1><p>横向查看综合与专项能力，选择更适合工作方向的 Agent。</p><Link className="leaderboard-history-link" to="/leaderboard/history">查看历次榜单发布 →</Link></div>
         <aside><span><i />当前协议</span><strong>{protocol?.published_at ? `${formatPublished(protocol.published_at, false)} 发布` : "等待正式成绩"}</strong><small>{formatPublished(overview.generated_at, false)} 更新 · {overview.eligible_agent_count} 个 Agent</small><details><summary>查看协议</summary><code title={protocol?.protocol_hash ?? undefined}>{protocol?.protocol_hash ?? "NO PROTOCOL"}</code><p>{protocol?.question_count ?? 0} 题 · {protocol?.benchmark_count ?? 0} Benchmarks</p></details></aside>
       </header>
 
@@ -241,7 +253,7 @@ export function LeaderboardPage() {
           <header><span>选择</span><span>Agent</span>{leaderboardMetrics.map((metric) => <button type="button" key={metric.key} className={sortMetric === metric.key ? "is-active" : ""} onClick={() => setSortMetric(metric.key)}>{metric.shortLabel}<small>{sortMetric === metric.key ? "按此列排序 ↓" : "点击排序"}</small></button>)}<span>稳定性</span></header>
           {ranked.map((agent) => {
             const quality = latestResult(agent, activeMetric);
-            return <article key={agent.agent_id} className={agent.metrics[activeMetric].rank === 1 ? "is-leading" : ""}><label className="compare-check" title="选择横向对比"><input type="checkbox" aria-label={`选择 ${agent.agent_name}`} checked={selected.includes(agent.agent_id)} disabled={!selected.includes(agent.agent_id) && selected.length >= 5} onChange={() => toggleSelected(agent.agent_id)} /><span /></label><button type="button" className="overview-agent-identity" onClick={() => setDetailAgent(agent)}><strong>{agent.agent_name}</strong><small>{agent.provider}{agent.version === null ? "" : ` · V${agent.version}`}</small><span>查看评测详情 →</span></button>{leaderboardMetrics.map((metric) => <MetricCell key={metric.key} metric={metric.key} agent={agent} />)}<div className="overview-quality"><strong>{quality?.success_rate === null || quality?.success_rate === undefined ? "—" : `${quality.success_rate.toFixed(1)}%`}</strong><span>最近评测成功率</span><small>{formatPublished(quality?.source_published_at ?? null, false)}</small></div></article>;
+             return <article key={agent.agent_id} className={agent.metrics[activeMetric].rank === 1 ? "is-leading" : ""}><label className="compare-check" title="选择横向对比"><input type="checkbox" aria-label={`选择 ${agent.agent_name}`} checked={selected.includes(agent.agent_id)} disabled={!selected.includes(agent.agent_id) && selected.length >= 5} onChange={() => toggleSelected(agent.agent_id)} /><span /></label><div className="overview-agent-identity"><Link to={`/plaza/${agent.agent_id}`}><strong>{agent.agent_name}</strong></Link><small>{agent.provider}{agent.version === null ? "" : ` · V${agent.version}`}</small><button type="button" aria-label={`查看 ${agent.agent_name} 评测摘要`} onClick={() => setDetailAgent(agent)}>查看评测摘要 →</button></div>{leaderboardMetrics.map((metric) => <MetricCell key={metric.key} metric={metric.key} agent={agent} isOperator={isOperator} />)}<div className="overview-quality"><strong>{quality?.success_rate === null || quality?.success_rate === undefined ? "—" : `${quality.success_rate.toFixed(1)}%`}</strong><span>最近评测成功率</span><small>{formatPublished(quality?.source_published_at ?? null, false)}</small></div></article>;
           })}
         </section>
       ) : ranked.length ? (
@@ -249,21 +261,21 @@ export function LeaderboardPage() {
           <header><span>选择</span><span>排名 / Agent</span><span>专项得分</span><span>Benchmark 明细</span><span>稳定性</span><span>结果来源</span></header>
           {ranked.map((agent) => {
             const result = agent.metrics[view];
-            return <article key={agent.agent_id} className={result.rank === 1 ? "is-leading" : ""}><label className="compare-check"><input type="checkbox" aria-label={`选择 ${agent.agent_name}`} checked={selected.includes(agent.agent_id)} disabled={!selected.includes(agent.agent_id) && selected.length >= 5} onChange={() => toggleSelected(agent.agent_id)} /><span /></label><button type="button" className="specialist-identity" onClick={() => setDetailAgent(agent)}><b>{String(result.rank).padStart(2, "0")}</b><span><strong>{agent.agent_name}</strong><small>{agent.provider} · V{agent.version}</small></span></button><MetricCell metric={view} agent={agent} compact /><BenchmarkBreakdown result={result} /><dl><div><dt>成功</dt><dd>{result.success_rate?.toFixed(2)}%</dd></div><div><dt>异常</dt><dd>{result.anomaly_rate?.toFixed(2)}%</dd></div></dl><div className="specialist-source"><strong>{result.source_run_name}</strong><code>{result.source_profile_key}</code><span>{formatPublished(result.source_published_at, false)}</span></div></article>;
+             return <article key={agent.agent_id} className={result.rank === 1 ? "is-leading" : ""}><label className="compare-check"><input type="checkbox" aria-label={`选择 ${agent.agent_name}`} checked={selected.includes(agent.agent_id)} disabled={!selected.includes(agent.agent_id) && selected.length >= 5} onChange={() => toggleSelected(agent.agent_id)} /><span /></label><div className="specialist-identity"><b>{String(result.rank).padStart(2, "0")}</b><span><Link to={`/plaza/${agent.agent_id}`}><strong>{agent.agent_name}</strong></Link><small>{agent.provider} · V{agent.version}</small><button type="button" onClick={() => setDetailAgent(agent)}>评测摘要</button></span></div><MetricCell metric={view} agent={agent} compact isOperator={isOperator} /><BenchmarkBreakdown result={result} /><dl><div><dt>成功</dt><dd>{result.success_rate?.toFixed(2)}%</dd></div><div><dt>异常</dt><dd>{result.anomaly_rate?.toFixed(2)}%</dd></div></dl><div className="specialist-source"><strong>{result.source_run_name}</strong><code>{result.source_profile_key}</code><span>{formatPublished(result.source_published_at, false)}</span></div></article>;
           })}
         </section>
       ) : <section className="metric-empty"><span>NO RANKED RESULT</span><h2>当前视图暂无可排名结果</h2><p>完成对应的正式评测后，成绩会自动出现在这里。</p></section>}
 
       <details className="unranked-accordion">
-        <summary><span>尚未取得{view === "overview" ? "任何" : metricByKey[view].shortLabel}正式成绩的 Agent</span><strong>{unranked.length}</strong><small>展开查看与发起评测</small></summary>
-        {unranked.length ? <div>{unranked.map((agent) => <article key={agent.agent_id}><span><strong>{agent.agent_name}</strong><small>{agent.provider}{agent.version === null ? " · 尚无版本" : ` · V${agent.version}`}</small></span><b>{statusLabels[agent.metrics[activeMetric].status]}</b><Link to={evaluationLink(agent, activeMetric)}>开始评测 →</Link></article>)}</div> : <p>当前筛选下没有待评测 Agent。</p>}
-        <footer><Link to="/runs">前往评测任务 →</Link></footer>
+        <summary><span>尚未取得{view === "overview" ? "任何" : metricByKey[view].shortLabel}正式成绩的 Agent</span><strong>{unranked.length}</strong><small>{isOperator ? "展开查看与发起评测" : "展开查看可用 Agent"}</small></summary>
+        {unranked.length ? <div>{unranked.map((agent) => <article key={agent.agent_id}><span><Link to={`/plaza/${agent.agent_id}`}><strong>{agent.agent_name}</strong></Link><small>{agent.provider}{agent.version === null ? " · 尚无版本" : ` · V${agent.version}`}</small></span><b>{statusLabels[agent.metrics[activeMetric].status]}</b>{isOperator ? <Link to={evaluationLink(agent, activeMetric)}>开始评测 →</Link> : workspaceEnabled && agent.agent_version_id ? <Link to={`/workspace?agentVersion=${agent.agent_version_id}`}>在线运行 →</Link> : <Link to={`/plaza/${agent.agent_id}`}>公开详情 →</Link>}</article>)}</div> : <p>当前筛选下没有待评测 Agent。</p>}
+        <footer>{isOperator ? <Link to="/runs">前往评测任务 →</Link> : <Link to="/plaza">前往 Agent 广场 →</Link>}</footer>
       </details>
 
-      <div className={`compare-dock ${selected.length ? "is-visible" : ""}`}><div><span>COMPARE</span><strong>已选择 {selected.length} 个 Agent</strong><small>{overview.agents.filter((agent) => selected.includes(agent.agent_id)).map((agent) => agent.agent_name).join("、")}</small></div><div className="compare-dock-actions"><button type="button" className="is-clear" onClick={() => setSelected([])}>清空</button>{selected.length >= 2 ? <Link to={`/leaderboard/compare?agents=${selected.join(",")}`}>打开横向对比 →</Link> : <button type="button" disabled>至少选择两个</button>}</div></div>
+      <div className={`compare-dock ${selected.length ? "is-visible" : ""}`}><div><span>COMPARE</span><strong>已选择 {selected.length} 个 Agent</strong><small>{overview.agents.filter((agent) => selected.includes(agent.agent_id)).map((agent) => agent.agent_name).join("、")}</small></div><div className="compare-dock-actions"><button type="button" className="is-clear" onClick={() => setSelected([])}>清空</button>{selected.length >= 2 ? <><Link to={`/leaderboard/compare?agents=${selected.join(",")}`}>正式成绩对比</Link>{workspaceEnabled && <Link to={`/compare?agents=${selected.join(",")}`}>实时回答对比 →</Link>}</> : <button type="button" disabled>至少选择两个</button>}</div></div>
 
       <footer className="leaderboard-footnote"><span>RANKING POLICY</span><p>各维度仅汇总兼容协议下的最新正式成绩。未评测能力显示为空，不按 0 分处理；成功率和 HTTP 调用次数仅用于稳定性观测。</p></footer>
-      {detailAgent && <AgentDetail agent={detailAgent} focusMetric={activeMetric} onClose={() => setDetailAgent(null)} />}
+      {detailAgent && <AgentDetail agent={detailAgent} focusMetric={activeMetric} isOperator={isOperator} workspaceEnabled={workspaceEnabled} onClose={() => setDetailAgent(null)} />}
     </main>
   );
 }

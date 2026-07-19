@@ -446,7 +446,7 @@ export function AgentsPage() {
   return (
     <main className="workspace agents-workspace">
       <header className="section-header">
-        <div><p className="eyebrow">INTEGRATION REGISTRY</p><h1>Agent 接入</h1><p>管理第三方接口、验证响应映射，并以不可变版本保存配置。</p></div>
+        <div><p className="eyebrow">AGENT CENTER</p><h1>Agent 中心</h1><p>管理外部 Agent API、验证响应映射，并以不可变版本追踪配置与评测状态。</p></div>
         <Button type="button" onClick={() => openConfiguration(null)}>+ 接入 Agent</Button>
       </header>
 
@@ -472,7 +472,7 @@ export function AgentsPage() {
             const constraints = evaluation
               ? [evaluation.max_prompt_characters ? `≤ ${evaluation.max_prompt_characters} 字符` : "Prompt 不限", evaluation.supports_citations ? "支持引用" : "无引用"]
               : [];
-            return <tr key={agent.id}><td><strong>{agent.name}</strong><small>{agent.provider} · {agent.description || "暂无说明"}</small></td><td><span className={`registry-status ${agent.status === "enabled" ? "is-enabled" : ""}`}><i />{agent.status === "enabled" ? "启用" : "停用"}</span><small className="agent-version-copy">{evaluation ? `V${evaluation.version} · ${constraints.join(" · ")}` : `更新于 ${formatDate(agent.updated_at)}`}</small></td>{evaluationColumns.map((column) => <td className="evaluation-metric" key={column.key}><EvaluationCell agent={agent} evaluation={evaluation} metric={evaluation?.[column.key]} profileMetric={column.metricKey} metricLabel={column.label} /></td>)}<td><Button type="button" className="is-quiet" onClick={() => openConfiguration(agent)}>配置新版本</Button></td></tr>;
+            return <tr key={agent.id}><td><a className="agent-name-link" href={`/agents/${agent.id}`}>{agent.name}</a><small>{agent.provider} · {agent.description || "暂无说明"}</small></td><td><span className={`registry-status ${agent.status === "enabled" ? "is-enabled" : ""}`}><i />{agent.status === "enabled" ? "启用" : "停用"}</span><small className="agent-version-copy">{evaluation ? `V${evaluation.version} · ${constraints.join(" · ")}` : `更新于 ${formatDate(agent.updated_at)}`}</small></td>{evaluationColumns.map((column) => <td className="evaluation-metric" key={column.key}><EvaluationCell agent={agent} evaluation={evaluation} metric={evaluation?.[column.key]} profileMetric={column.metricKey} metricLabel={column.label} /></td>)}<td><div className="agent-row-actions"><a href={`/agents/${agent.id}`}>查看详情</a><Button type="button" className="is-quiet" onClick={() => openConfiguration(agent)}>配置新版本</Button></div></td></tr>;
           })}</tbody>
         </Table>
       )}

@@ -45,24 +45,24 @@ function PickerHarness() {
   );
 }
 
-test("searches and filters a provider-grouped catalog with server-derived recents", () => {
+test("searches and filters a provider-grouped Agent directory with server-derived recents", () => {
   render(<PickerHarness />);
   fireEvent.click(screen.getByRole("button", { name: "选择对比 Agent" }));
 
-  const dialog = screen.getByRole("dialog", { name: "Agent 模型目录" });
+  const dialog = screen.getByRole("dialog", { name: "Agent 目录" });
   expect(within(dialog).getByText("最近使用")).toBeInTheDocument();
   expect(within(dialog).getByRole("heading", { name: /Alpha Labs/ })).toBeInTheDocument();
 
-  fireEvent.change(within(dialog).getByRole("searchbox", { name: "搜索模型" }), {
+  fireEvent.change(within(dialog).getByRole("searchbox", { name: "搜索 Agent" }), {
     target: { value: "research" }
   });
   expect(within(dialog).getByRole("checkbox", { name: /Alpha Agent/ })).toBeInTheDocument();
   expect(within(dialog).queryByRole("checkbox", { name: /Beta Agent/ })).not.toBeInTheDocument();
 
-  fireEvent.change(within(dialog).getByRole("searchbox", { name: "搜索模型" }), {
+  fireEvent.change(within(dialog).getByRole("searchbox", { name: "搜索 Agent" }), {
     target: { value: "" }
   });
-  fireEvent.change(within(dialog).getByRole("combobox", { name: "筛选厂商" }), {
+  fireEvent.change(within(dialog).getByRole("combobox", { name: "筛选提供方" }), {
     target: { value: "Beta Cloud" }
   });
   fireEvent.click(within(dialog).getByRole("checkbox", { name: /Beta Agent/ }));

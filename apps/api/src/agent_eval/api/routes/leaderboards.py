@@ -7,6 +7,7 @@ from sqlalchemy.orm import joinedload
 
 from agent_eval.api.dependencies import CurrentSession, DatabaseSession
 from agent_eval.api.schemas.leaderboards import (
+    AgentLeaderboardDetailResponse,
     AgentRanking,
     GlobalLeaderboardOverviewResponse,
     GlobalLeaderboardResponse,
@@ -14,9 +15,10 @@ from agent_eval.api.schemas.leaderboards import (
     LeaderboardMetric,
     LeaderboardSnapshotResponse,
 )
-from agent_eval.db.enums import ResultValidityStatus, RunScope
+from agent_eval.db.enums import ResultValidityStatus, RunScope, RunStatus
 from agent_eval.db.models import EvaluationRun, LeaderboardSnapshot, RunAgent
 from agent_eval.leaderboards.service import (
+    get_agent_leaderboard_detail,
     get_global_leaderboard,
     get_global_leaderboard_overview,
 )
@@ -30,6 +32,17 @@ def snapshot_response(
     *,
     rankings: list[dict[str, object]] | None = None,
 ) -> LeaderboardSnapshotResponse:
+    valid_version_ids = {
+        str(run_agent.agent_version_id)
+        for run_agent in snapshot.run.run_agents
+        if run_agent.validity_status == ResultValidityStatus.VALID
+    }
+    source_rankings = snapshot.rankings_json if rankings is None else rankings
+    public_rankings = [
+        item
+        for item in source_rankings
+        if str(item.get("agent_version_id")) in valid_version_ids
+    ]
     return LeaderboardSnapshotResponse(
         id=snapshot.id,
         run_id=snapshot.run_id,
@@ -38,7 +51,7 @@ def snapshot_response(
         published_at=snapshot.published_at,
         rankings=[
             AgentRanking.model_validate(item)
-            for item in (snapshot.rankings_json if rankings is None else rankings)
+            for item in public_rankings
         ],
     )
 
@@ -46,8 +59,20 @@ def snapshot_response(
 async def load_snapshot(database: DatabaseSession, snapshot_id: UUID) -> LeaderboardSnapshot:
     snapshot = await database.scalar(
         select(LeaderboardSnapshot)
-        .options(joinedload(LeaderboardSnapshot.run))
-        .where(LeaderboardSnapshot.id == snapshot_id)
+        .options(
+            joinedload(LeaderboardSnapshot.run).selectinload(EvaluationRun.run_agents)
+        )
+        .join(EvaluationRun, EvaluationRun.id == LeaderboardSnapshot.run_id)
+        .where(
+            LeaderboardSnapshot.id == snapshot_id,
+            EvaluationRun.status == RunStatus.PUBLISHED,
+            EvaluationRun.ranking_eligible.is_(True),
+            LeaderboardSnapshot.run_id.in_(
+                select(RunAgent.run_id).where(
+                    RunAgent.validity_status == ResultValidityStatus.VALID
+                )
+            ),
+        )
     )
     if snapshot is None:
         raise HTTPException(
@@ -64,12 +89,15 @@ async def get_current_leaderboard(
 ) -> LeaderboardSnapshotResponse:
     snapshot = await database.scalar(
         select(LeaderboardSnapshot)
-        .options(joinedload(LeaderboardSnapshot.run))
+        .options(
+            joinedload(LeaderboardSnapshot.run).selectinload(EvaluationRun.run_agents)
+        )
         .join(EvaluationRun, EvaluationRun.id == LeaderboardSnapshot.run_id)
         .where(LeaderboardSnapshot.is_current.is_(True))
         .where(EvaluationRun.profile_key == UNIFIED_V3_PROFILE_KEY)
         .where(EvaluationRun.ranking_eligible.is_(True))
         .where(EvaluationRun.run_scope == RunScope.COMPREHENSIVE)
+        .where(EvaluationRun.status == RunStatus.PUBLISHED)
         .where(
             LeaderboardSnapshot.run_id.in_(
                 select(RunAgent.run_id).where(
@@ -94,7 +122,19 @@ async def get_leaderboard_history(
     snapshots = list(
         await database.scalars(
             select(LeaderboardSnapshot)
-            .options(joinedload(LeaderboardSnapshot.run))
+            .options(
+                joinedload(LeaderboardSnapshot.run).selectinload(EvaluationRun.run_agents)
+            )
+            .join(EvaluationRun, EvaluationRun.id == LeaderboardSnapshot.run_id)
+            .where(
+                EvaluationRun.status == RunStatus.PUBLISHED,
+                EvaluationRun.ranking_eligible.is_(True),
+                LeaderboardSnapshot.run_id.in_(
+                    select(RunAgent.run_id).where(
+                        RunAgent.validity_status == ResultValidityStatus.VALID
+                    )
+                ),
+            )
             .order_by(LeaderboardSnapshot.published_at.desc(), LeaderboardSnapshot.id.desc())
         )
     )
@@ -104,7 +144,16 @@ async def get_leaderboard_history(
             run_id=snapshot.run_id,
             run_name=snapshot.run.name,
             published_at=snapshot.published_at,
-            agent_count=len(snapshot.rankings_json),
+            agent_count=sum(
+                1
+                for item in snapshot.rankings_json
+                if str(item.get("agent_version_id"))
+                in {
+                    str(run_agent.agent_version_id)
+                    for run_agent in snapshot.run.run_agents
+                    if run_agent.validity_status == ResultValidityStatus.VALID
+                }
+            ),
             is_current=snapshot.is_current,
         )
         for snapshot in snapshots
@@ -152,6 +201,26 @@ async def get_global_leaderboard_route(
     return await get_global_leaderboard(database, metric)
 
 
+@router.get("/agents/{agent_id}", response_model=AgentLeaderboardDetailResponse)
+async def get_agent_leaderboard_detail_route(
+    agent_id: UUID,
+    database: DatabaseSession,
+    _authorization: CurrentSession,
+    history_limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> AgentLeaderboardDetailResponse:
+    detail = await get_agent_leaderboard_detail(
+        database,
+        agent_id,
+        history_limit=history_limit,
+    )
+    if detail is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "agent_not_available", "message": "Agent 不存在或不可用"},
+        )
+    return detail
+
+
 @router.get("/{snapshot_id}/compare", response_model=LeaderboardSnapshotResponse)
 async def compare_snapshot_agents(
     snapshot_id: UUID,
@@ -165,10 +234,16 @@ async def compare_snapshot_agents(
             detail={"code": "duplicate_agents", "message": "对比 Agent 不能重复"},
         )
     snapshot = await load_snapshot(database, snapshot_id)
+    valid_version_ids = {
+        run_agent.agent_version_id
+        for run_agent in snapshot.run.run_agents
+        if run_agent.validity_status == ResultValidityStatus.VALID
+    }
     selected = [
         item
         for item in snapshot.rankings_json
         if UUID(str(item["agent_version_id"])) in set(agent_version_ids)
+        and UUID(str(item["agent_version_id"])) in valid_version_ids
     ]
     if len(selected) != len(agent_version_ids):
         raise HTTPException(

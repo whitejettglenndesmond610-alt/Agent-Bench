@@ -156,6 +156,11 @@ class WorkspaceAttemptStatus(StrEnum):
     CANCELED = "canceled"
 
 
+class WorkspaceAttemptFeedback(StrEnum):
+    UP = "up"
+    DOWN = "down"
+
+
 class EvaluationCaseStatus(StrEnum):
     DRAFT = "draft"
     REVIEWED = "reviewed"

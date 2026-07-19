@@ -160,12 +160,12 @@ export function AgentPicker({
   }
 
   const triggerCopy = loading
-    ? "正在读取模型目录"
+    ? "正在读取 Agent 目录"
     : mode === "single"
       ? selected[0]?.name ?? "选择 Agent"
       : selected.length
         ? `已选择 ${selected.length} 个 Agent`
-        : "打开模型目录";
+        : "打开 Agent 目录";
 
   return (
     <div className={`agent-picker-control is-${mode}`}>
@@ -190,7 +190,7 @@ export function AgentPicker({
         onClick={() => setOpen(true)}
       >
         <span>{triggerCopy}</span>
-        <small>{mode === "multiple" ? `${selected.length} / ${maxSelected}` : selected[0]?.provider ?? "MODEL CATALOG"}</small>
+         <small>{mode === "multiple" ? `${selected.length} / ${maxSelected}` : selected[0]?.provider ?? "AGENT DIRECTORY"}</small>
         <b>⌄</b>
       </button>
       {error && <small className="agent-picker-error">{error}</small>}
@@ -201,29 +201,29 @@ export function AgentPicker({
             className="agent-picker-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label="Agent 模型目录"
+           aria-label="Agent 目录"
             onMouseDown={(event) => event.stopPropagation()}
           >
             <header>
-              <div><span>MODEL CATALOG</span><strong>{label}</strong></div>
-              <button type="button" aria-label="关闭模型目录" onClick={closePicker}>×</button>
+               <div><span>AGENT DIRECTORY</span><strong>{label}</strong></div>
+               <button type="button" aria-label="关闭 Agent 目录" onClick={closePicker}>×</button>
             </header>
             <div className="agent-picker-tools">
               <label>
-                <span className="sr-only">搜索模型</span>
+                 <span className="sr-only">搜索 Agent</span>
                 <input
                   ref={searchRef}
                   type="search"
                   value={query}
-                  aria-label="搜索模型"
-                  placeholder="搜索模型、厂商或描述"
+                   aria-label="搜索 Agent"
+                   placeholder="搜索 Agent、提供方或描述"
                   onChange={(event) => setQuery(event.target.value)}
                 />
               </label>
               <label>
-                <span className="sr-only">筛选厂商</span>
-                <select aria-label="筛选厂商" value={provider} onChange={(event) => setProvider(event.target.value)}>
-                  <option value="all">全部厂商</option>
+                 <span className="sr-only">筛选提供方</span>
+                 <select aria-label="筛选提供方" value={provider} onChange={(event) => setProvider(event.target.value)}>
+                   <option value="all">全部提供方</option>
                   {providers.map((item) => <option value={item} key={item}>{item}</option>)}
                 </select>
               </label>
@@ -241,7 +241,7 @@ export function AgentPicker({
               )}
               {groups.map((group) => (
                 <section key={group.provider}>
-                  <h3><span>{group.provider}</span><small>{group.items.length} MODELS</small></h3>
+                   <h3><span>{group.provider}</span><small>{group.items.length} AGENTS</small></h3>
                   <div>{group.items.map(option)}</div>
                 </section>
               ))}
