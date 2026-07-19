@@ -331,7 +331,7 @@ flowchart TD
 
 任务：
 
-- 实现 DeepSeek `deepseek-chat` 客户端。
+- 实现 DeepSeek `deepseek-v4-flash` 客户端。
 - 实现短答案正误 Schema 和 Prompt。
 - 实现开放题 1 至 5 分 Schema 和 Prompt。
 - 实现结构化输出校验和格式失败重试一次。

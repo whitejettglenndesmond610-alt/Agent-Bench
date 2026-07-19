@@ -244,7 +244,7 @@ deploy/manage.sh preflight
 ```
 
 `bootstrap` verifies every dataset file against `manifest.json`, imports exactly 100 questions,
-and idempotently creates the fixed `deepseek-chat` judge and `40/35/25` score configuration.
+and idempotently creates the fixed `deepseek-v4-flash` judge and `40/35/25` score configuration.
 Preflight intentionally fails until two enabled Agent versions have been configured through the
 operator UI and their connection tests pass.
 

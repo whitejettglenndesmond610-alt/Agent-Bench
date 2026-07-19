@@ -30,7 +30,7 @@ from agent_eval.scoring.configs import (
     has_ability_weights,
 )
 
-DEFAULT_JUDGE = ("deepseek", "deepseek-chat", "v1")
+DEFAULT_JUDGE = ("deepseek", "deepseek-v4-flash", "v1")
 DEFAULT_SCORE_NAME = LEGACY_SCORE_NAME
 DEFAULT_SCORE_VALUES = {
     "reasoning_weight": 40,

@@ -10,7 +10,7 @@ services:
       AGENT_EVAL_ENCRYPTION_KEY: ${AGENT_EVAL_LOCAL_ENCRYPTION_KEY:?Set local encryption key}
       AGENT_EVAL_DEEPSEEK_API_KEY: ${AGENT_EVAL_LOCAL_DEEPSEEK_API_KEY:?Set local DeepSeek API Key}
       AGENT_EVAL_DEEPSEEK_API_URL: https://api.deepseek.com/chat/completions
-      AGENT_EVAL_DEEPSEEK_MODEL: deepseek-chat
+      AGENT_EVAL_DEEPSEEK_MODEL: deepseek-v4-flash
 
   maintenance:
     environment:

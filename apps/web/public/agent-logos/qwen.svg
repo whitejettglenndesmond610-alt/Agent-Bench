@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Qwen">
+  <defs>
+    <linearGradient id="qwen-gradient" x1="18" y1="12" x2="110" y2="116" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#705CFF"/>
+      <stop offset="1" stop-color="#3A8DFF"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="#11182B"/>
+  <circle cx="64" cy="61" r="35" fill="none" stroke="url(#qwen-gradient)" stroke-width="13"/>
+  <path d="M78 77 105 104" fill="none" stroke="url(#qwen-gradient)" stroke-linecap="round" stroke-width="13"/>
+  <circle cx="64" cy="61" r="9" fill="#F7F8FF"/>
+</svg>

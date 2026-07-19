@@ -12,7 +12,7 @@
 | 后端 | Python + FastAPI |
 | 数据库 | SQLite |
 | 任务队列 | SQLite 持久化任务表，不使用 Redis |
-| 裁判模型 | DeepSeek `deepseek-chat` |
+| 裁判模型 | DeepSeek `deepseek-v4-flash` |
 | 原始内容 | 云主机本地 Docker Volume |
 
 ## 2. 架构目标
@@ -366,7 +366,7 @@ flowchart TD
 
 ### 13.1 客户端
 
-- 使用 DeepSeek 官方 API 和 `deepseek-chat`。
+- 使用 DeepSeek 官方 API 和 `deepseek-v4-flash`。
 - API Key 通过 Docker Secret 或宿主机只读环境文件注入，不保存到 SQLite。
 - 使用独立 httpx Client 和可配置并发限制，初始建议 5。
 - 裁判调用超时、429 和 5xx 可重试，重试次数与 Agent 调用分开统计。

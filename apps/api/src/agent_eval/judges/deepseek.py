@@ -315,6 +315,7 @@ async def request_judgment(
         json={
             "model": model,
             "messages": messages,
+            "thinking": {"type": "disabled"},
             "temperature": 0,
             "response_format": {"type": "json_object"},
         },
