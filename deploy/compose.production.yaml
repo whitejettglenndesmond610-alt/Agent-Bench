@@ -52,7 +52,7 @@ services:
 
   web:
     ports:
-      - 127.0.0.1:${WEB_PORT:-8080}:80
+      - ${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:80
     mem_limit: 256m
     cpus: 0.5
     pids_limit: 128
