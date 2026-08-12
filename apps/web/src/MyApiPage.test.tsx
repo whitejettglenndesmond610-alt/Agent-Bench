@@ -227,3 +227,36 @@ test("normalizes display names and renders rejected tests as actionable errors",
   expect(alert).toHaveTextContent("API model ID");
   expect(alert).toHaveTextContent("HTTP 400");
 });
+
+test("remaps retired deepseek-chat model id before create", async () => {
+  let savedBody: Record<string, unknown> | null = null;
+  let agents: PrivateAgent[] = [];
+  vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string, init?: RequestInit) => {
+    if (input === "/api/v1/workspace/private-agents" && !init?.method) {
+      return Promise.resolve(response({ items: agents }));
+    }
+    if (input === "/api/v1/workspace/private-agents" && init?.method === "POST") {
+      savedBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+      agents = [privateAgent({
+        name: String(savedBody.name),
+        preset: "deepseek",
+        provider: "DeepSeek",
+        model: String(savedBody.model)
+      })];
+      return Promise.resolve(response(agents[0], 201));
+    }
+    throw new Error(`Unexpected request: ${input} ${init?.method ?? "GET"}`);
+  }));
+  renderPage(false);
+
+  await screen.findByRole("heading", { name: "还没有私人 API" });
+  fireEvent.click(screen.getByRole("button", { name: "+ 添加 API" }));
+  fireEvent.change(screen.getByLabelText(/^名称/), { target: { value: "旧别名" } });
+  fireEvent.change(screen.getByLabelText(/^提供方预设/), { target: { value: "deepseek" } });
+  fireEvent.change(screen.getByLabelText(/^模型 ID/), { target: { value: "deepseek-chat" } });
+  fireEvent.change(document.querySelector("#private-agent-key")!, { target: { value: "sk-private" } });
+  fireEvent.click(screen.getByRole("button", { name: "添加 API" }));
+
+  await screen.findByRole("heading", { name: "旧别名" });
+  expect(savedBody).toMatchObject({ preset: "deepseek", model: "deepseek-v4-flash" });
+});

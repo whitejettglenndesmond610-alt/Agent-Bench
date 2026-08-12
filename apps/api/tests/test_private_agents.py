@@ -662,14 +662,26 @@ async def test_shared_browser_can_create_private_agent(tmp_path: Path) -> None:
             },
         )
         assert blank_key.status_code == 422
-        for index in range(2, 11):
+        retired_alias = await client.post(
+            "/api/v1/workspace/private-agents",
+            headers={"Origin": "http://test", "X-CSRF-Token": csrf},
+            json={
+                "name": "Retired alias private",
+                "preset": "deepseek",
+                "model": "deepseek-chat",
+                "api_key": API_KEY,
+            },
+        )
+        assert retired_alias.status_code == 201
+        assert retired_alias.json()["model"] == "deepseek-v4-flash"
+        for index in range(3, 11):
             additional = await client.post(
                 "/api/v1/workspace/private-agents",
                 headers={"Origin": "http://test", "X-CSRF-Token": csrf},
                 json={
                     "name": f"Shared Browser Private {index}",
                     "preset": "deepseek",
-                    "model": "deepseek-chat",
+                    "model": "deepseek-v4-flash",
                     "api_key": API_KEY,
                 },
             )
@@ -680,12 +692,30 @@ async def test_shared_browser_can_create_private_agent(tmp_path: Path) -> None:
             json={
                 "name": "Over limit",
                 "preset": "deepseek",
-                "model": "deepseek-chat",
+                "model": "deepseek-v4-flash",
                 "api_key": API_KEY,
             },
         )
         assert limited.status_code == 409
         assert limited.json()["detail"]["code"] == "private_agent_limit_reached"
+
+
+def test_normalize_private_model_remaps_retired_deepseek_aliases() -> None:
+    from agent_eval.agents.private_presets import normalize_private_model
+    from agent_eval.db.enums import PrivateAgentPreset
+
+    assert (
+        normalize_private_model(PrivateAgentPreset.DEEPSEEK, "deepseek-chat")
+        == "deepseek-v4-flash"
+    )
+    assert (
+        normalize_private_model(PrivateAgentPreset.DEEPSEEK, "DeepSeek Reasoner")
+        == "deepseek-v4-flash"
+    )
+    assert (
+        normalize_private_model(PrivateAgentPreset.DEEPSEEK, "deepseek-v4-pro")
+        == "deepseek-v4-pro"
+    )
 
 
 def test_private_token_aad_and_public_v1_are_separate() -> None:
@@ -833,3 +863,48 @@ def test_private_model_alias_migration_updates_model_and_request_template(
         ).fetchone()
         assert model == "deepseek-v4-pro"
         assert json.loads(template)["model"] == "deepseek-v4-pro"
+
+
+def test_retired_deepseek_alias_migration_rewrites_stored_models(tmp_path: Path) -> None:
+    database_path = tmp_path / "retired-deepseek-alias.db"
+    config = migration_config(database_path)
+    command.upgrade(config, "9d2a6f4c8b71")
+    agent_id = uuid4().hex
+    version_id = uuid4().hex
+    with sqlite3.connect(database_path) as connection:
+        owner_id = connection.execute(
+            "SELECT id FROM auth_users ORDER BY id LIMIT 1"
+        ).fetchone()
+        assert owner_id is not None
+        connection.execute(
+            "INSERT INTO agents (name, owner_user_id, provider, status, id, created_at, "
+            "updated_at) VALUES ('Retired Alias', ?, 'DeepSeek', 'enabled', ?, "
+            "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            (owner_id[0], agent_id),
+        )
+        connection.execute(
+            "INSERT INTO agent_versions (agent_id, version, endpoint_url, auth_type, "
+            "encrypted_token, request_template, answer_jsonpath, citations_jsonpath, "
+            "timeout_seconds, concurrency, private_preset, private_model, "
+            "private_health_status, private_health_checked_at, private_health_error_code, "
+            "private_health_latency_ms, lifecycle_status, preflight_status, enabled, id, "
+            "created_at, updated_at) VALUES (?, 1, 'https://api.deepseek.com/chat/completions', "
+            "'bearer', 'v2:test', ?, '$.choices[0].message.content', NULL, 120, 1, "
+            "'deepseek', 'deepseek-chat', 'untested', NULL, NULL, NULL, 'draft', 'not_run', 0, "
+            "?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            (
+                agent_id,
+                '{"model":"deepseek-chat","messages":[{"role":"user",'
+                '"content":"{{prompt}}"}],"stream":false}',
+                version_id,
+            ),
+        )
+
+    command.upgrade(config, "head")
+    with sqlite3.connect(database_path) as connection:
+        model, template = connection.execute(
+            "SELECT private_model, request_template FROM agent_versions WHERE id = ?",
+            (version_id,),
+        ).fetchone()
+        assert model == "deepseek-v4-flash"
+        assert json.loads(template)["model"] == "deepseek-v4-flash"

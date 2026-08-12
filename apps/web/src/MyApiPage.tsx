@@ -26,13 +26,20 @@ const presetLabels: Record<PrivateAgentPreset, string> = {
 
 const modelSuggestions: Record<PrivateAgentPreset, string[]> = {
   dashscope: ["qwen-plus", "qwen-max", "qwen-math-turbo", "qwen3.7-plus"],
-  deepseek: ["deepseek-v4-pro", "deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"],
+  deepseek: ["deepseek-v4-pro", "deepseek-v4-flash"],
   openai: ["gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini"]
 };
 
 const modelAliases: Record<PrivateAgentPreset, Record<string, string>> = {
   dashscope: { "qwen plus": "qwen-plus", "qwen max": "qwen-max", "qwen math turbo": "qwen-math-turbo", "qwen3.7 plus": "qwen3.7-plus" },
-  deepseek: { "deepseek v4 pro": "deepseek-v4-pro", "deepseek v4 flash": "deepseek-v4-flash", "deepseek chat": "deepseek-chat", "deepseek reasoner": "deepseek-reasoner" },
+  deepseek: {
+    "deepseek v4 pro": "deepseek-v4-pro",
+    "deepseek v4 flash": "deepseek-v4-flash",
+    "deepseek chat": "deepseek-v4-flash",
+    "deepseek-chat": "deepseek-v4-flash",
+    "deepseek reasoner": "deepseek-v4-flash",
+    "deepseek-reasoner": "deepseek-v4-flash"
+  },
   openai: { "gpt 4.1": "gpt-4.1", "gpt 4.1 mini": "gpt-4.1-mini", "gpt 4o": "gpt-4o", "gpt 4o mini": "gpt-4o-mini" }
 };
 
@@ -49,7 +56,9 @@ const healthErrorLabels: Record<string, string> = {
 
 function normalizeModel(preset: PrivateAgentPreset, model: string) {
   const normalized = model.trim().replace(/\s+/g, " ");
-  return modelAliases[preset][normalized.toLocaleLowerCase()] ?? normalized;
+  const aliases = modelAliases[preset];
+  const folded = normalized.toLocaleLowerCase();
+  return aliases[folded] ?? aliases[folded.replaceAll("-", " ")] ?? normalized;
 }
 
 const healthLabels: Record<PrivateAgent["health_status"], string> = {

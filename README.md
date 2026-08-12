@@ -91,6 +91,7 @@ flowchart LR
 - **受控出网**：只允许平台维护的提供方预设，不接受任意 Endpoint，从入口规避 SSRF。
 - **健康保护**：401、402、403 会自动停用版本、取消排队任务并通知运行中任务停止；恢复后需显式测试才能重新启用。
 - **候选不打断使用**：更新 Key 或模型会创建不可变候选版本；测试通过前，旧的健康版本仍可继续服务。
+- **旧模型别名兼容**：DeepSeek 已于 2026-07-24 停用 `deepseek-chat` / `deepseek-reasoner`；平台会自动映射到 `deepseek-v4-flash`。
 
 ### 技术架构
 
@@ -144,7 +145,7 @@ PostgreSQL/MinIO 切换、备份、恢复与生产发布流程见 [`deploy/runbo
 > 公开部署必须使用 HTTPS，且不得将 PostgreSQL 或 MinIO 端口暴露到公网。
 
 > [!NOTE]
-> 当前发布基线：后端 `251 passed, 3 skipped`，前端 `89 passed`；Ruff、mypy、ESLint、
+> 当前发布基线：后端 `253 passed, 3 skipped`，前端 `90 passed`；Ruff、mypy、ESLint、
 > TypeScript 和 Vite 生产构建均通过。
 
 ## English Documentation
@@ -179,7 +180,9 @@ A private configuration starts disabled and must pass an explicit connection tes
 in chat or live comparison pickers. HTTP 401, 402, or 403 responses automatically mark it unhealthy,
 disable further use, cancel queued work, and signal running work to stop. Users can replace a key or
 model and test the new immutable candidate while an older healthy version remains available. Each
-user may keep up to 10 active private Agent configurations.
+user may keep up to 10 active private Agent configurations. Retired DeepSeek aliases
+`deepseek-chat` and `deepseek-reasoner` (discontinued 2026-07-24) are normalized to
+`deepseek-v4-flash`.
 
 Private Agents are owner-scoped and excluded from the public plaza, favorites, curated evaluation
 cases, formal runs, evaluation experiments, published snapshots, and leaderboards. Both API routes
@@ -399,7 +402,7 @@ are used as a fallback. Ordinary answer text is never treated as a citation.
 
 ## Verification
 
-Current release baseline: backend `251 passed, 3 skipped`; frontend `89 passed`. Ruff, mypy, ESLint,
+Current release baseline: backend `253 passed, 3 skipped`; frontend `90 passed`. Ruff, mypy, ESLint,
 TypeScript, and the Vite production build pass.
 
 ```bash

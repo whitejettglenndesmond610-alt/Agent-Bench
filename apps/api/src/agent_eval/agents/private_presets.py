@@ -37,8 +37,11 @@ PRIVATE_MODEL_ALIASES: dict[PrivateAgentPreset, dict[str, str]] = {
     PrivateAgentPreset.DEEPSEEK: {
         "deepseek v4 pro": "deepseek-v4-pro",
         "deepseek v4 flash": "deepseek-v4-flash",
-        "deepseek chat": "deepseek-chat",
-        "deepseek reasoner": "deepseek-reasoner",
+        # Retired on 2026-07-24; keep aliases for user input compatibility.
+        "deepseek chat": "deepseek-v4-flash",
+        "deepseek-chat": "deepseek-v4-flash",
+        "deepseek reasoner": "deepseek-v4-flash",
+        "deepseek-reasoner": "deepseek-v4-flash",
     },
     PrivateAgentPreset.OPENAI: {
         "gpt 4.1": "gpt-4.1",
@@ -51,7 +54,12 @@ PRIVATE_MODEL_ALIASES: dict[PrivateAgentPreset, dict[str, str]] = {
 
 def normalize_private_model(preset: PrivateAgentPreset, model: str) -> str:
     normalized = " ".join(model.strip().split())
-    return PRIVATE_MODEL_ALIASES[preset].get(normalized.casefold(), normalized)
+    aliases = PRIVATE_MODEL_ALIASES[preset]
+    folded = normalized.casefold()
+    if folded in aliases:
+        return aliases[folded]
+    spaced = folded.replace("-", " ")
+    return aliases.get(spaced, normalized)
 
 
 def private_request_template(model: str) -> str:

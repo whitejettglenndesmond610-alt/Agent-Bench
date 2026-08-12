@@ -29,7 +29,7 @@ from agent_eval.db.models import (
     WorkspaceAttempt,
 )
 
-ALEMBIC_HEAD = "9d2a6f4c8b71"
+ALEMBIC_HEAD = "a1b8c3d4e5f6"
 SOURCE_DRIVER = "sqlite+aiosqlite"
 TARGET_DRIVER = "postgresql+asyncpg"
 EXCLUDED_TABLES = frozenset({"resource_leases", "worker_leases"})
