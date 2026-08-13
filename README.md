@@ -6,7 +6,7 @@
 
 **把“这个 Agent 好不好”，变成可复现、可追踪、可发布的工程结论。**
 
-统一协议评测 · 真实 API 对话 · 多 Agent 同屏对比 · 逐题证据链 · 可信排行榜
+统一协议评测 · 线上轨迹回流 · Bad Pattern 检测 · Agent 质检 · 逐题证据链 · 可信排行榜
 
 <p>
   <img src="https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.12" />
@@ -51,6 +51,12 @@ flowchart LR
     B --> D[统一协议评测]
     D --> E[逐题证据与有效性门禁]
     E --> F[综合榜与专项榜]
+    D --> I[Bad Pattern 自动检测]
+    I --> J[Agent 轨迹与人工质检]
+    J --> K[确认问题或排除误报]
+    L[生产 Agent 轨迹] --> M[幂等回流与跨批次去重]
+    M --> I
+    J --> N[保留或丢弃回流样本]
     C --> G[回答标注与案例策展]
     G --> H[隔离案例库]
 ```
@@ -63,6 +69,8 @@ flowchart LR
 | **在线工作区** | 创建持久化多轮会话、重新生成回答，并让 2-5 个 Agent 对同一原始 Prompt 并行作答 |
 | **用户自带 API** | 通过阿里百炼、DeepSeek、OpenAI 固定预设接入私人 Key；常见展示名自动规范化为官方 model ID |
 | **评测实验** | 将多个独立运行固化为同协议实验，统一查看进度、能力成绩、名次、失败和运行质量 |
+| **质量闭环** | 从完整归档回答中执行有边界的版本化 Bad Pattern 规则，按执行项生成质检任务，支持人员分配、优先级、批量确认/排除、人工结论和已确认 JSONL 回流导出 |
+| **线上数据回流** | 按来源批次幂等接收生产、预发或历史回放轨迹，跨批次去重并自动预扫 Bad Pattern；通过游标分页、风险筛选和批量保留/丢弃治理大规模样本 |
 | **证据审计** | 按题查看回答、参考答案、评分理由、HTTP Attempt、Token、延迟、引用验证与 Artifact 状态 |
 | **可信排行** | 发布综合榜，以及推理、检索、数据推理、指令遵循、长上下文五类专项榜 |
 | **用户资产** | 管理 Agent 收藏、Prompt 模板、点赞/点踩、回答收藏、私人笔记、记录历史与 Markdown/JSON 导出 |
@@ -99,7 +107,7 @@ flowchart LR
 | --- | --- |
 | Web | React、TypeScript、Vite、TanStack Query |
 | API | Python 3.12、FastAPI、SQLAlchemy、Alembic |
-| Worker | 异步推理、Judge 评分、引用抓取、Workspace Attempt 与排行榜发布 |
+| Worker | 异步推理、Bad Pattern 检测、Judge 评分、引用抓取、Workspace Attempt 与排行榜发布 |
 | Data | SQLite 本地开发；PostgreSQL 多 Worker 生产部署 |
 | Artifact | 本地文件系统或 S3/MinIO；索引记录大小、SHA-256 与保留期限 |
 | Runtime | Docker Compose、Nginx、数据库租约、全局请求槽、systemd 备份与监控 Timer |
@@ -145,8 +153,9 @@ PostgreSQL/MinIO 切换、备份、恢复与生产发布流程见 [`deploy/runbo
 > 公开部署必须使用 HTTPS，且不得将 PostgreSQL 或 MinIO 端口暴露到公网。
 
 > [!NOTE]
-> 当前发布基线：后端 `253 passed, 3 skipped`，前端 `90 passed`；Ruff、mypy、ESLint、
-> TypeScript 和 Vite 生产构建均通过。
+> 当前本地代码基线：后端 `249 passed, 4 skipped`，前端 `94 passed`；Ruff、mypy、
+> ESLint、TypeScript、Vite 生产构建和空库 Alembic 升级均通过。另有 9 个数据集集成
+> 用例依赖未提交到仓库的 `data/demo-dataset`，缺少该数据时不会计入上述通过数。
 
 ## English Documentation
 
@@ -165,6 +174,10 @@ third-party Agent APIs.
   server-controlled presets. Common display names are normalized to provider model IDs before use.
 - **Evaluation evidence:** Per-question answers, reference answers, judge explanations, HTTP attempts,
   token usage, citation checks, latency samples, and immutable artifacts remain inspectable.
+- **Quality operations:** Versioned Bad Pattern rules read archived Agent answers and scan a bounded
+  20,000-character window with a per-rule timeout. Findings create per-execution-item review tasks
+  with assignees and priorities. Reviewers can batch-confirm or dismiss findings, inspect a unified
+  trajectory, attach verdicts and tags, rescan history, and export confirmed feedback as JSONL.
 - **Unified and specialist boards:** `unified-v3` publishes comprehensive and ability-specific views
   for reasoning, retrieval, data reasoning, instruction following, and long context.
 - **Production operations:** PostgreSQL multi-worker scheduling, distributed resource leases,

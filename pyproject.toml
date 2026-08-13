@@ -18,6 +18,7 @@ dependencies = [
   "httpx>=0.28,<1",
   "jsonpath-ng>=1.7,<2",
   "pydantic-settings>=2.10,<3",
+  "regex>=2026.7,<2027",
   "sqlalchemy[asyncio]>=2.0.40,<3",
   "trafilatura>=2,<3",
   "uvicorn[standard]>=0.35,<1",
@@ -61,5 +62,5 @@ strict = true
 packages = ["agent_eval"]
 
 [[tool.mypy.overrides]]
-module = ["aiosqlite.*", "asyncpg.*", "boto3.*", "botocore.*", "jsonpath_ng.*"]
+module = ["aiosqlite.*", "asyncpg.*", "boto3.*", "botocore.*", "jsonpath_ng.*", "regex.*"]
 ignore_missing_imports = true

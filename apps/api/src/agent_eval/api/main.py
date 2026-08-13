@@ -18,7 +18,9 @@ from agent_eval.api.routes.evaluation_experiments import router as evaluation_ex
 from agent_eval.api.routes.experience_tasks import router as experience_tasks_router
 from agent_eval.api.routes.health import router as health_router
 from agent_eval.api.routes.leaderboards import router as leaderboards_router
+from agent_eval.api.routes.online_data import router as online_data_router
 from agent_eval.api.routes.private_agents import router as private_agents_router
+from agent_eval.api.routes.quality import router as quality_router
 from agent_eval.api.routes.runs import router as runs_router
 from agent_eval.api.routes.workspace import router as workspace_router
 from agent_eval.api.routes.workspace_comparisons import router as workspace_comparisons_router
@@ -109,6 +111,8 @@ def create_app(
     app.include_router(agents_router)
     app.include_router(evaluation_experiments_router)
     app.include_router(runs_router)
+    app.include_router(quality_router)
+    app.include_router(online_data_router)
     app.include_router(leaderboards_router)
     app.include_router(experience_tasks_router)
     app.include_router(workspace_router)

@@ -1299,6 +1299,378 @@ export function fetchRunEvidenceDetail(
   );
 }
 
+export type BadPatternSeverity = "low" | "medium" | "high" | "critical";
+export type BadPatternFindingStatus = "open" | "confirmed" | "dismissed";
+export type QualityReviewVerdict = "pass" | "fail" | "needs_followup";
+export type QualityTaskStatus = "unassigned" | "assigned" | "in_review" | "completed";
+export type QualityTaskPriority = "low" | "normal" | "high" | "urgent";
+
+export interface BadPatternRule {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  category: string;
+  severity: BadPatternSeverity;
+  pattern: string;
+  enabled: boolean;
+  version: number;
+  finding_count: number;
+  open_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QualityReview {
+  id: string;
+  execution_item_id: string;
+  verdict: QualityReviewVerdict;
+  tags: string[];
+  note: string | null;
+  reviewer_display_name: string;
+  reviewed_at: string;
+  updated_at: string;
+}
+
+export interface QualityTask {
+  id: string;
+  execution_item_id: string;
+  status: QualityTaskStatus;
+  priority: QualityTaskPriority;
+  assigned_to_user_id: string | null;
+  assignee_display_name: string | null;
+  assigned_at: string | null;
+  claimed_at: string | null;
+  completed_at: string | null;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QualityReviewer {
+  id: string;
+  username: string;
+  display_name: string;
+}
+
+export interface QualityBatchResult {
+  requested: number;
+  updated: number;
+  skipped: number;
+}
+
+export interface BadPatternFinding {
+  id: string;
+  execution_item_id: string;
+  run_id: string;
+  run_name: string;
+  agent_name: string;
+  agent_version: number;
+  question_external_id: string;
+  benchmark_name: string;
+  rule_id: string;
+  rule_key: string;
+  rule_name: string;
+  category: string;
+  severity: BadPatternSeverity;
+  status: BadPatternFindingStatus;
+  match_count: number;
+  snippet: string;
+  confidence: number;
+  answer_preview: string | null;
+  error_type: string | null;
+  reviewer_display_name: string | null;
+  review_note: string | null;
+  reviewed_at: string | null;
+  quality_review: QualityReview | null;
+  task: QualityTask | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QualityTraceEvent {
+  kind: "request" | "response" | "judge" | "citation" | "detector" | "human_review";
+  title: string;
+  status: string;
+  detail: string | null;
+  occurred_at: string | null;
+  latency_ms: number | null;
+}
+
+export interface BadPatternFindingDetail extends BadPatternFinding {
+  prompt: string;
+  reference_answer: string;
+  answer: string | null;
+  final_score: number | null;
+  judge_reason: string | null;
+  trace: QualityTraceEvent[];
+}
+
+export interface QualityDashboard {
+  summary: {
+    total_findings: number;
+    open_findings: number;
+    critical_open_findings: number;
+    confirmed_findings: number;
+    dismissed_findings: number;
+    reviewed_items: number;
+    enabled_rules: number;
+    unassigned_tasks: number;
+    active_tasks: number;
+    completed_tasks: number;
+  };
+  findings: BadPatternFinding[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export function fetchQualityDashboard(filters: {
+  status?: BadPatternFindingStatus;
+  severity?: BadPatternSeverity;
+  task_status?: QualityTaskStatus;
+  assignee_user_id?: string;
+  search?: string;
+} = {}): Promise<QualityDashboard> {
+  const parameters = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) parameters.set(key, value);
+  }
+  const query = parameters.toString();
+  return requestJson<QualityDashboard>(`/api/v1/quality/dashboard${query ? `?${query}` : ""}`);
+}
+
+export function fetchQualityFinding(findingId: string): Promise<BadPatternFindingDetail> {
+  return requestJson<BadPatternFindingDetail>(`/api/v1/quality/findings/${findingId}`);
+}
+
+export function reviewQualityFinding(
+  findingId: string,
+  input: { status: Exclude<BadPatternFindingStatus, "open">; note?: string }
+): Promise<BadPatternFinding> {
+  return jsonMutation<BadPatternFinding>(`/api/v1/quality/findings/${findingId}`, "PATCH", input);
+}
+
+export function upsertQualityReview(
+  executionItemId: string,
+  input: { verdict: QualityReviewVerdict; tags: string[]; note?: string }
+): Promise<QualityReview> {
+  return jsonMutation<QualityReview>(
+    `/api/v1/quality/execution-items/${executionItemId}/review`,
+    "PUT",
+    input
+  );
+}
+
+export function rescanQualityExecutionItem(
+  executionItemId: string
+): Promise<{ execution_item_id: string; finding_count: number }> {
+  return jsonMutation(`/api/v1/quality/execution-items/${executionItemId}/rescan`, "POST");
+}
+
+export function fetchQualityReviewers(): Promise<QualityReviewer[]> {
+  return requestJson<QualityReviewer[]>("/api/v1/quality/reviewers");
+}
+
+export function batchAssignQualityTasks(input: {
+  finding_ids: string[];
+  assignee_user_id: string | null;
+  priority?: QualityTaskPriority;
+}): Promise<QualityBatchResult> {
+  return jsonMutation<QualityBatchResult>("/api/v1/quality/batch/tasks/assign", "POST", input);
+}
+
+export function batchReviewQualityFindings(input: {
+  finding_ids: string[];
+  status: Exclude<BadPatternFindingStatus, "open">;
+  note?: string;
+}): Promise<QualityBatchResult> {
+  return jsonMutation<QualityBatchResult>("/api/v1/quality/batch/findings/review", "POST", input);
+}
+
+export function claimQualityTask(executionItemId: string): Promise<QualityTask> {
+  return jsonMutation<QualityTask>(`/api/v1/quality/tasks/${executionItemId}/claim`, "POST");
+}
+
+export async function fetchQualityFeedbackExport(filters: {
+  severity?: BadPatternSeverity;
+  assignee_user_id?: string;
+} = {}): Promise<{ filename: string; content: string }> {
+  const parameters = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) parameters.set(key, value);
+  }
+  const query = parameters.toString();
+  const response = await fetch(`/api/v1/quality/feedback-export${query ? `?${query}` : ""}`, {
+    credentials: "same-origin",
+    headers: { Accept: "application/x-ndjson" }
+  });
+  if (!response.ok) throw await errorFromResponse(response);
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] ?? "quality-feedback.jsonl";
+  return { filename, content: await response.text() };
+}
+
+export function fetchBadPatternRules(): Promise<BadPatternRule[]> {
+  return requestJson<BadPatternRule[]>("/api/v1/quality/rules");
+}
+
+export function createBadPatternRule(input: {
+  key: string;
+  name: string;
+  description?: string;
+  category: string;
+  severity: BadPatternSeverity;
+  pattern: string;
+  enabled: boolean;
+}): Promise<BadPatternRule> {
+  return jsonMutation<BadPatternRule>("/api/v1/quality/rules", "POST", input);
+}
+
+export function updateBadPatternRule(
+  ruleId: string,
+  input: Partial<Pick<BadPatternRule, "name" | "description" | "category" | "severity" | "pattern" | "enabled">>
+): Promise<BadPatternRule> {
+  return jsonMutation<BadPatternRule>(`/api/v1/quality/rules/${ruleId}`, "PATCH", input);
+}
+
+export type OnlineDataEnvironment = "production" | "staging" | "replay";
+export type OnlineDataRecordStatus = "pending" | "retained" | "discarded";
+
+export interface OnlineTraceEvent {
+  kind: string;
+  title: string | null;
+  status: string | null;
+  detail: string | null;
+  occurred_at: string | null;
+  latency_ms: number | null;
+}
+
+export interface OnlineMatchedRule {
+  key: string;
+  name: string;
+  category: string;
+  severity: BadPatternSeverity;
+  match_count: number;
+  snippet: string;
+}
+
+export interface OnlineDataBatch {
+  id: string;
+  source_name: string;
+  environment: OnlineDataEnvironment;
+  external_batch_id: string;
+  received_count: number;
+  accepted_count: number;
+  duplicate_count: number;
+  duplicate_errors: Array<{ external_id: string; code: string }>;
+  creator_display_name: string;
+  created_at: string;
+}
+
+export interface OnlineDataRecord {
+  id: string;
+  batch_id: string;
+  source_name: string;
+  environment: OnlineDataEnvironment;
+  external_id: string;
+  agent_name: string;
+  agent_version: string | null;
+  prompt_preview: string;
+  answer_preview: string;
+  occurred_at: string;
+  status: OnlineDataRecordStatus;
+  risk_severity: BadPatternSeverity | null;
+  match_count: number;
+  matched_rules: OnlineMatchedRule[];
+  reviewer_display_name: string | null;
+  review_note: string | null;
+  reviewed_at: string | null;
+}
+
+export interface OnlineDataRecordDetail extends OnlineDataRecord {
+  prompt: string;
+  answer: string;
+  trace: OnlineTraceEvent[];
+  metadata: Record<string, string | number | boolean | null>;
+  content_hash: string;
+}
+
+export interface OnlineDataSummary {
+  total_batches: number;
+  total_records: number;
+  pending_records: number;
+  risky_records: number;
+  retained_records: number;
+  discarded_records: number;
+  latest_received_at: string | null;
+}
+
+export interface OnlineDataRecordPage {
+  items: OnlineDataRecord[];
+  next_cursor: string | null;
+  limit: number;
+}
+
+export interface OnlineDataBatchInput {
+  source_name: string;
+  environment: OnlineDataEnvironment;
+  external_batch_id: string;
+  idempotency_key: string;
+  records: Array<{
+    external_id: string;
+    agent_name: string;
+    agent_version?: string;
+    prompt: string;
+    answer: string;
+    occurred_at: string;
+    trace?: OnlineTraceEvent[];
+    metadata?: Record<string, string | number | boolean | null>;
+  }>;
+}
+
+export function fetchOnlineDataSummary(): Promise<OnlineDataSummary> {
+  return requestJson<OnlineDataSummary>("/api/v1/online-data/summary");
+}
+
+export function fetchOnlineDataBatches(limit = 8): Promise<{ items: OnlineDataBatch[] }> {
+  return requestJson<{ items: OnlineDataBatch[] }>(`/api/v1/online-data/batches?limit=${limit}`);
+}
+
+export function fetchOnlineDataRecords(filters: {
+  status?: OnlineDataRecordStatus;
+  environment?: OnlineDataEnvironment;
+  risk_severity?: BadPatternSeverity;
+  source_name?: string;
+  agent_name?: string;
+  search?: string;
+  cursor?: string;
+  limit?: number;
+} = {}): Promise<OnlineDataRecordPage> {
+  const parameters = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== "") parameters.set(key, String(value));
+  }
+  const query = parameters.toString();
+  return requestJson<OnlineDataRecordPage>(`/api/v1/online-data/records${query ? `?${query}` : ""}`);
+}
+
+export function fetchOnlineDataRecord(recordId: string): Promise<OnlineDataRecordDetail> {
+  return requestJson<OnlineDataRecordDetail>(`/api/v1/online-data/records/${recordId}`);
+}
+
+export function createOnlineDataBatch(input: OnlineDataBatchInput): Promise<OnlineDataBatch> {
+  return jsonMutation<OnlineDataBatch>("/api/v1/online-data/batches", "POST", input);
+}
+
+export function batchReviewOnlineDataRecords(input: {
+  record_ids: string[];
+  status: Exclude<OnlineDataRecordStatus, "pending">;
+  note?: string;
+}): Promise<QualityBatchResult> {
+  return jsonMutation<QualityBatchResult>("/api/v1/online-data/records/batch-review", "POST", input);
+}
+
 export interface EvaluationExperimentRunCounts {
   draft: number;
   queued: number;

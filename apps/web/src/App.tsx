@@ -14,7 +14,9 @@ import { LeaderboardPage } from "./LeaderboardPage";
 import { LeaderboardHistoryPage, LeaderboardSnapshotPage } from "./LeaderboardHistoryPage";
 import { MyApiPage } from "./MyApiPage";
 import { NotFoundPage } from "./NotFoundPage";
+import { OnlineDataPage } from "./OnlineDataPage";
 import { PromptTemplatesPage } from "./PromptTemplatesPage";
+import { QualityPage } from "./QualityPage";
 import { RecordsPage } from "./RecordsPage";
 import { RunEvidencePage } from "./RunEvidencePage";
 import { RunsPage } from "./RunsPage";
@@ -37,7 +39,7 @@ const DatasetReleasesPage = lazy(() =>
   import("./DatasetReleasesPage").then((module) => ({ default: module.DatasetReleasesPage }))
 );
 
-type NavigationIconName = "overview" | "agents" | "runs" | "experiments" | "cases" | "datasets" | "workspace" | "leaderboard" | "home" | "plaza" | "compare" | "records" | "templates" | "experience" | "api";
+type NavigationIconName = "overview" | "agents" | "runs" | "experiments" | "quality" | "cases" | "datasets" | "workspace" | "leaderboard" | "home" | "plaza" | "compare" | "records" | "templates" | "experience" | "api";
 
 function NavigationIcon({ name }: { name: NavigationIconName }) {
   return (
@@ -46,6 +48,7 @@ function NavigationIcon({ name }: { name: NavigationIconName }) {
       {name === "agents" && <><circle cx="12" cy="8" r="3.5" /><path d="M5 20c.7-4 3-6 7-6s6.3 2 7 6" /><path d="M4 8H2.5M21.5 8H20M12 2.5V1" /></>}
       {name === "runs" && <><path d="M5 4h14v16H5z" /><path d="M8 9h8M8 13h5M8 17h7" /><path d="m15.5 4 1-2 1 2" /></>}
       {name === "experiments" && <><path d="M9 3v5l-5 9a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3l-5-9V3" /><path d="M8 3h8M7 15h10" /><circle cx="10" cy="17" r=".5" /></>}
+      {name === "quality" && <><path d="M12 3 4 6v5c0 5 3.4 8.4 8 10 4.6-1.6 8-5 8-10V6l-8-3Z" /><path d="m8.5 12 2.2 2.2 4.8-5" /></>}
       {name === "cases" && <><path d="M7 3h10v4H7z" /><path d="M5 5H3v16h18V5h-2" /><path d="M8 12h8M8 16h5" /></>}
       {name === "datasets" && <><ellipse cx="12" cy="5" rx="7" ry="3" /><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5" /><path d="M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" /></>}
       {name === "workspace" && <><path d="M4 4h16v12H8l-4 4V4Z" /><path d="M8 9h8M8 12h5" /></>}
@@ -77,6 +80,7 @@ function AppNavigation({ session, onLogout, loggingOut }: { session: SessionInfo
         {operator && <NavLink to="/agents"><NavigationIcon name="agents" /><span>Agent 中心</span></NavLink>}
         {operator && <NavLink to="/experiments"><NavigationIcon name="experiments" /><span>评测实验</span></NavLink>}
         {operator && <NavLink to="/runs"><NavigationIcon name="runs" /><span>评测运行</span></NavLink>}
+        {operator && <NavLink to="/quality"><NavigationIcon name="quality" /><span>质量闭环</span></NavLink>}
         {operator && <span className="nav-section-label">数据与策展</span>}
         {operator && <NavLink to="/evaluation-cases"><NavigationIcon name="cases" /><span>案例策展</span></NavLink>}
         {operator && <NavLink to="/dataset-releases"><NavigationIcon name="datasets" /><span>数据集发布</span></NavLink>}
@@ -106,6 +110,7 @@ const shellSections = [
   { prefix: "/agents", label: "Agent 中心", code: "AGENT CENTER" },
   { prefix: "/experiments", label: "评测实验", code: "EXPERIMENTS" },
   { prefix: "/runs", label: "评测运行", code: "EVALUATION RUNS" },
+  { prefix: "/quality", label: "质量闭环", code: "QUALITY OPS" },
   { prefix: "/evaluation-cases", label: "案例策展", code: "CURATION" },
   { prefix: "/dataset-releases", label: "数据集发布", code: "DATA RELEASES" },
   { prefix: "/workspace", label: "Agent 在线运行", code: "PLAYGROUND" },
@@ -174,6 +179,9 @@ function AuthenticatedApp({ session }: { session: SessionInfo }) {
         <Route path="/runs/:runId" element={operator ? <RunsPage /> : <Navigate to="/" replace />} />
         <Route path="/runs/:runId/evidence" element={operator ? <RunEvidencePage /> : <Navigate to="/" replace />} />
         <Route path="/runs/:runId/evidence/:executionItemId" element={operator ? <RunEvidencePage /> : <Navigate to="/" replace />} />
+        <Route path="/quality" element={operator ? <QualityPage /> : <Navigate to="/" replace />} />
+        <Route path="/quality/data" element={operator ? <OnlineDataPage /> : <Navigate to="/" replace />} />
+        <Route path="/quality/:findingId" element={operator ? <QualityPage /> : <Navigate to="/" replace />} />
         <Route path="/evaluation-cases" element={operator ? <Suspense fallback={workspaceFallback}><EvaluationCasesPage userId={session.user_id} canPublish={operator && !session.is_shared} /></Suspense> : <Navigate to="/" replace />} />
         <Route path="/evaluation-cases/:caseId" element={operator ? <Suspense fallback={workspaceFallback}><EvaluationCasesPage userId={session.user_id} canPublish={operator && !session.is_shared} /></Suspense> : <Navigate to="/" replace />} />
         <Route path="/dataset-releases" element={operator ? <Suspense fallback={workspaceFallback}><DatasetReleasesPage userId={session.user_id} canPublish={operator && !session.is_shared} /></Suspense> : <Navigate to="/" replace />} />

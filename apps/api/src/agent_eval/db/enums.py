@@ -47,9 +47,7 @@ class Ability(StrEnum):
     LONG_CONTEXT = "long_context"
 
 
-RELEASED_ABILITIES = frozenset(
-    {Ability.REASONING, Ability.RETRIEVAL, Ability.DATA_REASONING}
-)
+RELEASED_ABILITIES = frozenset({Ability.REASONING, Ability.RETRIEVAL, Ability.DATA_REASONING})
 
 
 class Language(StrEnum):
@@ -138,6 +136,51 @@ class CitationFetchStatus(StrEnum):
     BLOCKED = "blocked"
     UNREACHABLE = "unreachable"
     UNSUPPORTED = "unsupported"
+
+
+class BadPatternSeverity(StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class BadPatternFindingStatus(StrEnum):
+    OPEN = "open"
+    CONFIRMED = "confirmed"
+    DISMISSED = "dismissed"
+
+
+class QualityReviewVerdict(StrEnum):
+    PASS = "pass"
+    FAIL = "fail"
+    NEEDS_FOLLOWUP = "needs_followup"
+
+
+class QualityTaskStatus(StrEnum):
+    UNASSIGNED = "unassigned"
+    ASSIGNED = "assigned"
+    IN_REVIEW = "in_review"
+    COMPLETED = "completed"
+
+
+class QualityTaskPriority(StrEnum):
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+    URGENT = "urgent"
+
+
+class OnlineDataEnvironment(StrEnum):
+    PRODUCTION = "production"
+    STAGING = "staging"
+    REPLAY = "replay"
+
+
+class OnlineDataRecordStatus(StrEnum):
+    PENDING = "pending"
+    RETAINED = "retained"
+    DISCARDED = "discarded"
 
 
 class ArtifactKind(StrEnum):

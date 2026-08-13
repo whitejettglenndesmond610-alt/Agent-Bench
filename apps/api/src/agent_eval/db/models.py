@@ -34,6 +34,8 @@ from agent_eval.db.enums import (
     AttemptStatus,
     AuthSource,
     AuthType,
+    BadPatternFindingStatus,
+    BadPatternSeverity,
     CitationFetchStatus,
     DatasetReleaseStatus,
     DatasetStatus,
@@ -42,9 +44,14 @@ from agent_eval.db.enums import (
     ExecutionStatus,
     Language,
     NotificationType,
+    OnlineDataEnvironment,
+    OnlineDataRecordStatus,
     PreflightStatus,
     PrivateAgentHealth,
     PrivateAgentPreset,
+    QualityReviewVerdict,
+    QualityTaskPriority,
+    QualityTaskStatus,
     QuestionType,
     ResultValidityStatus,
     RunAgentStatus,
@@ -196,9 +203,7 @@ class AgentVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
-    private_health_checked_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True)
-    )
+    private_health_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     private_health_error_code: Mapped[str | None] = mapped_column(String(80))
     private_health_latency_ms: Mapped[int | None] = mapped_column(Integer)
     lifecycle_status: Mapped[AgentVersionLifecycle] = mapped_column(
@@ -409,20 +414,12 @@ class EvaluationExperiment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "idempotency_key",
             name="uq_evaluation_experiments_creator_idempotency",
         ),
-        UniqueConstraint(
-            "id", "protocol_hash", name="uq_evaluation_experiments_id_protocol_hash"
-        ),
+        UniqueConstraint("id", "protocol_hash", name="uq_evaluation_experiments_id_protocol_hash"),
         CheckConstraint("length(name) > 0", name="name_nonempty"),
-        CheckConstraint(
-            "length(creator_subject_key) > 0", name="creator_subject_key_nonempty"
-        ),
-        CheckConstraint(
-            "length(creator_display_name) > 0", name="creator_display_name_nonempty"
-        ),
+        CheckConstraint("length(creator_subject_key) > 0", name="creator_subject_key_nonempty"),
+        CheckConstraint("length(creator_display_name) > 0", name="creator_display_name_nonempty"),
         CheckConstraint("length(idempotency_key) = 36", name="idempotency_key_uuid"),
-        CheckConstraint(
-            "length(request_fingerprint) = 64", name="request_fingerprint_sha256"
-        ),
+        CheckConstraint("length(request_fingerprint) = 64", name="request_fingerprint_sha256"),
         CheckConstraint("length(protocol_hash) = 64", name="protocol_hash_sha256"),
         Index(
             "ix_evaluation_experiments_creator_created",
@@ -678,6 +675,15 @@ class ExecutionItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     attempts: Mapped[list["HttpAttempt"]] = relationship(back_populates="execution_item")
     citations: Mapped[list["CitationRecord"]] = relationship(back_populates="execution_item")
     score: Mapped["ScoreRecord | None"] = relationship(back_populates="execution_item")
+    bad_pattern_findings: Mapped[list["BadPatternFinding"]] = relationship(
+        back_populates="execution_item", passive_deletes=True
+    )
+    quality_review: Mapped["QualityReview | None"] = relationship(
+        back_populates="execution_item", passive_deletes=True
+    )
+    quality_task: Mapped["QualityReviewTask | None"] = relationship(
+        back_populates="execution_item", passive_deletes=True
+    )
 
 
 class HttpAttempt(UUIDPrimaryKeyMixin, Base):
@@ -793,6 +799,261 @@ class ScoreRecord(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     execution_item: Mapped[ExecutionItem] = relationship(back_populates="score")
     judge_artifact: Mapped[ArtifactIndex | None] = relationship(foreign_keys=[judge_artifact_id])
+
+
+class BadPatternRule(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "bad_pattern_rules"
+    __table_args__ = (
+        CheckConstraint("length(key) > 0", name="key_nonempty"),
+        CheckConstraint("length(name) > 0", name="name_nonempty"),
+        CheckConstraint("length(category) > 0", name="category_nonempty"),
+        CheckConstraint("length(pattern) > 0", name="pattern_nonempty"),
+        CheckConstraint("version > 0", name="version_positive"),
+        Index("ix_bad_pattern_rules_enabled_severity", "enabled", "severity"),
+    )
+
+    key: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    category: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    severity: Mapped[BadPatternSeverity] = mapped_column(
+        enum_column(BadPatternSeverity, name="bad_pattern_severity"), nullable=False
+    )
+    pattern: Mapped[str] = mapped_column(Text, nullable=False)
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+    created_by_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("auth_users.id", ondelete="SET NULL")
+    )
+
+    findings: Mapped[list["BadPatternFinding"]] = relationship(back_populates="rule")
+
+
+class BadPatternFinding(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "bad_pattern_findings"
+    __table_args__ = (
+        UniqueConstraint("execution_item_id", "rule_id", name="uq_bad_pattern_findings_item_rule"),
+        CheckConstraint("match_count > 0", name="match_count_positive"),
+        CheckConstraint("confidence BETWEEN 0 AND 100", name="confidence_range"),
+        CheckConstraint(
+            "(status = 'open' AND reviewed_at IS NULL) OR "
+            "(status IN ('confirmed', 'dismissed') AND reviewed_at IS NOT NULL "
+            "AND reviewer_subject_key IS NOT NULL)",
+            name="review_lifecycle_valid",
+        ),
+        Index("ix_bad_pattern_findings_status_created", "status", "created_at"),
+        Index("ix_bad_pattern_findings_rule_status", "rule_id", "status"),
+    )
+
+    execution_item_id: Mapped[UUID] = mapped_column(
+        ForeignKey("execution_items.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    rule_id: Mapped[UUID] = mapped_column(
+        ForeignKey("bad_pattern_rules.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    status: Mapped[BadPatternFindingStatus] = mapped_column(
+        enum_column(BadPatternFindingStatus, name="bad_pattern_finding_status"),
+        default=BadPatternFindingStatus.OPEN,
+        nullable=False,
+    )
+    match_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    snippet: Mapped[str] = mapped_column(String(500), nullable=False)
+    confidence: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), default=Decimal(100), server_default="100", nullable=False
+    )
+    reviewed_by_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("auth_users.id", ondelete="SET NULL")
+    )
+    reviewer_subject_key: Mapped[str | None] = mapped_column(String(200))
+    reviewer_display_name: Mapped[str | None] = mapped_column(String(160))
+    review_note: Mapped[str | None] = mapped_column(Text)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    execution_item: Mapped[ExecutionItem] = relationship(back_populates="bad_pattern_findings")
+    rule: Mapped[BadPatternRule] = relationship(back_populates="findings")
+
+
+class QualityReview(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "quality_reviews"
+    __table_args__ = (
+        CheckConstraint("length(reviewer_subject_key) > 0", name="reviewer_subject_nonempty"),
+        CheckConstraint("length(reviewer_display_name) > 0", name="reviewer_name_nonempty"),
+        Index("ix_quality_reviews_verdict_updated", "verdict", "updated_at"),
+    )
+
+    execution_item_id: Mapped[UUID] = mapped_column(
+        ForeignKey("execution_items.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    verdict: Mapped[QualityReviewVerdict] = mapped_column(
+        enum_column(QualityReviewVerdict, name="quality_review_verdict"), nullable=False
+    )
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text)
+    reviewed_by_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("auth_users.id", ondelete="SET NULL")
+    )
+    reviewer_subject_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    reviewer_display_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    reviewed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+
+    execution_item: Mapped[ExecutionItem] = relationship(back_populates="quality_review")
+
+
+class QualityReviewTask(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "quality_review_tasks"
+    __table_args__ = (
+        CheckConstraint("revision >= 0", name="revision_nonnegative"),
+        CheckConstraint(
+            "(status = 'unassigned' AND assigned_to_user_id IS NULL) OR "
+            "(status IN ('assigned', 'in_review') AND assigned_to_user_id IS NOT NULL) OR "
+            "status = 'completed'",
+            name="assignment_lifecycle_valid",
+        ),
+        CheckConstraint(
+            "(status = 'completed' AND completed_at IS NOT NULL) OR "
+            "(status != 'completed' AND completed_at IS NULL)",
+            name="completion_lifecycle_valid",
+        ),
+        Index("ix_quality_review_tasks_status_priority", "status", "priority", "updated_at"),
+        Index("ix_quality_review_tasks_assignee_status", "assigned_to_user_id", "status"),
+    )
+
+    execution_item_id: Mapped[UUID] = mapped_column(
+        ForeignKey("execution_items.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    status: Mapped[QualityTaskStatus] = mapped_column(
+        enum_column(QualityTaskStatus, name="quality_task_status"),
+        default=QualityTaskStatus.UNASSIGNED,
+        server_default="unassigned",
+        nullable=False,
+    )
+    priority: Mapped[QualityTaskPriority] = mapped_column(
+        enum_column(QualityTaskPriority, name="quality_task_priority"),
+        default=QualityTaskPriority.NORMAL,
+        server_default="normal",
+        nullable=False,
+    )
+    assigned_to_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("auth_users.id", ondelete="RESTRICT")
+    )
+    assignee_subject_key: Mapped[str | None] = mapped_column(String(200))
+    assignee_display_name: Mapped[str | None] = mapped_column(String(160))
+    assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+
+    execution_item: Mapped[ExecutionItem] = relationship(back_populates="quality_task")
+    assignee: Mapped["AuthUser | None"] = relationship(
+        back_populates="assigned_quality_tasks", foreign_keys=[assigned_to_user_id]
+    )
+
+
+class OnlineDataBatch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "online_data_batches"
+    __table_args__ = (
+        UniqueConstraint("source_name", "external_batch_id", name="uq_online_batches_source_id"),
+        CheckConstraint("length(source_name) BETWEEN 1 AND 80", name="source_name_length"),
+        CheckConstraint(
+            "length(external_batch_id) BETWEEN 1 AND 160", name="external_batch_id_length"
+        ),
+        CheckConstraint("length(idempotency_key) = 36", name="idempotency_key_uuid"),
+        CheckConstraint("length(request_fingerprint) = 64", name="request_fingerprint_sha256"),
+        CheckConstraint("received_count BETWEEN 1 AND 500", name="received_count_range"),
+        CheckConstraint("accepted_count >= 0", name="accepted_count_nonnegative"),
+        CheckConstraint("duplicate_count >= 0", name="duplicate_count_nonnegative"),
+        CheckConstraint(
+            "accepted_count + duplicate_count = received_count", name="counts_match"
+        ),
+        Index("ix_online_data_batches_source_created", "source_name", "created_at"),
+    )
+
+    source_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    environment: Mapped[OnlineDataEnvironment] = mapped_column(
+        enum_column(OnlineDataEnvironment, name="online_data_environment"), nullable=False
+    )
+    external_batch_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(36), nullable=False, unique=True)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    received_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    accepted_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    duplicate_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    duplicate_errors_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
+    created_by_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("auth_users.id", ondelete="SET NULL")
+    )
+    creator_subject_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    creator_display_name: Mapped[str] = mapped_column(String(160), nullable=False)
+
+    records: Mapped[list["OnlineDataRecord"]] = relationship(
+        back_populates="batch", passive_deletes=True
+    )
+
+
+class OnlineDataRecord(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "online_data_records"
+    __table_args__ = (
+        UniqueConstraint("batch_id", "external_id", name="uq_online_records_batch_external"),
+        CheckConstraint("length(external_id) BETWEEN 1 AND 200", name="external_id_length"),
+        CheckConstraint("length(dedupe_key) = 64", name="dedupe_key_sha256"),
+        CheckConstraint("length(content_hash) = 64", name="content_hash_sha256"),
+        CheckConstraint("length(agent_name) BETWEEN 1 AND 160", name="agent_name_length"),
+        CheckConstraint("length(prompt) BETWEEN 1 AND 200000", name="prompt_length"),
+        CheckConstraint("length(answer) BETWEEN 1 AND 500000", name="answer_length"),
+        CheckConstraint("match_count >= 0", name="match_count_nonnegative"),
+        CheckConstraint(
+            "(status = 'pending' AND reviewed_at IS NULL "
+            "AND reviewer_subject_key IS NULL AND reviewer_display_name IS NULL) OR "
+            "(status IN ('retained', 'discarded') AND reviewed_at IS NOT NULL "
+            "AND reviewer_subject_key IS NOT NULL AND reviewer_display_name IS NOT NULL)",
+            name="review_lifecycle_valid",
+        ),
+        Index("ix_online_records_status_occurred", "status", "occurred_at", "id"),
+        Index("ix_online_records_risk_occurred", "risk_severity", "occurred_at", "id"),
+        Index("ix_online_records_agent_occurred", "agent_name", "occurred_at", "id"),
+    )
+
+    batch_id: Mapped[UUID] = mapped_column(
+        ForeignKey("online_data_batches.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    external_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    dedupe_key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    agent_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    agent_version: Mapped[str | None] = mapped_column(String(120))
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    trace_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[OnlineDataRecordStatus] = mapped_column(
+        enum_column(OnlineDataRecordStatus, name="online_data_record_status"),
+        default=OnlineDataRecordStatus.PENDING,
+        server_default="pending",
+        nullable=False,
+    )
+    risk_severity: Mapped[BadPatternSeverity | None] = mapped_column(
+        enum_column(BadPatternSeverity, name="online_data_risk_severity")
+    )
+    match_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    matched_rules_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
+    reviewed_by_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("auth_users.id", ondelete="SET NULL")
+    )
+    reviewer_subject_key: Mapped[str | None] = mapped_column(String(200))
+    reviewer_display_name: Mapped[str | None] = mapped_column(String(160))
+    review_note: Mapped[str | None] = mapped_column(Text)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    batch: Mapped[OnlineDataBatch] = relationship(back_populates="records")
 
 
 class LeaderboardSnapshot(UUIDPrimaryKeyMixin, Base):
@@ -923,6 +1184,9 @@ class AuthUser(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     prompt_templates: Mapped[list["WorkspacePromptTemplate"]] = relationship(
         back_populates="owner", passive_deletes=True
+    )
+    assigned_quality_tasks: Mapped[list[QualityReviewTask]] = relationship(
+        back_populates="assignee", foreign_keys="QualityReviewTask.assigned_to_user_id"
     )
 
 
@@ -1107,15 +1371,11 @@ class WorkspaceAttempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         UniqueConstraint(
             "user_message_id", "generation_no", name="uq_workspace_attempts_generation"
         ),
-        UniqueConstraint(
-            "id", "conversation_id", name="uq_workspace_attempts_id_conversation"
-        ),
+        UniqueConstraint("id", "conversation_id", name="uq_workspace_attempts_id_conversation"),
         CheckConstraint("generation_no > 0", name="generation_no_positive"),
         CheckConstraint("length(request_fingerprint) = 64", name="request_fingerprint_sha256"),
         CheckConstraint("length(prompt_hash) = 64", name="prompt_hash_sha256"),
-        CheckConstraint(
-            "prompt_characters BETWEEN 1 AND 200000", name="prompt_characters_range"
-        ),
+        CheckConstraint("prompt_characters BETWEEN 1 AND 200000", name="prompt_characters_range"),
         CheckConstraint("http_attempt_count BETWEEN 0 AND 2", name="http_attempt_count_range"),
         CheckConstraint(
             "last_http_status IS NULL OR last_http_status BETWEEN 100 AND 599",
@@ -1452,9 +1712,7 @@ class DatasetRelease(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     case_links: Mapped[list["DatasetReleaseCase"]] = relationship(
         back_populates="dataset_release", order_by="DatasetReleaseCase.position"
     )
-    dataset_versions: Mapped[list[DatasetVersion]] = relationship(
-        back_populates="dataset_release"
-    )
+    dataset_versions: Mapped[list[DatasetVersion]] = relationship(back_populates="dataset_release")
 
 
 class DatasetReleaseCase(Base):

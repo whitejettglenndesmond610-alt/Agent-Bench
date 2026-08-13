@@ -23,6 +23,7 @@ from agent_eval.db.enums import (
 )
 from agent_eval.db.models import (
     ArtifactIndex,
+    BadPatternRule,
     CitationRecord,
     EvaluationRun,
     ExecutionItem,
@@ -30,6 +31,7 @@ from agent_eval.db.models import (
     Question,
     RunAgent,
 )
+from agent_eval.quality.detector import scan_bad_patterns
 from agent_eval.runs.queue import lock_owned_run
 
 
@@ -90,6 +92,7 @@ class ResultWriter:
         self._owner_id = owner_id
         self._artifact_store = artifact_store
         self._queue: asyncio.Queue[WriterCommand] = asyncio.Queue()
+        self._bad_pattern_rules: list[BadPatternRule] | None = None
 
     async def start_attempt(self, item_id: UUID, attempt_no: int) -> UUID | None:
         future: asyncio.Future[UUID | None] = asyncio.get_running_loop().create_future()
@@ -240,6 +243,22 @@ class ResultWriter:
         if outcome.answer is not None:
             item.answer_preview = outcome.answer[:500]
             item.answer_hash = hashlib.sha256(outcome.answer.encode()).hexdigest()
+            if outcome.success:
+                if self._bad_pattern_rules is None:
+                    self._bad_pattern_rules = list(
+                        await session.scalars(
+                            select(BadPatternRule)
+                            .where(BadPatternRule.enabled.is_(True))
+                            .order_by(BadPatternRule.key)
+                        )
+                    )
+                await scan_bad_patterns(
+                    session,
+                    execution_item_id=item.id,
+                    answer=outcome.answer,
+                    rules=self._bad_pattern_rules,
+                    refresh_existing=False,
+                )
         requires_citations = await session.scalar(
             select(Question.requires_citations).where(Question.id == item.question_id)
         )
