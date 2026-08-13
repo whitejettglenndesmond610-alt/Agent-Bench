@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agent_eval.auth.encryption import TokenCipher
 from agent_eval.core.settings import Settings
-from agent_eval.datasets.importer import import_question_records
+from agent_eval.datasets.importer import LEGACY_COHORT_KEY, import_question_records
 from agent_eval.datasets.schema import load_question_records, validate_demo_distribution
 from agent_eval.db.enums import AgentStatus, AgentVersionLifecycle, AuthType, DatasetStatus
 from agent_eval.db.models import (
@@ -108,7 +108,10 @@ async def demo_preflight(
         select(func.count())
         .select_from(Question)
         .join(DatasetVersion)
-        .where(DatasetVersion.run_eligible.is_(True))
+        .where(
+            DatasetVersion.run_eligible.is_(True),
+            DatasetVersion.cohort_key == LEGACY_COHORT_KEY,
+        )
     )
     frozen_dataset_count = await session.scalar(
         select(func.count())
@@ -116,6 +119,7 @@ async def demo_preflight(
         .where(
             DatasetVersion.status == DatasetStatus.FROZEN,
             DatasetVersion.run_eligible.is_(True),
+            DatasetVersion.cohort_key == LEGACY_COHORT_KEY,
         )
     )
     if question_count != 100 or frozen_dataset_count != 6:

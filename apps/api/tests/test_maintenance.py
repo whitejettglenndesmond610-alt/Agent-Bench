@@ -19,8 +19,12 @@ from agent_eval.core.storage import ensure_storage
 from agent_eval.db.base import utc_now
 from agent_eval.db.engine import create_engine
 from agent_eval.db.enums import (
+    Ability,
     AgentStatus,
     ArtifactKind,
+    DatasetStatus,
+    Language,
+    QuestionType,
     ResultValidityStatus,
     RunAgentStatus,
     RunScope,
@@ -30,11 +34,14 @@ from agent_eval.db.models import (
     Agent,
     AgentVersion,
     ArtifactIndex,
+    Benchmark,
+    DatasetVersion,
     EvaluationRun,
     ExecutionItem,
     JudgeConfig,
     LeaderboardResult,
     LeaderboardSnapshot,
+    Question,
     RunAgent,
     ScoreConfig,
 )
@@ -97,6 +104,75 @@ def test_manifest_validation_detects_content_changes(tmp_path: Path) -> None:
     dataset_file.write_text('{"changed":true}\n')
     with pytest.raises(ValueError, match="hash mismatch"):
         validate_dataset_manifest(tmp_path)
+
+
+async def test_demo_preflight_ignores_other_dataset_cohorts(tmp_path: Path) -> None:
+    settings = await migrated_settings(tmp_path)
+    engine = create_engine(settings)
+    session_factory = create_session_factory(engine)
+    try:
+        async with session_scope(session_factory) as session:
+            for dataset_index, question_count in enumerate((30, 10, 20, 10, 20, 10)):
+                benchmark = Benchmark(
+                    name=f"Legacy Benchmark {dataset_index}",
+                    ability=Ability.REASONING,
+                    language=Language.EN,
+                    source="test fixture",
+                )
+                session.add(benchmark)
+                await session.flush()
+                dataset = DatasetVersion(
+                    benchmark_id=benchmark.id,
+                    version=1,
+                    source_version="fixture-v1",
+                    content_hash=f"{dataset_index:064x}",
+                    question_count=question_count,
+                    cohort_key="legacy-v1",
+                    status=DatasetStatus.FROZEN,
+                    run_eligible=True,
+                    frozen_at=utc_now(),
+                )
+                session.add(dataset)
+                await session.flush()
+                session.add_all(
+                    Question(
+                        dataset_version_id=dataset.id,
+                        external_id=f"legacy-{dataset_index}-{question_index}",
+                        type=QuestionType.SHORT_ANSWER,
+                        prompt="Test prompt",
+                        reference_answer="Test answer",
+                        requires_citations=False,
+                    )
+                    for question_index in range(question_count)
+                )
+
+            extra_benchmark = Benchmark(
+                name="Balanced Benchmark",
+                ability=Ability.INSTRUCTION_FOLLOWING,
+                language=Language.ZH,
+                source="test fixture",
+            )
+            session.add(extra_benchmark)
+            await session.flush()
+            session.add(
+                DatasetVersion(
+                    benchmark_id=extra_benchmark.id,
+                    version=1,
+                    source_version="fixture-v1",
+                    content_hash="f" * 64,
+                    question_count=150,
+                    cohort_key="balanced-v2",
+                    status=DatasetStatus.FROZEN,
+                    run_eligible=True,
+                    frozen_at=utc_now(),
+                )
+            )
+
+        async with session_factory() as session:
+            failures = await demo_preflight(session, settings, require_snapshot=False)
+        assert not any("demo dataset must contain" in failure for failure in failures)
+    finally:
+        await engine.dispose()
 
 
 async def test_bootstrap_is_idempotent_and_preflight_reports_runtime_gaps(
