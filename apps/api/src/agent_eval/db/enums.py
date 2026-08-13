@@ -22,6 +22,10 @@ class PrivateAgentPreset(StrEnum):
     DASHSCOPE = "dashscope"
     DEEPSEEK = "deepseek"
     OPENAI = "openai"
+    ZHIPU = "zhipu"
+    GROK = "grok"
+    CLAUDE = "claude"
+    MIMO = "mimo"
 
 
 class PrivateAgentHealth(StrEnum):

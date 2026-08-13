@@ -17,6 +17,7 @@ import {
   WorkspaceConversationList
 } from "./api";
 import { Button, Input, Modal } from "./components";
+import { randomId } from "./randomId";
 import {
   comparisonMarkdown,
   conversationMarkdown,
@@ -116,7 +117,7 @@ export function RecordsPage({ userId }: { userId: string }) {
           .sort((left, right) => left.position - right.position)
           .map((item) => item.agent.agent_version_id),
         title: `${detail.title} · 再次运行`,
-        idempotency_key: crypto.randomUUID()
+        idempotency_key: randomId()
       });
     },
     onSuccess: (created) => {

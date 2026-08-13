@@ -3,6 +3,7 @@ from uuid import UUID
 from cryptography.exceptions import InvalidTag
 
 from agent_eval.agents.inference import InferenceConfig
+from agent_eval.agents.private_presets import private_preset_request_options
 from agent_eval.auth.encryption import TokenCipher
 from agent_eval.db.enums import AuthType, PrivateAgentHealth
 from agent_eval.db.models import AgentVersion
@@ -37,6 +38,7 @@ def inference_config_for_version(
                 raise AgentConfigurationUnavailable("Agent token is unavailable")
         except (InvalidTag, UnicodeError, ValueError) as error:
             raise AgentConfigurationUnavailable("Agent token is unavailable") from error
+    extra_headers, api_key_header = private_preset_request_options(version.private_preset)
     return InferenceConfig(
         endpoint_url=version.endpoint_url,
         auth_type=version.auth_type,
@@ -45,4 +47,6 @@ def inference_config_for_version(
         answer_jsonpath=version.answer_jsonpath,
         citations_jsonpath=version.citations_jsonpath,
         timeout_seconds=version.timeout_seconds,
+        extra_headers=extra_headers,
+        api_key_header=api_key_header,
     )

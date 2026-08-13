@@ -15,6 +15,7 @@ import {
   publishDatasetRelease
 } from "./api";
 import { LoadingState } from "./components";
+import { randomId } from "./randomId";
 import { abilityMetrics } from "./metrics";
 
 const releasesKey = (userId: string) => ["dataset-releases", userId] as const;
@@ -84,7 +85,7 @@ function CreateRelease({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const idempotencyKeyRef = useRef(crypto.randomUUID());
+  const idempotencyKeyRef = useRef(randomId());
   const mutation = useMutation({
     mutationFn: () => createDatasetRelease({
       name: name.trim(),
@@ -96,7 +97,7 @@ function CreateRelease({
   });
 
   function toggle(caseId: string) {
-    idempotencyKeyRef.current = crypto.randomUUID();
+    idempotencyKeyRef.current = randomId();
     setSelectedIds((current) => current.includes(caseId)
       ? current.filter((id) => id !== caseId)
       : [...current, caseId]);
@@ -115,8 +116,8 @@ function CreateRelease({
         <b>{selectedIds.length} SELECTED</b>
       </header>
       <div className="release-builder-fields">
-        <label><span>发布名称</span><input aria-label="发布名称" value={name} maxLength={160} onChange={(event) => { idempotencyKeyRef.current = crypto.randomUUID(); setName(event.target.value); }} /></label>
-        <label><span>说明</span><textarea aria-label="发布说明" rows={3} value={description} maxLength={10_000} onChange={(event) => { idempotencyKeyRef.current = crypto.randomUUID(); setDescription(event.target.value); }} /></label>
+        <label><span>发布名称</span><input aria-label="发布名称" value={name} maxLength={160} onChange={(event) => { idempotencyKeyRef.current = randomId(); setName(event.target.value); }} /></label>
+        <label><span>说明</span><textarea aria-label="发布说明" rows={3} value={description} maxLength={10_000} onChange={(event) => { idempotencyKeyRef.current = randomId(); setDescription(event.target.value); }} /></label>
       </div>
       <fieldset>
         <legend>选择已发布精选案例 <span>{cases.length} AVAILABLE</span></legend>

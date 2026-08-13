@@ -409,7 +409,14 @@ export function fetchWorkspaceAgentOptions(): Promise<WorkspaceAgent[]> {
   return requestJson<WorkspaceAgent[]>("/api/v1/workspace/agent-options");
 }
 
-export type PrivateAgentPreset = "dashscope" | "deepseek" | "openai";
+export type PrivateAgentPreset =
+  | "dashscope"
+  | "deepseek"
+  | "openai"
+  | "zhipu"
+  | "grok"
+  | "claude"
+  | "mimo";
 export type PrivateAgentHealthStatus = "untested" | "healthy" | "unhealthy" | "revoked";
 
 export interface PrivateAgent {

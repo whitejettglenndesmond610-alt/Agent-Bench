@@ -1,7 +1,7 @@
 import asyncio
 import json
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from time import perf_counter
@@ -11,6 +11,7 @@ from uuid import UUID
 import httpx
 
 from agent_eval.agents.errors import classify_agent_failure, error_type
+from agent_eval.agents.http_headers import json_request_headers
 from agent_eval.agents.mapping import (
     ResponseMappingError,
     extract_answer,
@@ -32,6 +33,8 @@ class InferenceConfig:
     answer_jsonpath: str
     citations_jsonpath: str | None
     timeout_seconds: int
+    extra_headers: dict[str, str] = field(default_factory=dict)
+    api_key_header: str | None = None
 
 
 @dataclass(frozen=True)
@@ -74,9 +77,12 @@ async def execute_inference(
     sleep: Sleep = asyncio.sleep,
 ) -> InferenceOutcome:
     request_body = render_request_template(config.request_template, prompt)
-    headers = {"Accept": "application/json", "Content-Type": "application/json"}
-    if config.auth_type == AuthType.BEARER and config.token is not None:
-        headers["Authorization"] = f"Bearer {config.token}"
+    headers = json_request_headers(
+        auth_type=config.auth_type,
+        token=config.token,
+        extra_headers=config.extra_headers,
+        api_key_header=config.api_key_header,
+    )
 
     total_latency = 0
     last_content: bytes | None = None
@@ -204,9 +210,7 @@ async def execute_inference(
             break
         try:
             answer = extract_answer(payload, config.answer_jsonpath)
-            citations = extract_citations(
-                payload, config.citations_jsonpath, answer=answer
-            )
+            citations = extract_citations(payload, config.citations_jsonpath, answer=answer)
         except ResponseMappingError as error:
             last_error = error_type(
                 classify_agent_failure(status_code=response.status_code, error=str(error))

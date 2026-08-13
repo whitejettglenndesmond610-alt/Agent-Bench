@@ -19,19 +19,36 @@ import { Button, FormField, Input, LoadingState, Modal, Select, Textarea } from 
 import { formatUserDate, userQueryKeys } from "./userProduct";
 
 const presetLabels: Record<PrivateAgentPreset, string> = {
-  dashscope: "阿里百炼",
+  zhipu: "智谱",
+  grok: "Grok",
+  claude: "Claude",
   deepseek: "DeepSeek",
-  openai: "OpenAI"
+  openai: "OpenAI",
+  mimo: "小米 MiMo",
+  dashscope: "阿里百炼"
 };
 
 const modelSuggestions: Record<PrivateAgentPreset, string[]> = {
-  dashscope: ["qwen-plus", "qwen-max", "qwen-math-turbo", "qwen3.7-plus"],
+  zhipu: ["glm-5.2", "glm-5.1", "glm-5", "glm-5-turbo", "glm-4.7-flash"],
+  grok: ["grok-4.6", "grok-4.5", "grok-4.3"],
+  claude: ["claude-opus-5", "claude-sonnet-5", "claude-fable-5", "claude-haiku-4-5"],
   deepseek: ["deepseek-v4-pro", "deepseek-v4-flash"],
-  openai: ["gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini"]
+  openai: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6"],
+  mimo: ["mimo-v2.5-pro", "mimo-v2.5", "mimo-v2.5-pro-ultraspeed"],
+  dashscope: ["qwen3.8-max", "qwen3.7-plus", "qwen3.7-flash", "qwen-plus", "qwen-max"]
 };
 
 const modelAliases: Record<PrivateAgentPreset, Record<string, string>> = {
-  dashscope: { "qwen plus": "qwen-plus", "qwen max": "qwen-max", "qwen math turbo": "qwen-math-turbo", "qwen3.7 plus": "qwen3.7-plus" },
+  dashscope: {
+    "qwen3.8 max": "qwen3.8-max",
+    "qwen 3.8 max": "qwen3.8-max",
+    "qwen3.7 plus": "qwen3.7-plus",
+    "qwen 3.7 plus": "qwen3.7-plus",
+    "qwen3.7 flash": "qwen3.7-flash",
+    "qwen plus": "qwen-plus",
+    "qwen max": "qwen-max",
+    "qwen math turbo": "qwen-math-turbo"
+  },
   deepseek: {
     "deepseek v4 pro": "deepseek-v4-pro",
     "deepseek v4 flash": "deepseek-v4-flash",
@@ -40,7 +57,45 @@ const modelAliases: Record<PrivateAgentPreset, Record<string, string>> = {
     "deepseek reasoner": "deepseek-v4-flash",
     "deepseek-reasoner": "deepseek-v4-flash"
   },
-  openai: { "gpt 4.1": "gpt-4.1", "gpt 4.1 mini": "gpt-4.1-mini", "gpt 4o": "gpt-4o", "gpt 4o mini": "gpt-4o-mini" }
+  openai: {
+    "gpt 5.6": "gpt-5.6",
+    "gpt 5.6 sol": "gpt-5.6-sol",
+    "gpt 5.6 terra": "gpt-5.6-terra",
+    "gpt 5.6 luna": "gpt-5.6-luna",
+    "gpt 4.1": "gpt-4.1",
+    "gpt 4.1 mini": "gpt-4.1-mini",
+    "gpt 4o": "gpt-4o",
+    "gpt 4o mini": "gpt-4o-mini"
+  },
+  zhipu: {
+    "glm 5.2": "glm-5.2",
+    "glm 5.1": "glm-5.1",
+    "glm 5": "glm-5",
+    "glm 5 turbo": "glm-5-turbo",
+    "glm 4.7": "glm-4.7",
+    "glm 4.7 flash": "glm-4.7-flash",
+    "glm 4.5": "glm-4.5",
+    "glm 4.5 flash": "glm-4.5-flash"
+  },
+  grok: { "grok 4.6": "grok-4.6", "grok 4.5": "grok-4.5", "grok 4.3": "grok-4.3", "grok 4": "grok-4.6" },
+  claude: {
+    "claude opus 5": "claude-opus-5",
+    "claude sonnet 5": "claude-sonnet-5",
+    "claude fable 5": "claude-fable-5",
+    "claude haiku 4 5": "claude-haiku-4-5",
+    "claude haiku 4.5": "claude-haiku-4-5",
+    "claude sonnet 4 5": "claude-sonnet-5",
+    "claude sonnet 4.5": "claude-sonnet-5",
+    "claude opus 4 6": "claude-opus-5",
+    "claude opus 4.6": "claude-opus-5"
+  },
+  mimo: {
+    "mimo v2.5 pro": "mimo-v2.5-pro",
+    "mimo v2.5": "mimo-v2.5",
+    "mimo 2.5 pro": "mimo-v2.5-pro",
+    "mimo 2.5": "mimo-v2.5",
+    "mimo v2.5 pro ultraspeed": "mimo-v2.5-pro-ultraspeed"
+  }
 };
 
 const healthErrorLabels: Record<string, string> = {

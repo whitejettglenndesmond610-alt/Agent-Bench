@@ -20,6 +20,7 @@ import {
   retryRunScoring
 } from "./api";
 import { Button, FormField, Input, LoadingState, Modal, Table } from "./components";
+import { randomId } from "./randomId";
 import { abilityMetrics, leaderboardMetrics } from "./metrics";
 
 const terminalStatuses = new Set<RunStatus>([
@@ -195,7 +196,7 @@ function LaunchRunModal({
       };
       const fingerprint = JSON.stringify(experimentInput);
       if (experimentSubmission.current?.fingerprint !== fingerprint) {
-        experimentSubmission.current = { fingerprint, key: crypto.randomUUID() };
+        experimentSubmission.current = { fingerprint, key: randomId() };
       }
       const experiment = await createEvaluationExperiment({
         ...experimentInput,

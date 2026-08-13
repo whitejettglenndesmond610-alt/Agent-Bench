@@ -149,9 +149,7 @@ def assert_secret_free(response: httpx.Response, *secrets: str) -> None:
         assert forbidden not in body
 
 
-async def mark_attempt_running(
-    app: FastAPI, attempt_id: UUID, owner_id: str
-) -> WorkspaceClaim:
+async def mark_attempt_running(app: FastAPI, attempt_id: UUID, owner_id: str) -> WorkspaceClaim:
     token = uuid4().hex
     async with session_scope(app.state.session_factory) as session:
         attempt = await session.get(WorkspaceAttempt, attempt_id)
@@ -233,9 +231,7 @@ async def test_private_agent_api_lifecycle_workspace_and_isolation(tmp_path: Pat
         listed = await client.get("/api/v1/workspace/private-agents")
         assert listed.status_code == 200
         assert listed.headers["cache-control"] == "private, no-store"
-        assert [item["agent_id"] for item in listed.json()["items"]] == [
-            str(private_agent_id)
-        ]
+        assert [item["agent_id"] for item in listed.json()["items"]] == [str(private_agent_id)]
         assert_secret_free(listed, API_KEY, ciphertext_one, "https://api.openai.com")
 
         public_catalog = await client.get("/api/v1/workspace/agents")
@@ -346,9 +342,7 @@ async def test_private_agent_api_lifecycle_workspace_and_isolation(tmp_path: Pat
             stored_two = await session.get(AgentVersion, version_two_id)
             assert stored_two is not None and stored_two.encrypted_token is not None
             assert (
-                cipher.decrypt_private(
-                    stored_two.encrypted_token, owner_id, version_two_id
-                )
+                cipher.decrypt_private(stored_two.encrypted_token, owner_id, version_two_id)
                 == API_KEY
             )
             with pytest.raises(InvalidTag):
@@ -446,9 +440,7 @@ async def test_private_agent_api_lifecycle_workspace_and_isolation(tmp_path: Pat
             json={"content": "Check balance", "expected_revision": 0},
         )
         health_attempt_id = UUID(health_sent.json()["attempt"]["id"])
-        health_claim = await mark_attempt_running(
-            app, health_attempt_id, "private-health-worker"
-        )
+        health_claim = await mark_attempt_running(app, health_attempt_id, "private-health-worker")
         response_status = 402
         assert await process_workspace_attempt(
             app.state.session_factory,
@@ -499,9 +491,7 @@ async def test_private_agent_api_lifecycle_workspace_and_isolation(tmp_path: Pat
                 )
         assert formal_error.value.code == "private_agent_not_allowed"
 
-        other_client = AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        )
+        other_client = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
         try:
             other_headers = await login_named(other_client, "private.other", OTHER_PASSWORD)
             assert (await other_client.get("/api/v1/workspace/private-agents")).json() == {
@@ -525,9 +515,10 @@ async def test_private_agent_api_lifecycle_workspace_and_isolation(tmp_path: Pat
                 json={"expected_version": 2},
             )
             assert cross_owner_delete.status_code == 404
-            assert str(private_agent_id) not in (
-                await other_client.get("/api/v1/workspace/agent-options")
-            ).text
+            assert (
+                str(private_agent_id)
+                not in (await other_client.get("/api/v1/workspace/agent-options")).text
+            )
         finally:
             await other_client.aclose()
 
@@ -539,9 +530,7 @@ async def test_private_agent_api_lifecycle_workspace_and_isolation(tmp_path: Pat
         assert sent_second.status_code == 202
         corrupt_attempt_id = UUID(sent_second.json()["attempt"]["id"])
         async with session_scope(app.state.session_factory) as session:
-            stored_conversation = await session.get(
-                WorkspaceConversation, UUID(conversation_id)
-            )
+            stored_conversation = await session.get(WorkspaceConversation, UUID(conversation_id))
             assert stored_conversation is not None
             stored_conversation.owner_user_id = other_id
         corrupt_claim = await mark_attempt_running(
@@ -564,9 +553,7 @@ async def test_private_agent_api_lifecycle_workspace_and_isolation(tmp_path: Pat
             assert corrupt_attempt is not None
             assert corrupt_attempt.status == WorkspaceAttemptStatus.FAILED
             assert corrupt_attempt.error_category == "configuration"
-            stored_conversation = await session.get(
-                WorkspaceConversation, UUID(conversation_id)
-            )
+            stored_conversation = await session.get(WorkspaceConversation, UUID(conversation_id))
             assert stored_conversation is not None
             stored_conversation.owner_user_id = owner_id
 
@@ -578,9 +565,7 @@ async def test_private_agent_api_lifecycle_workspace_and_isolation(tmp_path: Pat
         )
         assert deleted.status_code == 204
         assert deleted.headers["cache-control"] == "private, no-store"
-        assert (await client.get("/api/v1/workspace/private-agents")).json() == {
-            "items": []
-        }
+        assert (await client.get("/api/v1/workspace/private-agents")).json() == {"items": []}
         async with session_scope(app.state.session_factory) as session:
             agent = await session.get(Agent, private_agent_id)
             versions = list(
@@ -591,12 +576,9 @@ async def test_private_agent_api_lifecycle_workspace_and_isolation(tmp_path: Pat
             assert agent is not None and agent.status == AgentStatus.DISABLED
             assert all(version.encrypted_token is None for version in versions)
             assert all(
-                version.private_health_status == PrivateAgentHealth.REVOKED
-                for version in versions
+                version.private_health_status == PrivateAgentHealth.REVOKED for version in versions
             )
-            canceled_attempt = await session.get(
-                WorkspaceAttempt, private_comparison_attempt_id
-            )
+            canceled_attempt = await session.get(WorkspaceAttempt, private_comparison_attempt_id)
             assert canceled_attempt is not None
             assert canceled_attempt.status == WorkspaceAttemptStatus.CANCELED
 
@@ -700,22 +682,49 @@ async def test_shared_browser_can_create_private_agent(tmp_path: Path) -> None:
         assert limited.json()["detail"]["code"] == "private_agent_limit_reached"
 
 
+def test_claude_request_headers_include_anthropic_api_key() -> None:
+    from agent_eval.agents.http_headers import json_request_headers
+    from agent_eval.agents.private_presets import (
+        PRIVATE_AGENT_PRESETS,
+        private_preset_request_options,
+    )
+    from agent_eval.db.enums import PrivateAgentPreset
+
+    extra, api_key_header = private_preset_request_options(PrivateAgentPreset.CLAUDE)
+    headers = json_request_headers(
+        auth_type=AuthType.BEARER,
+        token="sk-ant-test",
+        extra_headers=extra,
+        api_key_header=api_key_header,
+    )
+    assert PRIVATE_AGENT_PRESETS[PrivateAgentPreset.CLAUDE].endpoint_url.endswith(
+        "/v1/chat/completions"
+    )
+    assert headers["Authorization"] == "Bearer sk-ant-test"
+    assert headers["x-api-key"] == "sk-ant-test"
+    assert headers["anthropic-version"] == "2023-06-01"
+
+
 def test_normalize_private_model_remaps_retired_deepseek_aliases() -> None:
     from agent_eval.agents.private_presets import normalize_private_model
     from agent_eval.db.enums import PrivateAgentPreset
 
     assert (
-        normalize_private_model(PrivateAgentPreset.DEEPSEEK, "deepseek-chat")
-        == "deepseek-v4-flash"
+        normalize_private_model(PrivateAgentPreset.DEEPSEEK, "deepseek-chat") == "deepseek-v4-flash"
     )
     assert (
         normalize_private_model(PrivateAgentPreset.DEEPSEEK, "DeepSeek Reasoner")
         == "deepseek-v4-flash"
     )
     assert (
-        normalize_private_model(PrivateAgentPreset.DEEPSEEK, "deepseek-v4-pro")
-        == "deepseek-v4-pro"
+        normalize_private_model(PrivateAgentPreset.DEEPSEEK, "deepseek-v4-pro") == "deepseek-v4-pro"
     )
+    assert normalize_private_model(PrivateAgentPreset.ZHIPU, "GLM 4.5") == "glm-4.5"
+    assert normalize_private_model(PrivateAgentPreset.CLAUDE, "Claude Sonnet 4.5") == (
+        "claude-sonnet-5"
+    )
+    assert normalize_private_model(PrivateAgentPreset.MIMO, "mimo v2.5 pro") == ("mimo-v2.5-pro")
+    assert normalize_private_model(PrivateAgentPreset.GROK, "Grok 4") == "grok-4.6"
 
 
 def test_private_token_aad_and_public_v1_are_separate() -> None:
@@ -803,9 +812,7 @@ def test_private_agent_migration_preserves_public_rows_and_refuses_private_downg
 
     command.upgrade(config, "head")
     with sqlite3.connect(database_path) as connection:
-        owner_id = connection.execute(
-            "SELECT id FROM auth_users ORDER BY id LIMIT 1"
-        ).fetchone()
+        owner_id = connection.execute("SELECT id FROM auth_users ORDER BY id LIMIT 1").fetchone()
         assert owner_id is not None
         connection.execute(
             "INSERT INTO agents (name, owner_user_id, provider, status, id, created_at, "
@@ -826,9 +833,7 @@ def test_private_model_alias_migration_updates_model_and_request_template(
     agent_id = uuid4().hex
     version_id = uuid4().hex
     with sqlite3.connect(database_path) as connection:
-        owner_id = connection.execute(
-            "SELECT id FROM auth_users ORDER BY id LIMIT 1"
-        ).fetchone()
+        owner_id = connection.execute("SELECT id FROM auth_users ORDER BY id LIMIT 1").fetchone()
         assert owner_id is not None
         connection.execute(
             "INSERT INTO agents (name, owner_user_id, provider, status, id, created_at, "
@@ -872,9 +877,7 @@ def test_retired_deepseek_alias_migration_rewrites_stored_models(tmp_path: Path)
     agent_id = uuid4().hex
     version_id = uuid4().hex
     with sqlite3.connect(database_path) as connection:
-        owner_id = connection.execute(
-            "SELECT id FROM auth_users ORDER BY id LIMIT 1"
-        ).fetchone()
+        owner_id = connection.execute("SELECT id FROM auth_users ORDER BY id LIMIT 1").fetchone()
         assert owner_id is not None
         connection.execute(
             "INSERT INTO agents (name, owner_user_id, provider, status, id, created_at, "

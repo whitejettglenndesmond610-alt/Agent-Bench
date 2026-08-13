@@ -15,6 +15,7 @@ import {
   OnlineDataRecordStatus
 } from "./api";
 import { Button, FormField, Input, LoadingState, Select, Textarea } from "./components";
+import { randomId } from "./randomId";
 
 const environmentLabels: Record<OnlineDataEnvironment, string> = {
   production: "生产",
@@ -153,7 +154,7 @@ export function OnlineDataPage() {
       const fingerprint = JSON.stringify(submission);
       if (lastImportFingerprint.current !== fingerprint) {
         lastImportFingerprint.current = fingerprint;
-        lastImportIdempotencyKey.current = crypto.randomUUID();
+        lastImportIdempotencyKey.current = randomId();
       }
       importMutation.mutate({
         ...submission,

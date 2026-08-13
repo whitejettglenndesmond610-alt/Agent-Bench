@@ -16,6 +16,7 @@ from agent_eval.agents.client import ConnectionConfig, ConnectionTestResult, tes
 from agent_eval.agents.private_presets import (
     PRIVATE_AGENT_PRESETS,
     normalize_private_model,
+    private_preset_request_options,
     private_request_template,
 )
 from agent_eval.api.dependencies import DatabaseSession, WorkspaceCsrf, WorkspaceSession
@@ -43,9 +44,7 @@ from agent_eval.db.enums import (
 from agent_eval.db.models import Agent, AgentVersion, AuthUser, WorkspaceAttempt
 from agent_eval.worker.limits import ResourceLimiter, concurrency_slot
 
-router = APIRouter(
-    prefix="/api/v1/workspace/private-agents", tags=["workspace-private-agents"]
-)
+router = APIRouter(prefix="/api/v1/workspace/private-agents", tags=["workspace-private-agents"])
 PRIVATE_AGENT_LIMIT = 10
 PRIVATE_AGENT_TEST_PROMPT = "Reply with exactly OK."
 
@@ -79,9 +78,7 @@ def request_limit(request: Request) -> ResourceLimiter:
 
 @asynccontextmanager
 async def private_test_slot(request: Request, owner_user_id: UUID) -> AsyncIterator[None]:
-    locks: dict[UUID, asyncio.Lock] = getattr(
-        request.app.state, "private_agent_test_locks", {}
-    )
+    locks: dict[UUID, asyncio.Lock] = getattr(request.app.state, "private_agent_test_locks", {})
     request.app.state.private_agent_test_locks = locks
     lock = locks.setdefault(owner_user_id, asyncio.Lock())
     if lock.locked():
@@ -190,9 +187,7 @@ async def owned_private_agent_versions(
     if agent is None:
         raise private_agent_error(404, "private_agent_not_found", "Private Agent not found")
     version_statement = (
-        select(AgentVersion)
-        .where(AgentVersion.agent_id == agent.id)
-        .order_by(AgentVersion.version)
+        select(AgentVersion).where(AgentVersion.agent_id == agent.id).order_by(AgentVersion.version)
     )
     if lock:
         version_statement = version_statement.with_for_update(of=AgentVersion)
@@ -267,9 +262,7 @@ async def create_private_agent(
 ) -> PrivateAgentResponse:
     owner_user_id = workspace_user_id(auth_session)
     cipher = require_cipher(request)
-    async with sqlite_mutation_guard(
-        request, database, f"private-agent-create:{owner_user_id}"
-    ):
+    async with sqlite_mutation_guard(request, database, f"private-agent-create:{owner_user_id}"):
         await database.execute(
             select(AuthUser.id).where(AuthUser.id == owner_user_id).with_for_update()
         )
@@ -360,9 +353,7 @@ async def patch_private_agent(
                         "Private Agent key is unavailable",
                     )
                 try:
-                    token = cipher.decrypt_private(
-                        latest.encrypted_token, owner_user_id, latest.id
-                    )
+                    token = cipher.decrypt_private(latest.encrypted_token, owner_user_id, latest.id)
                 except (InvalidTag, UnicodeError, ValueError) as error:
                     raise private_agent_error(
                         503,
@@ -407,9 +398,7 @@ async def test_private_agent(
                 database, agent_id, owner_user_id, lock=True
             )
             if agent.status == AgentStatus.DISABLED:
-                raise private_agent_error(
-                    409, "private_agent_revoked", "Private Agent is revoked"
-                )
+                raise private_agent_error(409, "private_agent_revoked", "Private Agent is revoked")
             latest = versions[-1]
             if latest.encrypted_token is None:
                 raise private_agent_error(
@@ -418,15 +407,14 @@ async def test_private_agent(
                     "Private Agent key is unavailable",
                 )
             try:
-                token = cipher.decrypt_private(
-                    latest.encrypted_token, owner_user_id, latest.id
-                )
+                token = cipher.decrypt_private(latest.encrypted_token, owner_user_id, latest.id)
             except (InvalidTag, UnicodeError, ValueError) as error:
                 raise private_agent_error(
                     503,
                     "private_agent_key_unavailable",
                     "Private Agent key is unavailable",
                 ) from error
+            extra_headers, api_key_header = private_preset_request_options(latest.private_preset)
             config = ConnectionConfig(
                 endpoint_url=latest.endpoint_url,
                 auth_type=AuthType.BEARER,
@@ -435,6 +423,8 @@ async def test_private_agent(
                 answer_jsonpath=latest.answer_jsonpath,
                 citations_jsonpath=None,
                 timeout_seconds=120,
+                extra_headers=extra_headers,
+                api_key_header=api_key_header,
             )
             tested_version_id = latest.id
             await database.commit()

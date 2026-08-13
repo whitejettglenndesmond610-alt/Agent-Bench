@@ -1,10 +1,11 @@
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from time import perf_counter
 from typing import Any
 
 import httpx
 
+from agent_eval.agents.http_headers import json_request_headers
 from agent_eval.agents.mapping import (
     ResponseMappingError,
     extract_answer,
@@ -24,6 +25,8 @@ class ConnectionConfig:
     answer_jsonpath: str
     citations_jsonpath: str | None
     timeout_seconds: int
+    extra_headers: dict[str, str] = field(default_factory=dict)
+    api_key_header: str | None = None
 
 
 @dataclass(frozen=True)
@@ -46,9 +49,12 @@ async def test_connection(
     max_response_bytes: int = 1_048_576,
 ) -> ConnectionTestResult:
     request_body = render_request_template(config.request_template, prompt)
-    headers = {"Accept": "application/json", "Content-Type": "application/json"}
-    if config.auth_type == AuthType.BEARER and config.token is not None:
-        headers["Authorization"] = f"Bearer {config.token}"
+    headers = json_request_headers(
+        auth_type=config.auth_type,
+        token=config.token,
+        extra_headers=config.extra_headers,
+        api_key_header=config.api_key_header,
+    )
 
     started_at = perf_counter()
     try:
@@ -107,9 +113,7 @@ async def test_connection(
 
     try:
         answer = extract_answer(raw_response, config.answer_jsonpath)
-        citations = extract_citations(
-            raw_response, config.citations_jsonpath, answer=answer
-        )
+        citations = extract_citations(raw_response, config.citations_jsonpath, answer=answer)
     except ResponseMappingError as error:
         return ConnectionTestResult(
             success=False,

@@ -38,6 +38,7 @@ import {
 } from "./api";
 import { AgentPicker } from "./AgentPicker";
 import { LoadingState } from "./components";
+import { randomId } from "./randomId";
 import {
   AttemptAnnotationControls,
   ClipboardButton,
@@ -805,7 +806,7 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
       }
       const result = await sendWorkspaceMessage(id, {
         content,
-        idempotency_key: crypto.randomUUID(),
+        idempotency_key: randomId(),
         expected_revision: revision
       });
       return { id, result, createdConversation, sourceConversation };
@@ -839,7 +840,7 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
       originConversationId: string;
       sourceConversation: WorkspaceConversationDetail;
     }) => regenerateWorkspaceMessage(id, userMessageId, {
-        idempotency_key: crypto.randomUUID(),
+        idempotency_key: randomId(),
         expected_revision: revision
       }),
     onMutate: () => {
@@ -882,7 +883,7 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
     mutationFn: ({ attemptId }: { attemptId: string; originConversationId: string }) =>
       createEvaluationCase({
         source_attempt_id: attemptId,
-        idempotency_key: crypto.randomUUID()
+        idempotency_key: randomId()
       }),
     onMutate: () => setActionError(null),
     onSuccess: (evaluationCase, variables) => {

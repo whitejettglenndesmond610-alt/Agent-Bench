@@ -22,6 +22,7 @@ import {
 } from "./api";
 import { AgentPicker } from "./AgentPicker";
 import { Button, Input, LoadingState, Modal } from "./components";
+import { randomId } from "./randomId";
 import { Citations, MarkdownContent } from "./WorkspacePage";
 import {
   AttemptAnnotationControls,
@@ -295,7 +296,7 @@ export function WorkspaceComparePage({ userId, canDraft }: { userId: string; can
     mutationFn: () => createWorkspaceComparison({
       prompt: prompt.trim(),
       agent_version_ids: selectedVersionIds,
-      idempotency_key: crypto.randomUUID()
+      idempotency_key: randomId()
     }),
     onMutate: () => setActionError(null),
     onSuccess: (comparison) => {
@@ -359,7 +360,7 @@ export function WorkspaceComparePage({ userId, canDraft }: { userId: string; can
   const createDraftMutation = useMutation({
     mutationFn: ({ attemptId }: { attemptId: string; originComparisonId: string }) => createEvaluationCase({
       source_attempt_id: attemptId,
-      idempotency_key: crypto.randomUUID()
+      idempotency_key: randomId()
     }),
     onMutate: () => setActionError(null),
     onSuccess: (evaluationCase, variables) => {
@@ -429,7 +430,7 @@ export function WorkspaceComparePage({ userId, canDraft }: { userId: string; can
       prompt: source.prompt,
       agent_version_ids: [...source.items].sort((left, right) => left.position - right.position).map((item) => item.agent.agent_version_id),
       title: `${source.title} · 再次运行`,
-      idempotency_key: crypto.randomUUID()
+      idempotency_key: randomId()
     }),
     onSuccess: (created) => {
       queryClient.setQueryData(workspaceComparisonKey(userId, created.id), created);

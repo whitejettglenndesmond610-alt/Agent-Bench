@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/FastAPI-API-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
   <img src="https://img.shields.io/badge/React-Web-61DAFB?style=flat-square&logo=react&logoColor=111827" alt="React" />
   <img src="https://img.shields.io/badge/PostgreSQL-Multi--Worker-4169E1?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL" />
-  <img src="https://img.shields.io/badge/Tests-340%20Passed-16A34A?style=flat-square" alt="340 tests passed" />
+  <img src="https://img.shields.io/badge/Tests-344%20Passed-16A34A?style=flat-square" alt="344 tests passed" />
 </p>
 
 [产品概览](#产品概览) · [快速开始](#快速开始) · [English Documentation](#english-documentation) · [生产部署](deploy/runbook.md)
@@ -153,7 +153,7 @@ PostgreSQL/MinIO 切换、备份、恢复与生产发布流程见 [`deploy/runbo
 > 公开部署必须使用 HTTPS，且不得将 PostgreSQL 或 MinIO 端口暴露到公网。
 
 > [!NOTE]
-> 当前本地代码基线：后端 `249 passed, 4 skipped`，前端 `94 passed`；Ruff、mypy、
+> 当前本地代码基线：后端 `250 passed, 4 skipped`，前端 `94 passed`；Ruff、mypy、
 > ESLint、TypeScript、Vite 生产构建和空库 Alembic 升级均通过。另有 9 个数据集集成
 > 用例依赖未提交到仓库的 `data/demo-dataset`，缺少该数据时不会计入上述通过数。
 
