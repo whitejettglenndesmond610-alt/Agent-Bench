@@ -19,7 +19,7 @@
 
 - Settings load `.env` with the `AGENT_EVAL_` prefix. Copy values from `.env.example`; generate password hashes and the token encryption key with the documented maintenance commands. Quote Argon2 hashes in `.env` because they contain `$`.
 - `AGENT_EVAL_ARTIFACT_BACKEND` currently supports only `local`; keep artifact storage shared across API and every worker. Losing `AGENT_EVAL_ENCRYPTION_KEY` prevents decryption of stored Agent tokens.
-- `data/demo-dataset/` and `data/balanced-v2-candidate/` are ignored because they contain restricted benchmark material. Do not commit or redistribute them; use `import-balanced-v2` rather than the generic importer for candidate data.
+- `data/demo-dataset/`, `data/balanced-v2-candidate/`, and `data/official-v4/` are ignored because they contain restricted benchmark material. Do not commit or redistribute them; use `import-balanced-v2` for candidate data and `import-official-v4` for the Official V4 cohort.
 
 ## Deployment
 

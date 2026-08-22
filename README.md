@@ -38,7 +38,7 @@ Agent Bench 是一套面向真实第三方 Agent API 的评测与运行平台。
     <td width="25%" valign="top"><strong>真实 API，不是静态样例</strong><br /><sub>直接接入第三方 Agent，记录延迟、Token、错误类型和完整执行状态。</sub></td>
     <td width="25%" valign="top"><strong>同协议横向比较</strong><br /><sub>冻结数据、评分配置与协议版本，避免不同测试口径制造虚假排名。</sub></td>
     <td width="25%" valign="top"><strong>结果有证据可追溯</strong><br /><sub>从榜单分数下钻到单题回答、Judge 解释、引用与不可变 Artifact。</sub></td>
-    <td width="25%" valign="top"><strong>评测之外也能直接使用</strong><br /><sub>持久化多轮对话、2-5 Agent 实时对比，以及用户自带 API Key。</sub></td>
+    <td width="25%" valign="top"><strong>评测之外也能直接使用</strong><br /><sub>持久化多轮对话、2-5 Agent 实时对比，以及七家提供方的自带 API Key。</sub></td>
   </tr>
 </table>
 
@@ -67,19 +67,38 @@ flowchart LR
 | --- | --- |
 | **Agent 接入** | 配置 HTTP API、Bearer 认证、请求模板、答案与引用 JSONPath；通过连接测试、候选版本和预检后再上线 |
 | **在线工作区** | 创建持久化多轮会话、重新生成回答，并让 2-5 个 Agent 对同一原始 Prompt 并行作答 |
-| **用户自带 API** | 通过阿里百炼、DeepSeek、OpenAI 固定预设接入私人 Key；常见展示名自动规范化为官方 model ID |
+    | **用户自带 API** | 通过阿里百炼、DeepSeek、OpenAI、智谱、xAI Grok、Claude、小米 MiMo 固定预设接入私人 Key；常见展示名自动规范化为官方 model ID |
 | **评测实验** | 将多个独立运行固化为同协议实验，统一查看进度、能力成绩、名次、失败和运行质量 |
 | **质量闭环** | 从完整归档回答中执行有边界的版本化 Bad Pattern 规则，按执行项生成质检任务，支持人员分配、优先级、批量确认/排除、人工结论和已确认 JSONL 回流导出 |
 | **线上数据回流** | 按来源批次幂等接收生产、预发或历史回放轨迹，跨批次去重并自动预扫 Bad Pattern；通过游标分页、风险筛选和批量保留/丢弃治理大规模样本 |
 | **证据审计** | 按题查看回答、参考答案、评分理由、HTTP Attempt、Token、延迟、引用验证与 Artifact 状态 |
-| **可信排行** | 发布综合榜，以及推理、检索、数据推理、指令遵循、长上下文五类专项榜 |
+    | **可信排行** | 默认发布 Official V4 综合榜与推理 / 检索 / 数据推理专项；unified-v3 仍保留五维专项协议 |
 | **用户资产** | 管理 Agent 收藏、Prompt 模板、点赞/点踩、回答收藏、私人笔记、记录历史与 Markdown/JSON 导出 |
 | **生产运维** | PostgreSQL 多 Worker、分布式资源租约、S3/MinIO Artifact、自动备份、恢复演练与运行监控 |
 
+### Official V4 评测协议
+
+`official-v4` 是当前默认评测配置。新题来自独立 `official-v4` cohort，再与已冻结的
+BrowseComp / BrowseComp-ZH / FinQA 组合，共 **100 道题**。综合权重为推理 40 / 检索 35 /
+数据推理 25。
+
+| 数据集 | 题量 | 维度 | 说明 |
+| --- | ---: | --- | --- |
+| GPQA Diamond | 20 | 推理 | 研究生级科学题 |
+| CMMLU | 20 | 推理 | 中文综合能力，CC BY-NC |
+| GSM8K | 20 | 推理 | 小学数学应用题 |
+| BrowseComp | 10 | 检索 | 沿用已冻结的 legacy-v1 |
+| BrowseComp-ZH | 20 | 检索 | 沿用已冻结的 legacy-v1 |
+| FinQA | 10 | 数据推理 | 沿用已冻结的 legacy-v1 |
+
+每科是固定种子抽样，适合平台横向比较，不是完整公开榜复现。不含 HumanEval、LiveCodeBench
+或 IFEval。CMMLU 仅限非商业研究，不得再分发。
+
 ### Unified V3 评测协议
 
-`unified-v3` 由多个冻结数据版本按逻辑组合，不重复复制题目。综合 Profile 包含 **175 道不同题目**，
-并为每个维度提供协议一致的专项 Profile。
+`unified-v3` 仍可选用。它由多个冻结数据版本按逻辑组合，不重复复制题目。综合 Profile 包含
+**175 道不同题目**，并为每个维度提供协议一致的专项 Profile。全局当前快照仍由
+unified-v3 综合跑分切换。
 
 | 维度 | 题目数 | 主要考察内容 |
 | --- | ---: | --- |
@@ -96,7 +115,7 @@ flowchart LR
 
 - **密钥不回显**：API Key 使用绑定用户与版本的 AES-GCM 认证加密，接口不返回 Key、Endpoint、请求模板或原始提供方响应。
 - **租户级隔离**：私人 Agent 仅属于创建者，不进入公共广场、收藏、评测案例、正式运行、评测实验或排行榜。
-- **受控出网**：只允许平台维护的提供方预设，不接受任意 Endpoint，从入口规避 SSRF。
+- **受控出网**：只允许平台维护的七家提供方预设（百炼、DeepSeek、OpenAI、智谱、xAI、Claude、MiMo），不接受任意 Endpoint，从入口规避 SSRF。
 - **健康保护**：401、402、403 会自动停用版本、取消排队任务并通知运行中任务停止；恢复后需显式测试才能重新启用。
 - **候选不打断使用**：更新 Key 或模型会创建不可变候选版本；测试通过前，旧的健康版本仍可继续服务。
 - **旧模型别名兼容**：DeepSeek 已于 2026-07-24 停用 `deepseek-chat` / `deepseek-reasoner`；平台会自动映射到 `deepseek-v4-flash`。
@@ -170,16 +189,18 @@ third-party Agent APIs.
   citation retrieval, result validation, and leaderboard publication.
 - **User workspace:** Persistent multi-turn conversations, regeneration, 2-5 Agent live comparisons,
   personal records, exports, favorites, prompt templates, feedback, bookmarks, and private notes.
-- **Bring Your Own Key:** Users can add private DashScope, DeepSeek, or OpenAI credentials through
-  server-controlled presets. Common display names are normalized to provider model IDs before use.
+- **Bring Your Own Key:** Users can add private DashScope, DeepSeek, OpenAI, Zhipu, xAI Grok,
+  Claude, or Xiaomi MiMo credentials through server-controlled presets. Common display names are
+  normalized to provider model IDs before use.
 - **Evaluation evidence:** Per-question answers, reference answers, judge explanations, HTTP attempts,
   token usage, citation checks, latency samples, and immutable artifacts remain inspectable.
 - **Quality operations:** Versioned Bad Pattern rules read archived Agent answers and scan a bounded
   20,000-character window with a per-rule timeout. Findings create per-execution-item review tasks
   with assignees and priorities. Reviewers can batch-confirm or dismiss findings, inspect a unified
   trajectory, attach verdicts and tags, rescan history, and export confirmed feedback as JSONL.
-- **Unified and specialist boards:** `unified-v3` publishes comprehensive and ability-specific views
-  for reasoning, retrieval, data reasoning, instruction following, and long context.
+- **Official V4 and unified boards:** `official-v4` is the default 100-question ranking profile
+  (GPQA Diamond, CMMLU, GSM8K, BrowseComp, BrowseComp-ZH, FinQA). `unified-v3` remains available
+  for the 175-question five-ability protocol and still owns the global current snapshot.
 - **Production operations:** PostgreSQL multi-worker scheduling, distributed resource leases,
   S3/MinIO artifacts, verified backup sets, restore rehearsal, and operational monitoring.
 
@@ -187,7 +208,8 @@ third-party Agent APIs.
 
 Private Agent credentials use owner- and version-bound AES-GCM authenticated encryption. API
 responses never return the key, endpoint, request template, authorization header, or raw provider
-test response. Arbitrary user-supplied endpoints are intentionally unsupported to avoid SSRF.
+test response. Only the seven maintained presets are accepted; arbitrary user-supplied endpoints
+are intentionally unsupported to avoid SSRF.
 
 A private configuration starts disabled and must pass an explicit connection test before it appears
 in chat or live comparison pickers. HTTP 401, 402, or 403 responses automatically mark it unhealthy,
@@ -331,6 +353,28 @@ hashes are recorded in `data/demo-dataset/manifest.json`.
 examples not be published because doing so leaks the benchmark. Review each dataset's license
 note before any commercial or public use; C-Eval and BizFinBench include noncommercial terms.
 
+### Official V4 Dataset
+
+Build the 60-question official-v4 cohort from pinned GPQA Diamond, CMMLU, and GSM8K revisions,
+then import it. The ranking profile also reuses the already frozen BrowseComp, BrowseComp-ZH,
+and FinQA versions for a 100-question bundle:
+
+```bash
+uv run python -m agent_eval.maintenance.main build-official-v4
+uv run alembic upgrade head
+uv run python -m agent_eval.maintenance.main import-official-v4 data/official-v4
+```
+
+`data/official-v4/` is ignored with the rest of `data/`. Source commits, sampling seed `20260814`,
+and file hashes are recorded in `manifest.json`. GPQA Diamond is password-protected by its authors;
+CMMLU is CC BY-NC. Do not commit or redistribute the built files. Generic imports may target the
+`official-v4` cohort; do not mix it into `legacy-v1` or `balanced-v2`.
+
+When the six frozen versions are complete, the API exposes `official-v4` as the default run
+profile. It is a locked composition: creating a ranking run requires the exact dataset IDs and
+the 20/20/20 + 10/20/10 counts. Scores publish to overall, reasoning, retrieval, and data
+reasoning. The profile does not include instruction-following or long-context specialist boards.
+
 Running the import command again reuses versions with identical canonical content hashes. A
 changed question set creates the next frozen version instead of mutating prior data.
 
@@ -366,19 +410,20 @@ and the canonical bundle hash. Generic imports remain restricted to released abi
 
 ### Unified V3 Profiles
 
-Once both frozen cohorts are complete, the API exposes `unified-v3` as the default ranking profile.
-It is an immutable composition, not another dataset import: all 6 latest frozen `legacy-v1`
-versions (100 questions) are combined with only the 7 language-specific dataset versions from the
-5 balanced-v2 original benchmark families (75 questions). The 75 balanced anchors are not selected again, so the profile contains 175
-distinct prompts: reasoning 45, retrieval 35, data reasoning 35, instruction following 30, and
-long context 30.
+Once both frozen cohorts are complete, the API still exposes `unified-v3` as a selectable
+five-ability ranking profile. It is an immutable composition, not another dataset import: all 6
+latest frozen `legacy-v1` versions (100 questions) are combined with only the 7 language-specific
+dataset versions from the 5 balanced-v2 original benchmark families (75 questions). The 75
+balanced anchors are not selected again, so the profile contains 175 distinct prompts: reasoning
+45, retrieval 35, data reasoning 35, instruction following 30, and long context 30.
 
 The comprehensive profile and `unified-v3-<ability>` specialist profiles all use the
 20/20/20/20/20 score configuration and the `unified-v3` protocol epoch. A comprehensive ability
 result and its corresponding specialist result therefore share a metric protocol hash, while run
-protocol hashes remain profile-specific. Legacy and balanced profiles remain available for
-archival runs, but global leaderboards and run-status summaries only use ranking runs from the
-unified-v3 profile family. Historical snapshots remain available through leaderboard history.
+protocol hashes remain profile-specific. Official V4 is the default run profile when ready;
+unified-v3 remains the protocol that replaces the global current snapshot. Legacy and balanced
+profiles remain available for archival runs. Historical snapshots remain available through
+leaderboard history.
 
 At cutover, archive any pre-unified current snapshot without deleting it:
 
@@ -460,3 +505,8 @@ The base Compose file is for local development and binds plain HTTP. Production 
 fail-closed overlay, read-only Secret files, a host data path, resource/log limits, and loopback-only
 Web binding. See `deploy/runbook.md` and use `deploy/manage.sh`; do not expose the base Compose stack
 to the Internet or commit `.env`, dataset contents, passwords, Agent Tokens, or API keys.
+
+For a trusted LAN HTTP deploy, set `WEB_BIND` / `WEB_PORT` and add `deploy/compose.http-lan.yaml`
+so session cookies work without HTTPS. `deploy/compose.src-mount.yaml` bind-mounts
+`/opt/agent-eval/apps/api/src` into api, worker, and maintenance to pick up Python changes
+without rebuilding the image. Neither overlay is a public-internet configuration.
