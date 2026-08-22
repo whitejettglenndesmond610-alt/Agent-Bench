@@ -14,6 +14,7 @@ from agent_eval.scoring.configs import ensure_balanced_v2_score_config
 
 LEGACY_COHORT_KEY = "legacy-v1"
 BALANCED_V2_COHORT_KEY = "balanced-v2"
+OFFICIAL_V4_COHORT_KEY = "official-v4"
 
 
 class DatasetImportError(ValueError):
@@ -58,8 +59,8 @@ async def import_question_records(
             raise DatasetImportError("balanced-v2 import requires a complete passing audit")
         validate_balanced_v2_quality(records, report)
         await ensure_balanced_v2_score_config(session)
-    elif cohort_key != LEGACY_COHORT_KEY:
-        raise DatasetImportError("generic imports must use the legacy-v1 cohort")
+    elif cohort_key not in {LEGACY_COHORT_KEY, OFFICIAL_V4_COHORT_KEY}:
+        raise DatasetImportError("generic imports must use the legacy-v1 or official-v4 cohort")
     groups: dict[tuple[str, Language], list[QuestionRecord]] = defaultdict(list)
     for record in records:
         groups[(record.benchmark, record.language)].append(record)

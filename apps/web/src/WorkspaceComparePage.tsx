@@ -20,6 +20,7 @@ import {
   WorkspaceComparisonList,
   WorkspaceComparisonItem
 } from "./api";
+import { randomId } from "./randomId";
 import { AgentPicker } from "./AgentPicker";
 import { Button, Input, LoadingState, Modal } from "./components";
 import { randomId } from "./randomId";

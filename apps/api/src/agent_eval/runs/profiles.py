@@ -11,7 +11,11 @@ from agent_eval.datasets.audit import (
     BALANCED_V2_LANGUAGE_QUOTA,
     BALANCED_V2_QUESTIONS_PER_DIMENSION,
 )
-from agent_eval.datasets.importer import BALANCED_V2_COHORT_KEY, LEGACY_COHORT_KEY
+from agent_eval.datasets.importer import (
+    BALANCED_V2_COHORT_KEY,
+    LEGACY_COHORT_KEY,
+    OFFICIAL_V4_COHORT_KEY,
+)
 from agent_eval.db.enums import RELEASED_ABILITIES, Ability, DatasetStatus, RunScope
 from agent_eval.db.models import DatasetVersion, Question, ScoreConfig
 from agent_eval.scoring.configs import (
@@ -37,6 +41,11 @@ UNIFIED_V3_SPECIALIST_PROFILE_KEYS = {
 UNIFIED_V3_PROFILE_KEYS = frozenset(
     {UNIFIED_V3_PROFILE_KEY, *UNIFIED_V3_SPECIALIST_PROFILE_KEYS.values()}
 )
+OFFICIAL_V4_PROFILE_KEY = "official-v4"
+OFFICIAL_V4_LEGACY_RETRIEVAL = {"BrowseComp", "BrowseComp-ZH"}
+OFFICIAL_V4_LEGACY_DATA = {"FinQA"}
+OFFICIAL_V4_EXPECTED_NEW = {"GPQA-Diamond": 20, "CMMLU": 20, "GSM8K": 20}
+OFFICIAL_V4_EXPECTED_LEGACY = {"BrowseComp": 10, "BrowseComp-ZH": 20, "FinQA": 10}
 
 # The first balanced-v2 release used these two names before the Original prefix
 # convention was applied consistently. Their source is still the frozen original cohort.
@@ -192,6 +201,25 @@ async def build_run_profiles(session: AsyncSession) -> list[RunProfile]:
         [*legacy_datasets, *balanced_originals],
         key=lambda item: (item.benchmark.name.casefold(), str(item.id)),
     )
+    official_new = sorted(
+        (
+            item
+            for (cohort_key, _), item in latest_by_benchmark.items()
+            if cohort_key == OFFICIAL_V4_COHORT_KEY
+        ),
+        key=lambda item: (item.benchmark.name.casefold(), str(item.id)),
+    )
+    official_legacy = [
+        item
+        for item in legacy_datasets
+        if item.benchmark.name in OFFICIAL_V4_LEGACY_RETRIEVAL | OFFICIAL_V4_LEGACY_DATA
+    ]
+    official_datasets = sorted(
+        [*official_new, *official_legacy],
+        key=lambda item: (item.benchmark.name.casefold(), str(item.id)),
+    )
+    official_ready = await _stored_official_v4_is_complete(session, official_datasets)
+
     if balanced_score is not None and await _stored_unified_v3_is_complete(
         session, unified_datasets
     ):
@@ -232,23 +260,41 @@ async def build_run_profiles(session: AsyncSession) -> list[RunProfile]:
                     score_config=balanced_score,
                 )
             )
+    if official_ready:
+        official_abilities = [
+            ability
+            for ability in (Ability.REASONING, Ability.RETRIEVAL, Ability.DATA_REASONING)
+            if any(item.benchmark.ability == ability for item in official_datasets)
+        ]
+        profiles.append(
+            _profile(
+                key=OFFICIAL_V4_PROFILE_KEY,
+                name="Official V4 Comprehensive",
+                description="GPQA Diamond, CMMLU, GSM8K plus BrowseComp and FinQA.",
+                scope=RunScope.COMPREHENSIVE,
+                target_ability=None,
+                datasets=official_datasets,
+                publishes_to=["overall", *(ability.value for ability in official_abilities)],
+                ranking_eligible=True,
+                score_config=legacy_score,
+            )
+        )
     return profiles
 
 
 def default_profile_key(profiles: list[RunProfile]) -> str:
+    if any(profile.key == OFFICIAL_V4_PROFILE_KEY for profile in profiles):
+        return OFFICIAL_V4_PROFILE_KEY
     if any(profile.key == UNIFIED_V3_PROFILE_KEY for profile in profiles):
         return UNIFIED_V3_PROFILE_KEY
     return DEFAULT_PROFILE_KEY
 
 
 def available_run_profiles(profiles: list[RunProfile]) -> list[RunProfile]:
-    if not any(profile.key == UNIFIED_V3_PROFILE_KEY for profile in profiles):
-        return profiles
-    return [
-        profile
-        for profile in profiles
-        if profile.key == "smoke" or profile.key in UNIFIED_V3_PROFILE_KEYS
-    ]
+    allowed = {"smoke", OFFICIAL_V4_PROFILE_KEY, *UNIFIED_V3_PROFILE_KEYS}
+    if any(profile.key in allowed and profile.key != "smoke" for profile in profiles):
+        return [profile for profile in profiles if profile.key in allowed]
+    return profiles
 
 
 async def _stored_balanced_v2_is_complete(
@@ -342,6 +388,27 @@ def is_complete_unified_v3(
         actual_counts == Counter(UNIFIED_V3_EXPECTED_COUNTS)
         and len(normalized_prompts) == len(set(normalized_prompts))
     )
+
+
+async def _stored_official_v4_is_complete(
+    session: AsyncSession, datasets: list[DatasetVersion]
+) -> bool:
+    if not is_complete_official_v4(datasets):
+        return False
+    questions = list(
+        await session.scalars(
+            select(Question).where(Question.dataset_version_id.in_(item.id for item in datasets))
+        )
+    )
+    return len(questions) == sum(item.question_count for item in datasets)
+
+
+def is_complete_official_v4(datasets: list[DatasetVersion]) -> bool:
+    by_name = {item.benchmark.name: item for item in datasets}
+    expected = {**OFFICIAL_V4_EXPECTED_NEW, **OFFICIAL_V4_EXPECTED_LEGACY}
+    if set(by_name) != set(expected):
+        return False
+    return all(by_name[name].question_count == count for name, count in expected.items())
 
 
 def _is_balanced_v2_original(dataset: DatasetVersion) -> bool:

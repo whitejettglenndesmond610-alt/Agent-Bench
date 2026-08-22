@@ -720,11 +720,14 @@ def test_normalize_private_model_remaps_retired_deepseek_aliases() -> None:
         normalize_private_model(PrivateAgentPreset.DEEPSEEK, "deepseek-v4-pro") == "deepseek-v4-pro"
     )
     assert normalize_private_model(PrivateAgentPreset.ZHIPU, "GLM 4.5") == "glm-4.5"
+    assert normalize_private_model(PrivateAgentPreset.ZHIPU, "GLM 5.2") == "glm-5.2"
     assert normalize_private_model(PrivateAgentPreset.CLAUDE, "Claude Sonnet 4.5") == (
         "claude-sonnet-5"
     )
-    assert normalize_private_model(PrivateAgentPreset.MIMO, "mimo v2.5 pro") == ("mimo-v2.5-pro")
+    assert normalize_private_model(PrivateAgentPreset.CLAUDE, "Claude Opus 5") == "claude-opus-5"
+    assert normalize_private_model(PrivateAgentPreset.MIMO, "mimo v2.5 pro") == "mimo-v2.5-pro"
     assert normalize_private_model(PrivateAgentPreset.GROK, "Grok 4") == "grok-4.6"
+    assert normalize_private_model(PrivateAgentPreset.GROK, "Grok 4.6") == "grok-4.6"
 
 
 def test_private_token_aad_and_public_v1_are_separate() -> None:

@@ -20,7 +20,12 @@ from agent_eval.core.storage import ensure_storage
 from agent_eval.datasets.audit import AuditPolicy, audit_question_records, render_audit_report
 from agent_eval.datasets.balanced_builder import build_balanced_v2_dataset
 from agent_eval.datasets.demo_builder import build_demo_dataset
-from agent_eval.datasets.importer import BALANCED_V2_COHORT_KEY, import_question_records
+from agent_eval.datasets.importer import (
+    BALANCED_V2_COHORT_KEY,
+    OFFICIAL_V4_COHORT_KEY,
+    import_question_records,
+)
+from agent_eval.datasets.official_builder import build_official_v4_dataset
 from agent_eval.datasets.schema import load_question_records, validate_demo_distribution
 from agent_eval.db.engine import create_engine, verify_database
 from agent_eval.db.enums import SessionRole
@@ -194,6 +199,35 @@ async def import_balanced_v2(path: Path) -> None:
         f"audited and imported {len(records)} balanced-v2 questions across "
         f"{len(imported)} benchmarks"
     )
+
+
+async def import_official_v4(path: Path) -> None:
+    records = load_question_records(path)
+    counts = {record.benchmark: 0 for record in records}
+    for record in records:
+        counts[record.benchmark] += 1
+    if counts != {"GPQA-Diamond": 20, "CMMLU": 20, "GSM8K": 20}:
+        raise SystemExit(f"official-v4 import requires 20/20/20 GPQA/CMMLU/GSM8K, got {counts}")
+
+    settings = Settings()
+    configure_logging(settings.log_level)
+    ensure_storage(settings)
+    engine = create_engine(settings)
+    session_factory = create_session_factory(engine)
+    try:
+        async with session_scope(session_factory) as session:
+            imported = await import_question_records(
+                session, records, cohort_key=OFFICIAL_V4_COHORT_KEY
+            )
+    finally:
+        await engine.dispose()
+    for item in imported:
+        action = "created" if item.created else "reused"
+        print(
+            f"{action} {item.benchmark} v{item.version}: "
+            f"{item.question_count} questions, sha256={item.content_hash}"
+        )
+    print(f"imported {len(records)} official-v4 questions across {len(imported)} benchmarks")
 
 
 def audit_dataset(path: Path, policy: str | None, enforce: bool) -> None:
@@ -499,6 +533,8 @@ def main() -> None:
     import_parser.add_argument("--require-demo-distribution", action="store_true")
     balanced_import_parser = subparsers.add_parser("import-balanced-v2")
     balanced_import_parser.add_argument("path", type=Path)
+    official_import_parser = subparsers.add_parser("import-official-v4")
+    official_import_parser.add_argument("path", type=Path)
     audit_parser = subparsers.add_parser("audit-dataset")
     audit_parser.add_argument("path", type=Path)
     audit_parser.add_argument("--policy", choices=["balanced-v2"])
@@ -508,6 +544,8 @@ def main() -> None:
     balanced_parser = subparsers.add_parser("build-balanced-v2")
     balanced_parser.add_argument("output", type=Path, nargs="?")
     balanced_parser.add_argument("--anchors", type=Path)
+    official_parser = subparsers.add_parser("build-official-v4")
+    official_parser.add_argument("output", type=Path, nargs="?", default=Path("data/official-v4"))
     bootstrap_parser = subparsers.add_parser("bootstrap")
     bootstrap_parser.add_argument("--dataset", type=Path, default=Path("/datasets/demo"))
     preflight_parser = subparsers.add_parser("preflight")
@@ -609,11 +647,16 @@ def main() -> None:
         asyncio.run(import_dataset(arguments.path, arguments.require_demo_distribution))
     elif arguments.command == "import-balanced-v2":
         asyncio.run(import_balanced_v2(arguments.path))
+    elif arguments.command == "import-official-v4":
+        asyncio.run(import_official_v4(arguments.path))
     elif arguments.command == "audit-dataset":
         audit_dataset(arguments.path, arguments.policy, arguments.enforce)
     elif arguments.command == "build-demo-dataset":
         records = build_demo_dataset(arguments.output)
         print(f"built {len(records)} questions in {arguments.output}")
+    elif arguments.command == "build-official-v4":
+        official_records = build_official_v4_dataset(arguments.output)
+        print(f"built {len(official_records)} official-v4 questions in {arguments.output}")
     elif arguments.command == "build-balanced-v2":
         local_anchors = Path("data/demo-dataset")
         anchor_path = arguments.anchors or (

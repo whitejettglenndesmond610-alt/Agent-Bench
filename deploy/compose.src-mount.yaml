@@ -1,0 +1,16 @@
+services:
+  api:
+    environment:
+      PYTHONPATH: /app/apps/api/src
+    volumes:
+      - /opt/agent-eval/apps/api/src:/app/apps/api/src:ro
+  worker:
+    environment:
+      PYTHONPATH: /app/apps/api/src
+    volumes:
+      - /opt/agent-eval/apps/api/src:/app/apps/api/src:ro
+  maintenance:
+    environment:
+      PYTHONPATH: /app/apps/api/src
+    volumes:
+      - /opt/agent-eval/apps/api/src:/app/apps/api/src:ro

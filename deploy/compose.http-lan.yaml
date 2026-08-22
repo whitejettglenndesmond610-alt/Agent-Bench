@@ -1,0 +1,13 @@
+services:
+  migrate:
+    environment:
+      AGENT_EVAL_ENVIRONMENT: development
+  api:
+    environment:
+      AGENT_EVAL_ENVIRONMENT: development
+  worker:
+    environment:
+      AGENT_EVAL_ENVIRONMENT: development
+  maintenance:
+    environment:
+      AGENT_EVAL_ENVIRONMENT: development

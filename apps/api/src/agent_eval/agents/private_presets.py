@@ -49,17 +49,16 @@ PRIVATE_MODEL_ALIASES: dict[PrivateAgentPreset, dict[str, str]] = {
     PrivateAgentPreset.DASHSCOPE: {
         "qwen3.8 max": "qwen3.8-max",
         "qwen 3.8 max": "qwen3.8-max",
+        "qwen3.7 plus": "qwen3.7-plus",
         "qwen 3.7 plus": "qwen3.7-plus",
         "qwen3.7 flash": "qwen3.7-flash",
         "qwen plus": "qwen-plus",
         "qwen max": "qwen-max",
         "qwen math turbo": "qwen-math-turbo",
-        "qwen3.7 plus": "qwen3.7-plus",
     },
     PrivateAgentPreset.DEEPSEEK: {
         "deepseek v4 pro": "deepseek-v4-pro",
         "deepseek v4 flash": "deepseek-v4-flash",
-        # Retired on 2026-07-24; keep aliases for user input compatibility.
         "deepseek chat": "deepseek-v4-flash",
         "deepseek-chat": "deepseek-v4-flash",
         "deepseek reasoner": "deepseek-v4-flash",
