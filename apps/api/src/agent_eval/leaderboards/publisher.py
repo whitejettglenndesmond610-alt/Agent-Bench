@@ -45,6 +45,7 @@ from agent_eval.scoring.aggregation import (
     build_rankings,
 )
 from agent_eval.scoring.configs import ability_weights
+from agent_eval.scoring.pricing import resolve_agent_pricing
 
 TERMINAL_ITEM_STATUSES = {ExecutionStatus.SCORED, ExecutionStatus.FAILED}
 TERMINAL_CITATION_STATUSES = {
@@ -238,6 +239,8 @@ async def _aggregate_and_publish(
                     pass_at_1=aggregate.pass_at_1,
                     pass_at_k=aggregate.pass_at_k,
                     pass_pow_k=aggregate.pass_pow_k,
+                    total_cost_usd=aggregate.total_cost_usd,
+                    cost_per_task_usd=aggregate.cost_per_task_usd,
                 )
                 for aggregate in valid_aggregates
                 for metric in metrics
@@ -337,4 +340,9 @@ def aggregate_run_agent(run_agent: RunAgent, score_config: ScoreConfig) -> Agent
         validity_reason=run_agent.validity_reason,
         configuration_failure_count=run_agent.configuration_failure_count,
         configuration_failure_rate=run_agent.configuration_failure_rate,
+        pricing=resolve_agent_pricing(
+            private_preset=version.private_preset,
+            private_model=version.private_model,
+            request_template=version.request_template,
+        ),
     )

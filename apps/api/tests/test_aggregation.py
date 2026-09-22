@@ -4,11 +4,13 @@ from uuid import UUID, uuid4
 
 from agent_eval.db.enums import Ability, Language
 from agent_eval.scoring.aggregation import (
+    AgentAggregate,
     AggregateAttempt,
     AggregateItem,
     aggregate_agent,
     build_rankings,
 )
+from agent_eval.scoring.pricing import ModelPricing
 
 
 def item(
@@ -284,3 +286,63 @@ def test_single_trial_grouping_matches_legacy_per_item_semantics() -> None:
     assert grouped.ability_scores == legacy.ability_scores
     assert grouped.pass_at_1 == grouped.pass_at_k == grouped.pass_pow_k
     assert grouped.pass_at_1.quantize(Decimal("0.01")) == Decimal("33.33")
+
+
+def aggregate_with_pricing(
+    items: list[AggregateItem], pricing: ModelPricing | None
+) -> AgentAggregate:
+    return aggregate_agent(
+        run_agent_id=uuid4(),
+        agent_id=uuid4(),
+        agent_version_id=uuid4(),
+        agent_name="Agent",
+        provider="Provider",
+        version=1,
+        items=items,
+        ability_weights={
+            ability: 100 if ability == Ability.REASONING else 0 for ability in Ability
+        },
+        pricing=pricing,
+    )
+
+
+def test_cost_aggregation_prices_attempts_with_complete_usage() -> None:
+    priced_item = replace(
+        item(uuid4(), "Reasoning", Ability.REASONING, 80),
+        attempts=(
+            AggregateAttempt(10, 1_000_000, 500_000, 1_500_000),
+            AggregateAttempt(20, None, None, None),
+        ),
+    )
+    plain_item = item(uuid4(), "Reasoning", Ability.REASONING, 60)
+    pricing = ModelPricing(input_per_mtok=Decimal("2"), output_per_mtok=Decimal("10"))
+
+    aggregate = aggregate_with_pricing([priced_item, plain_item], pricing)
+
+    assert aggregate.total_cost_usd == Decimal("7")
+    assert aggregate.cost_per_task_usd == Decimal("3.5")
+    assert aggregate.input_token_share is not None
+    assert aggregate.output_token_share is not None
+    assert aggregate.input_token_share.quantize(Decimal("0.01")) == Decimal("66.67")
+    assert aggregate.output_token_share.quantize(Decimal("0.01")) == Decimal("33.33")
+
+
+def test_cost_aggregation_is_none_without_pricing_or_usage() -> None:
+    usage_item = replace(
+        item(uuid4(), "Reasoning", Ability.REASONING, 80),
+        attempts=(AggregateAttempt(10, 100, 50, 150),),
+    )
+
+    unpriced = aggregate_with_pricing([usage_item], None)
+    assert unpriced.total_cost_usd is None
+    assert unpriced.cost_per_task_usd is None
+    assert unpriced.input_token_share is not None
+
+    pricing = ModelPricing(input_per_mtok=Decimal("2"), output_per_mtok=Decimal("10"))
+    no_usage = aggregate_with_pricing(
+        [item(uuid4(), "Reasoning", Ability.REASONING, 80)], pricing
+    )
+    assert no_usage.total_cost_usd is None
+    assert no_usage.cost_per_task_usd is None
+    assert no_usage.input_token_share is None
+    assert no_usage.output_token_share is None

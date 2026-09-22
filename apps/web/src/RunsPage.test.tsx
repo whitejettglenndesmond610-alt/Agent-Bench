@@ -297,8 +297,37 @@ test("shows trial count and reliability metrics on the run detail when present",
   expect(screen.getByText("95% CI 70.00–75.00")).toBeInTheDocument();
 });
 
-test("hides reliability metrics when the result summary has none", async () => {
+test("shows cost metrics on the run detail when the result summary has them", async () => {
+  const withCost = progress();
+  withCost.agents[0].result = {
+    ...withCost.agents[0].result!,
+    total_cost_usd: 0.0027,
+    cost_per_task_usd: 0.00045
+  };
   vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => {
+    if (input === "/api/v1/evaluation-runs/run-1/progress") return Promise.resolve(response(withCost));
+    if (input === "/api/v1/evaluation-runs") return Promise.resolve(response([]));
+    throw new Error(`Unexpected request: ${input}`);
+  }));
+  renderPage("/runs/run-1");
+
+  expect(await screen.findByText("成本 $0.0027")).toBeInTheDocument();
+  expect(screen.getByText("$/题 $0.00045")).toBeInTheDocument();
+});
+
+test("shows a cost placeholder when the result summary has no pricing", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => {
+    if (input === "/api/v1/evaluation-runs/run-1/progress") return Promise.resolve(response(progress()));
+    if (input === "/api/v1/evaluation-runs") return Promise.resolve(response([]));
+    throw new Error(`Unexpected request: ${input}`);
+  }));
+  renderPage("/runs/run-1");
+
+  expect(await screen.findByText("成本 —")).toBeInTheDocument();
+  expect(screen.getByText("$/题 —")).toBeInTheDocument();
+});
+
+test("hides reliability metrics when the result summary has none", async () => {  vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => {
     if (input === "/api/v1/evaluation-runs/run-1/progress") return Promise.resolve(response(progress()));
     if (input === "/api/v1/evaluation-runs") return Promise.resolve(response([]));
     throw new Error(`Unexpected request: ${input}`);

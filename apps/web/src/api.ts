@@ -827,6 +827,10 @@ export interface RunAgentResultSummary {
   pass_pow_k?: number | null;
   ci_low?: number | null;
   ci_high?: number | null;
+  total_cost_usd?: number | null;
+  cost_per_task_usd?: number | null;
+  input_token_share?: number | null;
+  output_token_share?: number | null;
 }
 
 export interface RunProgress extends RunState {
@@ -1956,6 +1960,10 @@ export interface AgentRanking {
   pass_pow_k?: number | null;
   ci_low?: number | null;
   ci_high?: number | null;
+  total_cost_usd?: number | null;
+  cost_per_task_usd?: number | null;
+  input_token_share?: number | null;
+  output_token_share?: number | null;
 }
 
 export interface LeaderboardSnapshot {
@@ -2013,6 +2021,10 @@ export interface GlobalRankedAgent {
   pass_pow_k?: number | null;
   ci_low?: number | null;
   ci_high?: number | null;
+  total_cost_usd?: number | null;
+  cost_per_task_usd?: number | null;
+  input_token_share?: number | null;
+  output_token_share?: number | null;
   benchmark_scores: BenchmarkRanking[];
 }
 
@@ -2081,6 +2093,10 @@ export interface GlobalOverviewMetric {
   pass_pow_k?: number | null;
   ci_low?: number | null;
   ci_high?: number | null;
+  total_cost_usd?: number | null;
+  cost_per_task_usd?: number | null;
+  input_token_share?: number | null;
+  output_token_share?: number | null;
   benchmark_scores: BenchmarkRanking[];
 }
 

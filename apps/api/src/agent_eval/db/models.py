@@ -1173,6 +1173,8 @@ class LeaderboardResult(UUIDPrimaryKeyMixin, Base):
     pass_at_1: Mapped[Decimal | None] = mapped_column(Numeric(38, 18))
     pass_at_k: Mapped[Decimal | None] = mapped_column(Numeric(38, 18))
     pass_pow_k: Mapped[Decimal | None] = mapped_column(Numeric(38, 18))
+    total_cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(38, 18))
+    cost_per_task_usd: Mapped[Decimal | None] = mapped_column(Numeric(38, 18))
 
     snapshot: Mapped[LeaderboardSnapshot] = relationship(back_populates="results")
 

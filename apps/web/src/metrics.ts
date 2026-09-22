@@ -53,3 +53,8 @@ export function formatCalibrationKappa(value: number | null): string {
   if (value === null) return "—";
   return value.toFixed(2);
 }
+
+export function formatCostUsd(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "—";
+  return `$${value.toPrecision(4).replace(/\.?0+$/, "")}`;
+}

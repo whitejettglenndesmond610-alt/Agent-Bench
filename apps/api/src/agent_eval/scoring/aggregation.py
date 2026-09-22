@@ -6,6 +6,7 @@ from math import ceil
 from uuid import UUID
 
 from agent_eval.db.enums import Ability, Language, ResultValidityStatus
+from agent_eval.scoring.pricing import ModelPricing, usage_cost_usd
 from agent_eval.scoring.statistics import (
     QuestionReliability,
     pass_at_1,
@@ -16,6 +17,7 @@ from agent_eval.scoring.statistics import (
 )
 
 DISPLAY_QUANTUM = Decimal("0.01")
+COST_QUANTUM = Decimal("0.000001")
 AGGREGATION_VERSION = "2"
 
 
@@ -87,6 +89,10 @@ class AgentAggregate:
     pass_pow_k: Decimal
     ci_low: Decimal | None
     ci_high: Decimal | None
+    total_cost_usd: Decimal | None
+    cost_per_task_usd: Decimal | None
+    input_token_share: Decimal | None
+    output_token_share: Decimal | None
 
 
 @dataclass(frozen=True)
@@ -143,6 +149,7 @@ def aggregate_agent(
     validity_reason: str | None = None,
     configuration_failure_count: int = 0,
     configuration_failure_rate: Decimal = Decimal(0),
+    pricing: ModelPricing | None = None,
 ) -> AgentAggregate:
     if not items:
         raise ValueError("cannot aggregate an agent without execution items")
@@ -214,6 +221,13 @@ def aggregate_agent(
         and attempt.total_tokens is not None
         for attempt in attempts
     )
+    total_input_tokens = sum_optional(attempt.input_tokens for attempt in attempts)
+    total_output_tokens = sum_optional(attempt.output_tokens for attempt in attempts)
+    token_sum = (total_input_tokens or 0) + (total_output_tokens or 0)
+    input_token_share = (
+        Decimal(total_input_tokens or 0) * 100 / token_sum if token_sum > 0 else None
+    )
+    total_cost_usd = cost_total(attempts, pricing)
     return AgentAggregate(
         run_agent_id=run_agent_id,
         agent_id=agent_id,
@@ -234,8 +248,8 @@ def aggregate_agent(
         validity_reason=validity_reason,
         configuration_failure_count=configuration_failure_count,
         configuration_failure_rate=configuration_failure_rate,
-        total_input_tokens=sum_optional(attempt.input_tokens for attempt in attempts),
-        total_output_tokens=sum_optional(attempt.output_tokens for attempt in attempts),
+        total_input_tokens=total_input_tokens,
+        total_output_tokens=total_output_tokens,
         total_tokens=sum_optional(attempt.total_tokens for attempt in attempts),
         token_usage_available_count=complete_usage,
         token_usage_missing_count=len(attempts) - complete_usage,
@@ -247,6 +261,14 @@ def aggregate_agent(
         pass_pow_k=pass_pow_k(reliabilities),
         ci_low=ci_low,
         ci_high=ci_high,
+        total_cost_usd=total_cost_usd,
+        cost_per_task_usd=(
+            total_cost_usd / Decimal(len(items)) if total_cost_usd is not None else None
+        ),
+        input_token_share=input_token_share,
+        output_token_share=(
+            Decimal(100) - input_token_share if input_token_share is not None else None
+        ),
     )
 
 
@@ -319,11 +341,42 @@ def serialize_aggregate(aggregate: AgentAggregate, rank: int) -> dict[str, objec
         "pass_pow_k": display(aggregate.pass_pow_k),
         "ci_low": display(aggregate.ci_low) if aggregate.ci_low is not None else None,
         "ci_high": display(aggregate.ci_high) if aggregate.ci_high is not None else None,
+        "total_cost_usd": display_cost(aggregate.total_cost_usd),
+        "cost_per_task_usd": display_cost(aggregate.cost_per_task_usd),
+        "input_token_share": (
+            display(aggregate.input_token_share)
+            if aggregate.input_token_share is not None
+            else None
+        ),
+        "output_token_share": (
+            display(aggregate.output_token_share)
+            if aggregate.output_token_share is not None
+            else None
+        ),
     }
 
 
 def display(value: Decimal) -> float:
     return float(value.quantize(DISPLAY_QUANTUM, rounding=ROUND_HALF_UP))
+
+
+def display_cost(value: Decimal | None) -> float | None:
+    if value is None:
+        return None
+    return float(value.quantize(COST_QUANTUM, rounding=ROUND_HALF_UP))
+
+
+def cost_total(
+    attempts: list[AggregateAttempt], pricing: ModelPricing | None
+) -> Decimal | None:
+    if pricing is None:
+        return None
+    costs = [
+        usage_cost_usd(pricing, attempt.input_tokens, attempt.output_tokens)
+        for attempt in attempts
+        if attempt.input_tokens is not None and attempt.output_tokens is not None
+    ]
+    return sum(costs, start=Decimal(0)) if costs else None
 
 
 def sum_optional(values: Iterable[int | None]) -> int | None:

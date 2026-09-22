@@ -23,6 +23,7 @@ from agent_eval.db.enums import (
     Ability,
     AgentStatus,
     ArtifactKind,
+    AttemptStatus,
     AuthType,
     CitationFetchStatus,
     DatasetStatus,
@@ -785,6 +786,88 @@ async def test_trial_aggregation_publishes_reliability_metrics(tmp_path: Path) -
             assert result.pass_pow_k == Decimal("0")
             assert result.ci_low is not None and result.ci_high is not None
             assert result.ci_low <= result.ci_high
+            # the seeded request template names no known model
+            assert result.total_cost_usd is None
+            assert result.cost_per_task_usd is None
+    finally:
+        await engine.dispose()
+
+
+async def test_aggregation_publishes_cost_metrics_for_priced_model(tmp_path: Path) -> None:
+    settings, engine, session_factory, _artifact_store = await trial_run_context(tmp_path)
+    try:
+        run_id = await seed_trial_run(session_factory, trial_count=1)
+        async with session_scope(session_factory) as session:
+            run = await session.get(EvaluationRun, run_id)
+            run_agent = await session.scalar(select(RunAgent).where(RunAgent.run_id == run_id))
+            version = await session.scalar(
+                select(AgentVersion)
+                .join(RunAgent, RunAgent.agent_version_id == AgentVersion.id)
+                .where(RunAgent.run_id == run_id)
+            )
+            items = list(
+                await session.scalars(
+                    select(ExecutionItem)
+                    .join(RunAgent, RunAgent.id == ExecutionItem.run_agent_id)
+                    .where(RunAgent.run_id == run_id)
+                )
+            )
+            assert run is not None and run_agent is not None and version is not None
+            version.request_template = '{"model":"gpt-4o-mini","query":"{{prompt}}"}'
+            for item in items:
+                item.status = ExecutionStatus.SCORED
+                session.add(
+                    ScoreRecord(
+                        execution_item_id=item.id,
+                        answer_score=Decimal(100),
+                        final_score=Decimal(100),
+                    )
+                )
+                session.add(
+                    HttpAttempt(
+                        execution_item_id=item.id,
+                        attempt_no=1,
+                        status=AttemptStatus.SUCCEEDED,
+                        latency_ms=10,
+                        input_tokens=1000,
+                        output_tokens=500,
+                        total_tokens=1500,
+                    )
+                )
+            run_agent.status = RunAgentStatus.COMPLETED
+            run.status = RunStatus.SCORING
+            run.stage = RunStage.AGGREGATING
+            run.active_slot = 1
+            run.claim_owner_id = "worker"
+            run.claimed_at = datetime.now(UTC)
+
+        assert await execute_aggregation_and_publish_direct(session_factory, run_id) is True
+
+        async with session_factory() as session:
+            snapshot = await session.scalar(
+                select(LeaderboardSnapshot).where(LeaderboardSnapshot.run_id == run_id)
+            )
+            results = list(
+                await session.scalars(
+                    select(LeaderboardResult)
+                    .join(
+                        LeaderboardSnapshot,
+                        LeaderboardSnapshot.id == LeaderboardResult.snapshot_id,
+                    )
+                    .where(LeaderboardSnapshot.run_id == run_id)
+                )
+            )
+        assert snapshot is not None and len(snapshot.rankings_json) == 1
+        ranking = snapshot.rankings_json[0]
+        # gpt-4o-mini at $0.15/$0.60 per 1M tokens: (1000*0.15 + 500*0.60) / 1e6
+        assert ranking["total_cost_usd"] == pytest.approx(0.00045 * len(items))
+        assert ranking["cost_per_task_usd"] == pytest.approx(0.00045)
+        assert ranking["input_token_share"] == 66.67
+        assert ranking["output_token_share"] == 33.33
+        assert results
+        for result in results:
+            assert result.total_cost_usd == Decimal("0.00045") * len(items)
+            assert result.cost_per_task_usd == Decimal("0.00045")
     finally:
         await engine.dispose()
 

@@ -245,6 +245,10 @@ async def get_global_leaderboard(
                 pass_pow_k=_optional_score(source.result.pass_pow_k),
                 ci_low=_optional_score(source.result.ci_low),
                 ci_high=_optional_score(source.result.ci_high),
+                total_cost_usd=_optional_score(source.result.total_cost_usd),
+                cost_per_task_usd=_optional_score(source.result.cost_per_task_usd),
+                input_token_share=_optional_share(ranking.get("input_token_share")),
+                output_token_share=_optional_share(ranking.get("output_token_share")),
                 benchmark_scores=benchmarks,
             )
         )
@@ -386,6 +390,12 @@ async def get_global_leaderboard_overview(
                 pass_pow_k=result.pass_pow_k if result is not None else None,
                 ci_low=result.ci_low if result is not None else None,
                 ci_high=result.ci_high if result is not None else None,
+                total_cost_usd=result.total_cost_usd if result is not None else None,
+                cost_per_task_usd=(result.cost_per_task_usd if result is not None else None),
+                input_token_share=(result.input_token_share if result is not None else None),
+                output_token_share=(
+                    result.output_token_share if result is not None else None
+                ),
                 benchmark_scores=result.benchmark_scores if result is not None else [],
             )
         agents.append(
@@ -862,6 +872,12 @@ def _optional_nonnegative_int(value: object) -> int | None:
 
 def _optional_score(value: Decimal | None) -> float | None:
     return float(value) if value is not None else None
+
+
+def _optional_share(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return float(value) if 0 <= value <= 100 else None
 
 
 def _nonnegative_int(value: object) -> int:

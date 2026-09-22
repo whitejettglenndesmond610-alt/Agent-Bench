@@ -10,7 +10,7 @@ import {
   GlobalOverviewMetric
 } from "./api";
 import { LoadingState } from "./components";
-import { leaderboardMetrics, metricByKey, profileKeyForMetric, formatScoreWithCi } from "./metrics";
+import { leaderboardMetrics, metricByKey, profileKeyForMetric, formatCostUsd, formatScoreWithCi } from "./metrics";
 
 type BoardView = "overview" | GlobalLeaderboardMetric;
 
@@ -137,6 +137,9 @@ function AgentDetail({
             <div><dt>HTTP 调用</dt><dd>{focus.http_call_count ?? "—"}</dd></div>
             <div><dt>Benchmark</dt><dd>{focus.benchmark_count || "—"}</dd></div>
             <div><dt>Token</dt><dd>{focus.total_tokens === null || focus.total_tokens === undefined ? "—" : new Intl.NumberFormat("zh-CN").format(focus.total_tokens)}</dd></div>
+            <div><dt>输入/输出 Token</dt><dd>{focus.input_token_share === null || focus.input_token_share === undefined || focus.output_token_share === null || focus.output_token_share === undefined ? "—" : `${focus.input_token_share.toFixed(1)}% / ${focus.output_token_share.toFixed(1)}%`}</dd></div>
+            <div><dt>总成本</dt><dd>{formatCostUsd(focus.total_cost_usd)}</dd></div>
+            <div><dt>成本/题</dt><dd>{formatCostUsd(focus.cost_per_task_usd)}</dd></div>
             <div><dt>P50 延迟</dt><dd>{focus.latency_p50_ms === null || focus.latency_p50_ms === undefined ? "—" : `${focus.latency_p50_ms} ms`}</dd></div>
             <div><dt>P95 延迟</dt><dd>{focus.latency_p95_ms === null || focus.latency_p95_ms === undefined ? "—" : `${focus.latency_p95_ms} ms`}</dd></div>
             <div><dt>延迟样本</dt><dd>{focus.latency_sample_count ?? "—"}</dd></div>

@@ -49,6 +49,10 @@ class AgentRanking(BaseModel):
     pass_pow_k: float | None = None
     ci_low: float | None = None
     ci_high: float | None = None
+    total_cost_usd: float | None = None
+    cost_per_task_usd: float | None = None
+    input_token_share: float | None = None
+    output_token_share: float | None = None
 
 
 class LeaderboardSnapshotResponse(BaseModel):
@@ -113,6 +117,10 @@ class GlobalRankedAgent(BaseModel):
     pass_pow_k: float | None = None
     ci_low: float | None = None
     ci_high: float | None = None
+    total_cost_usd: float | None = None
+    cost_per_task_usd: float | None = None
+    input_token_share: float | None = None
+    output_token_share: float | None = None
     benchmark_scores: list[BenchmarkRanking]
 
 
@@ -177,6 +185,10 @@ class GlobalOverviewMetric(BaseModel):
     pass_pow_k: float | None = None
     ci_low: float | None = None
     ci_high: float | None = None
+    total_cost_usd: float | None = None
+    cost_per_task_usd: float | None = None
+    input_token_share: float | None = None
+    output_token_share: float | None = None
     benchmark_scores: list[BenchmarkRanking] = Field(default_factory=list)
 
 

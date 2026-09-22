@@ -109,8 +109,42 @@ test("shows confidence interval and pass metrics when the snapshot provides them
   expect(detail).toHaveTextContent("81.25%");
 });
 
-test("hides confidence interval and pass metrics for legacy snapshots without them", async () => {
+test("shows cost metrics when the snapshot provides them", async () => {
+  const alpha = agent("a", "Agent Alpha", 90, 1);
+  alpha.metrics.overall = metric(90, 1, {
+    total_tokens: 1500000,
+    input_token_share: 66.67,
+    output_token_share: 33.33,
+    total_cost_usd: 0.1234,
+    cost_per_task_usd: 0.0012
+  });
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(overview({ agents: [alpha] }))));
+  renderPage();
+
+  await screen.findByRole("heading", { name: "Agent 排行榜" });
+  fireEvent.click(screen.getByRole("button", { name: /Agent Alpha/ }));
+  const detail = screen.getByLabelText("Agent Alpha 评测详情");
+  expect(detail).toHaveTextContent("输入/输出 Token");
+  expect(detail).toHaveTextContent("66.7% / 33.3%");
+  expect(detail).toHaveTextContent("总成本");
+  expect(detail).toHaveTextContent("$0.1234");
+  expect(detail).toHaveTextContent("成本/题");
+  expect(detail).toHaveTextContent("$0.0012");
+});
+
+test("shows dashes for cost metrics on legacy snapshots without them", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(overview())));
+  renderPage();
+
+  await screen.findByRole("heading", { name: "Agent 排行榜" });
+  fireEvent.click(screen.getByRole("button", { name: /Agent Alpha/ }));
+  const detail = screen.getByLabelText("Agent Alpha 评测详情");
+  expect(detail).toHaveTextContent("总成本");
+  expect(detail).toHaveTextContent("成本/题");
+  expect(detail).not.toHaveTextContent("$");
+});
+
+test("hides confidence interval and pass metrics for legacy snapshots without them", async () => {  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(overview())));
   const page = renderPage();
 
   await screen.findByRole("heading", { name: "Agent 排行榜" });
