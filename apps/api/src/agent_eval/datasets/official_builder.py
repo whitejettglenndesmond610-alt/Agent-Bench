@@ -84,11 +84,14 @@ def build_gpqa_records(zip_bytes: bytes | None = None) -> list[QuestionRecord]:
     payload = zip_bytes if zip_bytes is not None else fetch_bytes(GPQA_ZIP_URL)
     archive = zipfile.ZipFile(io.BytesIO(payload))
     archive.setpassword(GPQA_ZIP_PASSWORD)
-    rows = list(csv.DictReader(io.TextIOWrapper(archive.open("dataset/gpqa_diamond.csv"), encoding="utf-8")))
+    rows = list(
+        csv.DictReader(io.TextIOWrapper(archive.open("dataset/gpqa_diamond.csv"), encoding="utf-8"))
+    )
     if len(rows) < OFFICIAL_V4_QUOTAS["GPQA-Diamond"]:
         raise OfficialDatasetBuildError("GPQA Diamond is smaller than the official-v4 quota")
     indices = sorted(
-        range(len(rows)), key=lambda index: stable_hash(f"gpqa|{rows[index].get('Record ID', index)}")
+        range(len(rows)),
+        key=lambda index: stable_hash(f"gpqa|{rows[index].get('Record ID', index)}"),
     )[: OFFICIAL_V4_QUOTAS["GPQA-Diamond"]]
     records: list[QuestionRecord] = []
     for index in sorted(indices):
@@ -99,7 +102,10 @@ def build_gpqa_records(zip_bytes: bytes | None = None) -> list[QuestionRecord]:
             row["Incorrect Answer 2"],
             row["Incorrect Answer 3"],
         ]
-        order = sorted(range(4), key=lambda item: stable_hash(f"gpqa-choice|{row['Record ID']}|{item}"))
+        order = sorted(
+            range(4),
+            key=lambda item: stable_hash(f"gpqa-choice|{row['Record ID']}|{item}"),
+        )
         shuffled = [options[item].strip() for item in order]
         answer = chr(ord("A") + shuffled.index(row["Correct Answer"].strip()))
         records.append(
@@ -155,7 +161,9 @@ def build_cmmlu_records(subject_csvs: dict[str, str] | None = None) -> list[Ques
             if item.get("name", "").endswith(".csv")
         )
         if len(subjects) < OFFICIAL_V4_QUOTAS["CMMLU"]:
-            raise OfficialDatasetBuildError("CMMLU subject list is smaller than the official-v4 quota")
+            raise OfficialDatasetBuildError(
+                "CMMLU subject list is smaller than the official-v4 quota"
+            )
         selected = sorted(subjects, key=stable_hash)[: OFFICIAL_V4_QUOTAS["CMMLU"]]
         subject_csvs = {}
         for subject in selected:
@@ -209,7 +217,7 @@ def build_official_v4_dataset(output_directory: Path) -> list[QuestionRecord]:
         *build_cmmlu_records(),
         *build_gsm8k_records(),
     ]
-    counts = defaultdict(int)
+    counts: defaultdict[str, int] = defaultdict(int)
     for record in records:
         counts[record.benchmark] += 1
     if dict(counts) != OFFICIAL_V4_QUOTAS:

@@ -15,7 +15,6 @@ from sqlalchemy.orm import selectinload
 from agent_eval.agents.client import ConnectionConfig, ConnectionTestResult, test_connection
 from agent_eval.agents.private_presets import (
     PRIVATE_AGENT_PRESETS,
-    private_preset_request_options,
     normalize_private_model,
     private_preset_request_options,
     private_request_template,
