@@ -5,6 +5,9 @@ import { Link, useParams } from "react-router-dom";
 import {
   BadPatternFindingStatus,
   BadPatternSeverity,
+  CalibrationQuestionType,
+  CalibrationTaskItem,
+  JudgeCalibrationAgreement,
   QualityReviewVerdict,
   QualityTaskPriority,
   QualityTaskStatus,
@@ -13,16 +16,27 @@ import {
   claimQualityTask,
   createBadPatternRule,
   fetchBadPatternRules,
+  fetchCalibrationReport,
+  fetchCalibrationTasks,
   fetchQualityFeedbackExport,
   fetchQualityDashboard,
   fetchQualityFinding,
   fetchQualityReviewers,
+  labelCalibrationTask,
   rescanQualityExecutionItem,
   reviewQualityFinding,
+  sampleCalibrationTasks,
   updateBadPatternRule,
   upsertQualityReview
 } from "./api";
 import { Button, FormField, Input, LoadingState, Select, Textarea } from "./components";
+import {
+  CALIBRATION_JUDGE_PASS_THRESHOLD,
+  CALIBRATION_MIN_RELIABLE_SAMPLE,
+  formatCalibrationKappa,
+  formatCalibrationRate,
+  metricByKey
+} from "./metrics";
 import { downloadText } from "./userProduct";
 
 const severityLabels: Record<BadPatternSeverity, string> = {
@@ -57,6 +71,17 @@ const priorityLabels: Record<QualityTaskPriority, string> = {
   high: "高",
   urgent: "紧急"
 };
+
+const calibrationQuestionTypeLabels: Record<CalibrationQuestionType, string> = {
+  multiple_choice: "选择题",
+  short_answer: "简答题",
+  open_ended: "开放题"
+};
+
+function calibrationJudgeReason(task: CalibrationTaskItem): string | null {
+  const reason = task.judge_details?.judge_reason;
+  return typeof reason === "string" && reason ? reason : null;
+}
 
 function formatDate(value: string | null) {
   if (!value) return "—";
@@ -344,6 +369,8 @@ export function QualityPage() {
         </article>
       </section>
 
+      <CalibrationPanel />
+
       <section className="quality-rules">
         <header><div><span>DETECTION RULES</span><h2>底线检测规则</h2></div><small>规则变更随下一次运行生效，可对历史执行项手动重新检测。</small></header>
         {rulesQuery.isPending ? <LoadingState label="正在读取检测规则" compact /> : rulesQuery.error ? <div className="quality-state is-error">{rulesQuery.error.message}</div> :
@@ -355,6 +382,95 @@ export function QualityPage() {
           </article>)}</div>}
       </section>
     </main>
+  );
+}
+
+function CalibrationPanel() {
+  const queryClient = useQueryClient();
+  const reportQuery = useQuery({ queryKey: ["quality-calibration-report"], queryFn: fetchCalibrationReport });
+  const tasksQuery = useQuery({
+    queryKey: ["quality-calibration-tasks"],
+    queryFn: () => fetchCalibrationTasks("pending")
+  });
+
+  async function refreshCalibration() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["quality-calibration-report"] }),
+      queryClient.invalidateQueries({ queryKey: ["quality-calibration-tasks"] })
+    ]);
+  }
+
+  const sampleMutation = useMutation({
+    mutationFn: () => sampleCalibrationTasks(),
+    onSuccess: refreshCalibration
+  });
+  const labelMutation = useMutation({
+    mutationFn: ({ taskId, label }: { taskId: string; label: JudgeCalibrationAgreement }) =>
+      labelCalibrationTask(taskId, { label }),
+    onSuccess: refreshCalibration
+  });
+
+  const summary = reportQuery.data?.overall;
+  const missingSample = summary ? Math.max(CALIBRATION_MIN_RELIABLE_SAMPLE - summary.labeled, 0) : 0;
+  const mutationError = sampleMutation.error ?? labelMutation.error;
+
+  return (
+    <section className="quality-calibration" aria-label="裁判校准">
+      <header>
+        <div><span>JUDGE CALIBRATION</span><h2>裁判校准</h2></div>
+        <small>随机抽取已评分样本，人工核对裁判判定是否准确，用 Cohen's Kappa 衡量裁判与人工的一致性。</small>
+      </header>
+      {reportQuery.isPending ? <LoadingState label="正在读取校准报告" compact /> :
+        reportQuery.error ? <div className="quality-state is-error">{reportQuery.error.message}</div> :
+          summary && <>
+            <div className="quality-calibration-report">
+              <dl>
+                <div><dt>Kappa 系数</dt><dd>{formatCalibrationKappa(summary.kappa)}</dd></div>
+                <div><dt>一致率</dt><dd>{formatCalibrationRate(summary.agreement)}</dd></div>
+                <div><dt>已标注样本</dt><dd>{summary.labeled} / {CALIBRATION_MIN_RELIABLE_SAMPLE}</dd></div>
+                <div><dt>同意 / 不同意</dt><dd>{summary.agree} / {summary.disagree}</dd></div>
+              </dl>
+              {summary.insufficient_sample ?
+                <p className="is-warning">样本量不足，至少还需标注 {missingSample} 条，Kappa 与一致率才具备统计参考价值。</p> :
+                <p>样本量已达标，Kappa 越接近 1 代表裁判与人工判定越一致。</p>}
+              <Button type="button" disabled={sampleMutation.isPending} onClick={() => sampleMutation.mutate()}>
+                {sampleMutation.isPending ? "正在抽样" : "抽取样本"}
+              </Button>
+            </div>
+            {sampleMutation.data &&
+              <p className="quality-calibration-sample">本次抽样候选 {sampleMutation.data.eligible} 条，新增标注任务 {sampleMutation.data.created} 条。</p>}
+          </>}
+      {mutationError && <p className="quality-mutation-error">{mutationError.message}</p>}
+      <div className="quality-calibration-list">
+        {tasksQuery.isPending ? <LoadingState label="正在读取待标注任务" compact /> :
+          tasksQuery.error ? <div className="quality-state is-error">{tasksQuery.error.message}</div> :
+            tasksQuery.data?.items.length ? tasksQuery.data.items.map((task) => {
+              const passed = task.judge_score >= CALIBRATION_JUDGE_PASS_THRESHOLD;
+              const reason = calibrationJudgeReason(task);
+              return (
+                <article key={task.id}>
+                  <header>
+                    <span className={`quality-calibration-verdict ${passed ? "is-pass" : "is-fail"}`}>
+                      {passed ? "裁判判定通过" : "裁判判定未通过"} · {task.judge_score.toFixed(0)} 分
+                    </span>
+                    <strong>{task.question_external_id}</strong>
+                    <time>{formatDate(task.created_at)}</time>
+                  </header>
+                  <p>{task.agent_name} · {task.run_name} · {metricByKey[task.ability]?.label ?? task.ability} · {calibrationQuestionTypeLabels[task.question_type]}</p>
+                  <p>裁判理由：{reason ?? "未记录判定理由"}</p>
+                  <footer>
+                    <Link className="button is-ghost" to={`/runs/${task.run_id}/evidence/${task.execution_item_id}`}>完整证据</Link>
+                    <span>你是否同意裁判的判定？</span>
+                    <Button type="button" className="is-ghost" disabled={labelMutation.isPending}
+                      onClick={() => labelMutation.mutate({ taskId: task.id, label: "disagree" })}>不同意</Button>
+                    <Button type="button" disabled={labelMutation.isPending}
+                      onClick={() => labelMutation.mutate({ taskId: task.id, label: "agree" })}>同意</Button>
+                  </footer>
+                </article>
+              );
+            }) : <div className="quality-state"><strong>暂无待标注的校准任务</strong><span>点击「抽取样本」从最近的评测运行中随机抽取已评分样本。</span></div>}
+      </div>
+    </section>
   );
 }
 

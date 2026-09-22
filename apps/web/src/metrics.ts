@@ -40,3 +40,16 @@ export function formatScoreWithCi(
   }
   return `${score.toFixed(2)} (${ciLow.toFixed(2)}–${ciHigh.toFixed(2)})`;
 }
+
+export const CALIBRATION_MIN_RELIABLE_SAMPLE = 30;
+export const CALIBRATION_JUDGE_PASS_THRESHOLD = 60;
+
+export function formatCalibrationRate(value: number | null): string {
+  if (value === null) return "—";
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+export function formatCalibrationKappa(value: number | null): string {
+  if (value === null) return "—";
+  return value.toFixed(2);
+}

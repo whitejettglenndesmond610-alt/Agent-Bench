@@ -1549,6 +1549,88 @@ export function updateBadPatternRule(
   return jsonMutation<BadPatternRule>(`/api/v1/quality/rules/${ruleId}`, "PATCH", input);
 }
 
+export type JudgeCalibrationStatus = "pending" | "labeled";
+export type JudgeCalibrationAgreement = "agree" | "disagree";
+export type CalibrationQuestionType = "multiple_choice" | "short_answer" | "open_ended";
+
+export interface CalibrationTaskItem {
+  id: string;
+  score_record_id: string;
+  execution_item_id: string;
+  run_id: string;
+  run_name: string;
+  agent_name: string;
+  question_external_id: string;
+  question_type: CalibrationQuestionType;
+  ability: Ability;
+  judge_score: number;
+  judge_details: Record<string, unknown> | null;
+  status: JudgeCalibrationStatus;
+  human_label: JudgeCalibrationAgreement | null;
+  note: string | null;
+  labeler_display_name: string | null;
+  labeled_at: string | null;
+  created_at: string;
+}
+
+export interface CalibrationTaskList {
+  items: CalibrationTaskItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface CalibrationSummary {
+  labeled: number;
+  agree: number;
+  disagree: number;
+  agreement: number | null;
+  kappa: number | null;
+  insufficient_sample: boolean;
+}
+
+export interface CalibrationReport {
+  overall: CalibrationSummary;
+  by_question_type: Record<string, CalibrationSummary>;
+  by_ability: Record<string, CalibrationSummary>;
+  by_prompt_version: Record<string, CalibrationSummary>;
+}
+
+export interface CalibrationSampleResult {
+  requested: number;
+  eligible: number;
+  created: number;
+}
+
+export function fetchCalibrationReport(): Promise<CalibrationReport> {
+  return requestJson<CalibrationReport>("/api/v1/quality/calibration/report");
+}
+
+export function fetchCalibrationTasks(status?: JudgeCalibrationStatus): Promise<CalibrationTaskList> {
+  return requestJson<CalibrationTaskList>(
+    `/api/v1/quality/calibration/tasks${status ? `?status=${status}` : ""}`
+  );
+}
+
+export function sampleCalibrationTasks(input: {
+  run_id?: string;
+  recent_run_count?: number;
+  sample_size?: number;
+} = {}): Promise<CalibrationSampleResult> {
+  return jsonMutation<CalibrationSampleResult>("/api/v1/quality/calibration/sample", "POST", input);
+}
+
+export function labelCalibrationTask(
+  taskId: string,
+  input: { label: JudgeCalibrationAgreement; note?: string }
+): Promise<CalibrationTaskItem> {
+  return jsonMutation<CalibrationTaskItem>(
+    `/api/v1/quality/calibration/tasks/${taskId}/label`,
+    "POST",
+    input
+  );
+}
+
 export type OnlineDataEnvironment = "production" | "staging" | "replay";
 export type OnlineDataRecordStatus = "pending" | "retained" | "discarded";
 
