@@ -253,6 +253,14 @@ def _score_detail(score: ScoreRecord | None) -> RunEvidenceScoreDetail | None:
         **summary.model_dump(),
         judge_reason=score.judge_reason,
         judge_artifact=_artifact_metadata(score.judge_artifact),
+        judge_provider=score.judge_provider,
+        judge_model_requested=score.judge_model_requested,
+        judge_model_returned=score.judge_model_returned,
+        judge_prompt_version=score.judge_prompt_version,
+        judge_temperature=(
+            float(score.judge_temperature) if score.judge_temperature is not None else None
+        ),
+        judge_details=score.judge_details_json,
     )
 
 

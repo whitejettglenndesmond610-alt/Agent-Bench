@@ -44,6 +44,11 @@ class AgentRanking(BaseModel):
     latency_p50_ms: int | None = None
     latency_p95_ms: int | None = None
     latency_sample_count: int = 0
+    pass_at_1: float | None = None
+    pass_at_k: float | None = None
+    pass_pow_k: float | None = None
+    ci_low: float | None = None
+    ci_high: float | None = None
 
 
 class LeaderboardSnapshotResponse(BaseModel):
@@ -103,6 +108,11 @@ class GlobalRankedAgent(BaseModel):
     latency_p50_ms: int | None = None
     latency_p95_ms: int | None = None
     latency_sample_count: int = 0
+    pass_at_1: float | None = None
+    pass_at_k: float | None = None
+    pass_pow_k: float | None = None
+    ci_low: float | None = None
+    ci_high: float | None = None
     benchmark_scores: list[BenchmarkRanking]
 
 
@@ -162,6 +172,11 @@ class GlobalOverviewMetric(BaseModel):
     latency_p50_ms: int | None = None
     latency_p95_ms: int | None = None
     latency_sample_count: int = 0
+    pass_at_1: float | None = None
+    pass_at_k: float | None = None
+    pass_pow_k: float | None = None
+    ci_low: float | None = None
+    ci_high: float | None = None
     benchmark_scores: list[BenchmarkRanking] = Field(default_factory=list)
 
 

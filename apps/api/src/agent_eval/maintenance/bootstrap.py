@@ -22,6 +22,7 @@ from agent_eval.db.models import (
     Question,
     ScoreConfig,
 )
+from agent_eval.judges.deepseek import RUBRIC_PROMPT_VERSION
 from agent_eval.scoring.configs import (
     BALANCED_V2_ABILITY_WEIGHTS,
     BALANCED_V2_SCORE_NAME,
@@ -30,7 +31,7 @@ from agent_eval.scoring.configs import (
     has_ability_weights,
 )
 
-DEFAULT_JUDGE = ("deepseek", "deepseek-v4-flash", "v1")
+DEFAULT_JUDGE = ("deepseek", "deepseek-v4-flash", RUBRIC_PROMPT_VERSION)
 DEFAULT_SCORE_NAME = LEGACY_SCORE_NAME
 DEFAULT_SCORE_VALUES = {
     "reasoning_weight": 40,

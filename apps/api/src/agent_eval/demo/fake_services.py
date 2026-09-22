@@ -30,8 +30,15 @@ async def judge(payload: dict[str, Any]) -> dict[str, Any]:
         first = messages[0]
         if isinstance(first, dict):
             system_prompt = str(first.get("content", ""))
-    if "support_score" in system_prompt or "引用" in system_prompt:
+    if '"dimensions"' in system_prompt:
         verdict: dict[str, Any] = {
+            "dimensions": {
+                key: {"verdict": 1, "rationale": f"Fake Judge: {key} satisfied"}
+                for key in ("correctness", "completeness", "grounding", "clarity")
+            }
+        }
+    elif "support_score" in system_prompt or "引用" in system_prompt:
+        verdict = {
             "support_score": 80,
             "reason": "Fake Judge: source supports the answer",
         }

@@ -233,6 +233,11 @@ async def _aggregate_and_publish(
                         metric == "overall" or benchmark.ability.value == metric
                         for benchmark in aggregate.benchmark_scores
                     ),
+                    ci_low=aggregate.ci_low,
+                    ci_high=aggregate.ci_high,
+                    pass_at_1=aggregate.pass_at_1,
+                    pass_at_k=aggregate.pass_at_k,
+                    pass_pow_k=aggregate.pass_pow_k,
                 )
                 for aggregate in valid_aggregates
                 for metric in metrics
@@ -315,6 +320,8 @@ def aggregate_run_agent(run_agent: RunAgent, score_config: ScoreConfig) -> Agent
                     for attempt in item.attempts
                     if attempt.status != AttemptStatus.IN_PROGRESS
                 ),
+                question_id=item.question_id,
+                trial_index=item.trial_index,
             )
         )
     return aggregate_agent(

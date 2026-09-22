@@ -203,9 +203,12 @@ async def prepare_evaluation_run(
     run_scope: RunScope = RunScope.COMPREHENSIVE,
     target_ability: Ability | None = None,
     ranking_eligible: bool = True,
+    trial_count: int = 1,
     prevent_duplicates: bool = False,
     force_retest: bool = False,
 ) -> PreparedRun:
+    if not 1 <= trial_count <= 10:
+        raise RunConfigurationError("invalid_trial_count", "每题运行次数必须在 1 到 10 之间")
     agent_versions = list(
         await session.scalars(
             select(AgentVersion)
@@ -414,6 +417,7 @@ async def prepare_evaluation_run(
         run_scope=run_scope,
         target_ability=target_ability,
         ranking_eligible=ranking_eligible,
+        trial_count=trial_count,
         protocol_hash=protocol_hash,
         judge_config_id=judge_config.id,
         score_config_id=score_config.id,
@@ -428,16 +432,21 @@ async def prepare_evaluation_run(
     )
 
     run_agents = [
-        RunAgent(run_id=run.id, agent_version_id=version.id, total=len(questions))
+        RunAgent(run_id=run.id, agent_version_id=version.id, total=len(questions) * trial_count)
         for version in agent_versions
     ]
     session.add_all(run_agents)
     await session.flush()
     session.add_all(
         [
-            ExecutionItem(run_agent_id=run_agent.id, question_id=question.id)
+            ExecutionItem(
+                run_agent_id=run_agent.id,
+                question_id=question.id,
+                trial_index=trial_index,
+            )
             for run_agent in run_agents
             for question in questions
+            for trial_index in range(trial_count)
         ]
     )
     await session.flush()
@@ -447,7 +456,7 @@ async def prepare_evaluation_run(
         agent_version_ids=sorted(agent_version_ids, key=str),
         dataset_version_ids=sorted(dataset_version_ids, key=str),
         question_count=len(questions),
-        execution_item_count=len(questions) * len(agent_versions),
+        execution_item_count=len(questions) * len(agent_versions) * trial_count,
     )
 
 

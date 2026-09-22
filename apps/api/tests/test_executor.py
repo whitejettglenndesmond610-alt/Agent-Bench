@@ -2,8 +2,9 @@ import asyncio
 import hashlib
 import json
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -11,9 +12,10 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import func, select
 from sqlalchemy.exc import StatementError
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from agent_eval.agents.inference import InferenceOutcome
-from agent_eval.core.artifact_store import create_artifact_store
+from agent_eval.core.artifact_store import ArtifactStore, create_artifact_store
 from agent_eval.core.settings import Settings
 from agent_eval.core.storage import ensure_storage
 from agent_eval.db.engine import create_engine
@@ -42,6 +44,7 @@ from agent_eval.db.models import (
     ExecutionItem,
     HttpAttempt,
     JudgeConfig,
+    LeaderboardResult,
     LeaderboardSnapshot,
     Notification,
     Question,
@@ -51,7 +54,11 @@ from agent_eval.db.models import (
 )
 from agent_eval.db.session import create_session_factory, session_scope
 from agent_eval.leaderboards import publisher as leaderboard_publisher
-from agent_eval.leaderboards.publisher import execute_aggregation_and_publish
+from agent_eval.leaderboards.publisher import (
+    execute_aggregation_and_publish,
+    execute_aggregation_and_publish_direct,
+)
+from agent_eval.runs.lifecycle import apply_requested_cancellations, request_run_cancellation
 from agent_eval.runs.queue import acquire_worker_lease, claim_next_run
 from agent_eval.runs.service import prepare_evaluation_run
 from agent_eval.worker.citation_scoring import execute_citation_scoring
@@ -566,5 +573,250 @@ async def test_executor_enforces_concurrency_and_persists_attempts_and_artifacts
         assert unchanged_run is not None
         assert unchanged_run.status == RunStatus.PUBLISHED
         assert unchanged_run.stage == RunStage.READY_TO_PUBLISH
+    finally:
+        await engine.dispose()
+
+
+async def seed_trial_run(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    trial_count: int,
+) -> UUID:
+    async with session_scope(session_factory) as session:
+        agent = Agent(name="Trial Agent", provider="Provider", status=AgentStatus.ENABLED)
+        session.add(agent)
+        await session.flush()
+        version = AgentVersion(
+            agent_id=agent.id,
+            version=1,
+            endpoint_url="https://agent.example/run",
+            auth_type=AuthType.NONE,
+            request_template='{"query":"{{prompt}}"}',
+            answer_jsonpath="$.answer",
+            concurrency=3,
+        )
+        benchmark = Benchmark(
+            name="Trial Dataset",
+            ability=Ability.RETRIEVAL,
+            language=Language.EN,
+            source="https://example.test",
+        )
+        session.add_all([version, benchmark])
+        await session.flush()
+        dataset = DatasetVersion(
+            benchmark_id=benchmark.id,
+            version=1,
+            source_version="v1",
+            content_hash="e" * 64,
+            question_count=2,
+            status=DatasetStatus.FROZEN,
+            frozen_at=datetime.now(UTC),
+        )
+        judge = JudgeConfig(provider="deepseek", model="deepseek-chat", prompt_version="v1")
+        score = ScoreConfig(name="Default")
+        session.add_all([dataset, judge, score])
+        await session.flush()
+        session.add_all(
+            [
+                Question(
+                    dataset_version_id=dataset.id,
+                    external_id=f"trial-q-{index}",
+                    type=QuestionType.SHORT_ANSWER,
+                    prompt=f"Trial Question {index}",
+                    reference_answer=f"Trial Answer {index}",
+                )
+                for index in range(2)
+            ]
+        )
+        await session.flush()
+        prepared = await prepare_evaluation_run(
+            session,
+            name="Trial Run",
+            agent_version_ids=[version.id],
+            dataset_version_ids=[dataset.id],
+            judge_config_id=judge.id,
+            score_config_id=score.id,
+            trial_count=trial_count,
+        )
+        return prepared.run.id
+
+
+async def trial_run_context(
+    tmp_path: Path,
+) -> tuple[Settings, AsyncEngine, async_sessionmaker[AsyncSession], ArtifactStore]:
+    database_path = tmp_path / "executor-trials.db"
+    await asyncio.to_thread(command.upgrade, migration_config(database_path), "head")
+    settings = Settings(
+        database_url=f"sqlite+aiosqlite:///{database_path}",
+        data_dir=tmp_path,
+        deepseek_api_key="fake-key",
+    )
+    ensure_storage(settings)
+    engine = create_engine(settings)
+    session_factory = create_session_factory(engine)
+    return settings, engine, session_factory, create_artifact_store(settings)
+
+
+async def test_executor_runs_every_trial_as_independent_execution_item(tmp_path: Path) -> None:
+    settings, engine, session_factory, artifact_store = await trial_run_context(tmp_path)
+    try:
+        run_id = await seed_trial_run(session_factory, trial_count=3)
+        assert await acquire_worker_lease(engine, "worker") is True
+        assert await claim_next_run(engine, "worker") == run_id
+
+        call_count = 0
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal call_count
+            call_count += 1
+            return httpx.Response(200, json={"answer": "Agent answer"})
+
+        completed = await execute_run_inference(
+            session_factory,
+            settings,
+            run_id,
+            artifact_store=artifact_store,
+            token_cipher=None,
+            owner_id="worker",
+            transport_factory=lambda _: httpx.MockTransport(handler),
+            sleep=no_sleep,
+        )
+
+        assert completed is True
+        assert call_count == 6
+        async with session_factory() as session:
+            run = await session.get(EvaluationRun, run_id)
+            run_agent = await session.scalar(select(RunAgent).where(RunAgent.run_id == run_id))
+            items = list(
+                await session.scalars(
+                    select(ExecutionItem)
+                    .join(RunAgent, RunAgent.id == ExecutionItem.run_agent_id)
+                    .where(RunAgent.run_id == run_id)
+                )
+            )
+        assert run is not None and run.status == RunStatus.SCORING
+        assert run.trial_count == 3
+        assert run_agent is not None
+        assert run_agent.total == 6
+        assert run_agent.completed == 6
+        assert run_agent.failed == 0
+        assert run_agent.status == RunAgentStatus.COMPLETED
+        assert len(items) == 6
+        assert {item.status for item in items} == {ExecutionStatus.ANSWERED}
+        trials_by_question: dict[UUID, list[int]] = {}
+        for item in items:
+            trials_by_question.setdefault(item.question_id, []).append(item.trial_index)
+        assert len(trials_by_question) == 2
+        assert {tuple(sorted(indices)) for indices in trials_by_question.values()} == {(0, 1, 2)}
+    finally:
+        await engine.dispose()
+
+
+async def test_trial_aggregation_publishes_reliability_metrics(tmp_path: Path) -> None:
+    settings, engine, session_factory, _artifact_store = await trial_run_context(tmp_path)
+    try:
+        run_id = await seed_trial_run(session_factory, trial_count=3)
+        async with session_scope(session_factory) as session:
+            run = await session.get(EvaluationRun, run_id)
+            run_agent = await session.scalar(select(RunAgent).where(RunAgent.run_id == run_id))
+            items = list(
+                await session.scalars(
+                    select(ExecutionItem)
+                    .join(RunAgent, RunAgent.id == ExecutionItem.run_agent_id)
+                    .where(RunAgent.run_id == run_id)
+                    .order_by(ExecutionItem.question_id, ExecutionItem.trial_index)
+                )
+            )
+            assert run is not None and run_agent is not None
+            trials_by_question: dict[UUID, list[ExecutionItem]] = {}
+            for item in items:
+                trials_by_question.setdefault(item.question_id, []).append(item)
+            patterns = ([100, 100, 0], [100, 0, 0])
+            for trials, pattern in zip(
+                sorted(trials_by_question.values(), key=lambda group: str(group[0].question_id)),
+                patterns,
+                strict=True,
+            ):
+                for item, value in zip(trials, pattern, strict=True):
+                    item.status = ExecutionStatus.SCORED
+                    session.add(
+                        ScoreRecord(
+                            execution_item_id=item.id,
+                            answer_score=Decimal(value),
+                            final_score=Decimal(value),
+                        )
+                    )
+            run_agent.status = RunAgentStatus.COMPLETED
+            run.status = RunStatus.SCORING
+            run.stage = RunStage.AGGREGATING
+            run.active_slot = 1
+            run.claim_owner_id = "worker"
+            run.claimed_at = datetime.now(UTC)
+
+        assert await execute_aggregation_and_publish_direct(session_factory, run_id) is True
+
+        async with session_factory() as session:
+            snapshot = await session.scalar(
+                select(LeaderboardSnapshot).where(LeaderboardSnapshot.run_id == run_id)
+            )
+            results = list(
+                await session.scalars(
+                    select(LeaderboardResult)
+                    .join(
+                        LeaderboardSnapshot,
+                        LeaderboardSnapshot.id == LeaderboardResult.snapshot_id,
+                    )
+                    .where(LeaderboardSnapshot.run_id == run_id)
+                )
+            )
+        assert snapshot is not None and len(snapshot.rankings_json) == 1
+        ranking = snapshot.rankings_json[0]
+        # question means 200/3 and 100/3 average to an overall score of 50
+        assert ranking["overall_score"] == 50.0
+        assert ranking["pass_at_1"] == 50.0
+        assert ranking["pass_at_k"] == 100.0
+        assert ranking["pass_pow_k"] == 0.0
+        assert ranking["ci_low"] <= ranking["ci_high"]
+        assert ranking["ci_low"] >= 0.0 and ranking["ci_high"] <= 100.0
+        assert {result.metric for result in results} == {"overall", "retrieval"}
+        for result in results:
+            assert result.pass_at_1 == Decimal("50")
+            assert result.pass_at_k == Decimal("100")
+            assert result.pass_pow_k == Decimal("0")
+            assert result.ci_low is not None and result.ci_high is not None
+            assert result.ci_low <= result.ci_high
+    finally:
+        await engine.dispose()
+
+
+async def test_cancellation_cancels_every_trial_execution_item(tmp_path: Path) -> None:
+    _settings, engine, session_factory, _artifact_store = await trial_run_context(tmp_path)
+    try:
+        run_id = await seed_trial_run(session_factory, trial_count=3)
+        assert await acquire_worker_lease(engine, "worker") is True
+        async with session_scope(session_factory) as session:
+            await request_run_cancellation(session, run_id)
+
+        canceled = await apply_requested_cancellations(engine, "worker")
+
+        assert canceled == [run_id]
+        async with session_factory() as session:
+            run = await session.get(EvaluationRun, run_id)
+            statuses = set(
+                await session.scalars(
+                    select(ExecutionItem.status)
+                    .join(RunAgent, RunAgent.id == ExecutionItem.run_agent_id)
+                    .where(RunAgent.run_id == run_id)
+                )
+            )
+            item_count = await session.scalar(
+                select(func.count())
+                .select_from(ExecutionItem)
+                .join(RunAgent, RunAgent.id == ExecutionItem.run_agent_id)
+                .where(RunAgent.run_id == run_id)
+            )
+        assert run is not None and run.status == RunStatus.CANCELED
+        assert item_count == 6
+        assert statuses == {ExecutionStatus.CANCELED}
     finally:
         await engine.dispose()

@@ -240,6 +240,11 @@ async def get_global_leaderboard(
                 latency_p50_ms=_optional_nonnegative_int(ranking.get("latency_p50_ms")),
                 latency_p95_ms=_optional_nonnegative_int(ranking.get("latency_p95_ms")),
                 latency_sample_count=_nonnegative_int(ranking.get("latency_sample_count")),
+                pass_at_1=_optional_score(source.result.pass_at_1),
+                pass_at_k=_optional_score(source.result.pass_at_k),
+                pass_pow_k=_optional_score(source.result.pass_pow_k),
+                ci_low=_optional_score(source.result.ci_low),
+                ci_high=_optional_score(source.result.ci_high),
                 benchmark_scores=benchmarks,
             )
         )
@@ -376,6 +381,11 @@ async def get_global_leaderboard_overview(
                 latency_sample_count=(
                     result.latency_sample_count if result is not None else 0
                 ),
+                pass_at_1=result.pass_at_1 if result is not None else None,
+                pass_at_k=result.pass_at_k if result is not None else None,
+                pass_pow_k=result.pass_pow_k if result is not None else None,
+                ci_low=result.ci_low if result is not None else None,
+                ci_high=result.ci_high if result is not None else None,
                 benchmark_scores=result.benchmark_scores if result is not None else [],
             )
         agents.append(
@@ -848,6 +858,10 @@ def _optional_nonnegative_int(value: object) -> int | None:
     if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
         return value
     return None
+
+
+def _optional_score(value: Decimal | None) -> float | None:
+    return float(value) if value is not None else None
 
 
 def _nonnegative_int(value: object) -> int:

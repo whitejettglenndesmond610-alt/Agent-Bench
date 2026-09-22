@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     deepseek_api_key: SecretStr | None = None
     deepseek_api_key_file: Path | None = None
     deepseek_api_url: str = "https://api.deepseek.com/chat/completions"
+    # 生产环境建议把 judge 模型固定到具体版本（例如 deepseek-v4-flash-20260901），
+    # 而不是漂移别名；别名升级会让同一 prompt_version 的评分不可复现。
     deepseek_model: str = "deepseek-v4-flash"
     deepseek_timeout_seconds: int = Field(default=60, gt=0, le=600)
     deepseek_concurrency: int = Field(default=5, gt=0, le=20)

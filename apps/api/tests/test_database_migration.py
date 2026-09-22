@@ -8,6 +8,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import IntegrityError
 
 from agent_eval.auth.identity import LEGACY_OPERATOR_USER_ID
 from agent_eval.core.settings import Settings
@@ -654,6 +655,106 @@ async def assert_target_empty(target_url: str) -> None:
             for table in Base.metadata.sorted_tables:
                 expected = 2 if table.name == "auth_users" else 0
                 assert await connection.scalar(select(func.count()).select_from(table)) == expected
+    finally:
+        await engine.dispose()
+
+
+async def test_head_schema_supports_multiple_trials_per_question(tmp_path: Path) -> None:
+    source_url = await create_sqlite_database(tmp_path / "trial-schema.db")
+    engine = create_engine(Settings(database_url=source_url))
+    session_factory = create_session_factory(engine)
+    try:
+        async with session_scope(session_factory) as session:
+            agent = Agent(name="Trial Agent", provider="Provider")
+            session.add(agent)
+            await session.flush()
+            agent_version = AgentVersion(
+                agent_id=agent.id,
+                version=1,
+                endpoint_url="https://agent.example/run",
+                auth_type=AuthType.NONE,
+                request_template='{"query":"{{prompt}}"}',
+                answer_jsonpath="$.answer",
+            )
+            benchmark = Benchmark(
+                name="Trial Benchmark",
+                ability=Ability.REASONING,
+                language=Language.ZH,
+                source="https://example.test",
+            )
+            session.add_all([agent_version, benchmark])
+            await session.flush()
+            dataset = DatasetVersion(
+                benchmark_id=benchmark.id,
+                version=1,
+                source_version="v1",
+                content_hash="a" * 64,
+                question_count=1,
+                status=DatasetStatus.FROZEN,
+                frozen_at=utc_now(),
+            )
+            judge = JudgeConfig(provider="deepseek", model="deepseek-chat", prompt_version="v1")
+            score_config = ScoreConfig(name="Default")
+            session.add_all([dataset, judge, score_config])
+            await session.flush()
+            question = Question(
+                dataset_version_id=dataset.id,
+                external_id="trial-question",
+                type=QuestionType.MULTIPLE_CHOICE,
+                prompt="Which value is correct?",
+                choices_json=[{"label": "A", "text": "one"}, {"label": "B", "text": "two"}],
+                reference_answer="A",
+            )
+            run = EvaluationRun(
+                name="Trial migration run",
+                status=RunStatus.QUEUED,
+                dataset_bundle_hash="b" * 64,
+                trial_count=2,
+                judge_config_id=judge.id,
+                score_config_id=score_config.id,
+            )
+            session.add_all([question, run])
+            await session.flush()
+            run_agent = RunAgent(
+                run_id=run.id,
+                agent_version_id=agent_version.id,
+                total=2,
+            )
+            session.add(run_agent)
+            await session.flush()
+            session.add_all(
+                [
+                    ExecutionItem(
+                        run_agent_id=run_agent.id,
+                        question_id=question.id,
+                        trial_index=0,
+                    ),
+                    ExecutionItem(
+                        run_agent_id=run_agent.id,
+                        question_id=question.id,
+                        trial_index=1,
+                    ),
+                ]
+            )
+
+        async with session_factory() as session:
+            persisted_run = await session.get(EvaluationRun, run.id)
+            assert persisted_run is not None and persisted_run.trial_count == 2
+            trial_indices = list(
+                await session.scalars(
+                    select(ExecutionItem.trial_index).order_by(ExecutionItem.trial_index)
+                )
+            )
+            assert trial_indices == [0, 1]
+            session.add(
+                ExecutionItem(
+                    run_agent_id=run_agent.id,
+                    question_id=question.id,
+                    trial_index=0,
+                )
+            )
+            with pytest.raises(IntegrityError):
+                await session.flush()
     finally:
         await engine.dispose()
 

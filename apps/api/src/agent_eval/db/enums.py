@@ -175,6 +175,16 @@ class QualityTaskPriority(StrEnum):
     URGENT = "urgent"
 
 
+class JudgeCalibrationStatus(StrEnum):
+    PENDING = "pending"
+    LABELED = "labeled"
+
+
+class JudgeCalibrationAgreement(StrEnum):
+    AGREE = "agree"
+    DISAGREE = "disagree"
+
+
 class OnlineDataEnvironment(StrEnum):
     PRODUCTION = "production"
     STAGING = "staging"

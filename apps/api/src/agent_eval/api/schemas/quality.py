@@ -1,15 +1,19 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from agent_eval.db.enums import (
+    Ability,
     BadPatternFindingStatus,
     BadPatternSeverity,
+    JudgeCalibrationAgreement,
+    JudgeCalibrationStatus,
     QualityReviewVerdict,
     QualityTaskPriority,
     QualityTaskStatus,
+    QuestionType,
 )
 
 
@@ -192,3 +196,63 @@ class QualityDashboardResponse(QualitySchema):
 class BadPatternRescanResponse(QualitySchema):
     execution_item_id: UUID
     finding_count: int
+
+
+class CalibrationSampleInput(QualitySchema):
+    run_id: UUID | None = None
+    recent_run_count: int = Field(default=1, ge=1, le=20)
+    sample_size: int = Field(default=50, ge=1, le=500)
+
+
+class CalibrationSampleResponse(QualitySchema):
+    requested: int
+    eligible: int
+    created: int
+
+
+class CalibrationTaskItem(QualitySchema):
+    id: UUID
+    score_record_id: UUID
+    execution_item_id: UUID
+    run_id: UUID
+    run_name: str
+    agent_name: str
+    question_external_id: str
+    question_type: QuestionType
+    ability: Ability
+    judge_score: float
+    judge_details: dict[str, Any] | None
+    status: JudgeCalibrationStatus
+    human_label: JudgeCalibrationAgreement | None
+    note: str | None
+    labeler_display_name: str | None
+    labeled_at: datetime | None
+    created_at: datetime
+
+
+class CalibrationTaskList(QualitySchema):
+    items: list[CalibrationTaskItem]
+    total: int
+    limit: int
+    offset: int
+
+
+class CalibrationLabelInput(QualitySchema):
+    label: JudgeCalibrationAgreement
+    note: str | None = Field(default=None, max_length=4000)
+
+
+class CalibrationSummaryResponse(QualitySchema):
+    labeled: int
+    agree: int
+    disagree: int
+    agreement: float | None
+    kappa: float | None
+    insufficient_sample: bool
+
+
+class CalibrationReportResponse(QualitySchema):
+    overall: CalibrationSummaryResponse
+    by_question_type: dict[str, CalibrationSummaryResponse]
+    by_ability: dict[str, CalibrationSummaryResponse]
+    by_prompt_version: dict[str, CalibrationSummaryResponse]

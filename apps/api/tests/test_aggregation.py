@@ -175,3 +175,112 @@ def test_attempt_metrics_sum_retries_and_use_nearest_rank_percentiles() -> None:
     assert aggregate.latency_p50_ms == 10
     assert aggregate.latency_p95_ms == 20
     assert aggregate.latency_sample_count == 2
+
+
+def trial_item(
+    question_id: UUID,
+    trial_index: int,
+    benchmark_id: UUID,
+    benchmark_name: str,
+    ability: Ability,
+    score: int,
+    *,
+    language: Language = Language.ZH,
+) -> AggregateItem:
+    return AggregateItem(
+        benchmark_id=benchmark_id,
+        benchmark_name=benchmark_name,
+        ability=ability,
+        language=language,
+        final_score=Decimal(score),
+        answer_score=Decimal(score),
+        citation_score=None,
+        requires_citations=False,
+        succeeded=True,
+        call_count=1,
+        question_id=question_id,
+        trial_index=trial_index,
+    )
+
+
+def test_trial_scores_are_averaged_per_question_before_scoring() -> None:
+    reasoning = uuid4()
+    retrieval = uuid4()
+    question_one = uuid4()
+    question_two = uuid4()
+    question_three = uuid4()
+    items = [
+        trial_item(question_one, 0, reasoning, "Reasoning", Ability.REASONING, 100),
+        trial_item(question_one, 1, reasoning, "Reasoning", Ability.REASONING, 0),
+        trial_item(question_two, 0, reasoning, "Reasoning", Ability.REASONING, 100),
+        trial_item(question_two, 1, reasoning, "Reasoning", Ability.REASONING, 100),
+        trial_item(question_three, 0, retrieval, "Retrieval", Ability.RETRIEVAL, 0),
+        trial_item(question_three, 1, retrieval, "Retrieval", Ability.RETRIEVAL, 100),
+    ]
+
+    aggregate = aggregate_agent(
+        run_agent_id=uuid4(),
+        agent_id=uuid4(),
+        agent_version_id=uuid4(),
+        agent_name="Agent",
+        provider="Provider",
+        version=1,
+        items=items,
+        ability_weights={
+            Ability.REASONING: 40,
+            Ability.RETRIEVAL: 35,
+            Ability.DATA_REASONING: 25,
+        },
+    )
+
+    # question means are 50, 100 and 50
+    assert aggregate.ability_scores[Ability.REASONING] == Decimal("75")
+    assert aggregate.ability_scores[Ability.RETRIEVAL] == Decimal("50")
+    assert aggregate.overall_score.quantize(Decimal("0.01")) == Decimal("63.33")
+    assert aggregate.language_scores[Language.ZH].quantize(Decimal("0.01")) == Decimal("66.67")
+    assert aggregate.pass_at_1.quantize(Decimal("0.01")) == Decimal("66.67")
+    assert aggregate.pass_at_k == Decimal("100")
+    assert aggregate.pass_pow_k.quantize(Decimal("0.01")) == Decimal("33.33")
+    assert aggregate.ci_low is not None and aggregate.ci_high is not None
+    assert aggregate.ci_low <= aggregate.ci_high
+
+
+def test_single_trial_grouping_matches_legacy_per_item_semantics() -> None:
+    benchmark_id = uuid4()
+    grouped_items = [
+        trial_item(uuid4(), 0, benchmark_id, "Reasoning", Ability.REASONING, 100),
+        trial_item(uuid4(), 0, benchmark_id, "Reasoning", Ability.REASONING, 0),
+        trial_item(uuid4(), 0, benchmark_id, "Reasoning", Ability.REASONING, 50),
+    ]
+    legacy_items = [
+        item(benchmark_id, "Reasoning", Ability.REASONING, 100),
+        item(benchmark_id, "Reasoning", Ability.REASONING, 0),
+        item(benchmark_id, "Reasoning", Ability.REASONING, 50),
+    ]
+    weights = {ability: 100 if ability == Ability.REASONING else 0 for ability in Ability}
+
+    grouped = aggregate_agent(
+        run_agent_id=uuid4(),
+        agent_id=uuid4(),
+        agent_version_id=uuid4(),
+        agent_name="Agent",
+        provider="Provider",
+        version=1,
+        items=grouped_items,
+        ability_weights=weights,
+    )
+    legacy = aggregate_agent(
+        run_agent_id=uuid4(),
+        agent_id=uuid4(),
+        agent_version_id=uuid4(),
+        agent_name="Agent",
+        provider="Provider",
+        version=1,
+        items=legacy_items,
+        ability_weights=weights,
+    )
+
+    assert grouped.overall_score == legacy.overall_score
+    assert grouped.ability_scores == legacy.ability_scores
+    assert grouped.pass_at_1 == grouped.pass_at_k == grouped.pass_pow_k
+    assert grouped.pass_at_1.quantize(Decimal("0.01")) == Decimal("33.33")

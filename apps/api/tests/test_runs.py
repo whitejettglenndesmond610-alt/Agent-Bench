@@ -3,7 +3,7 @@ import hashlib
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import joinedload
 
 from agent_eval.api.main import create_app
+from agent_eval.api.routes.runs import resolve_trial_count
 from agent_eval.core.artifact_store import create_artifact_store
 from agent_eval.core.settings import Settings
 from agent_eval.datasets.balanced_builder import build_balanced_v2_dataset
@@ -69,7 +70,7 @@ from agent_eval.runs.lifecycle import (
     mark_run_system_failed,
     recover_stale_run,
 )
-from agent_eval.runs.profiles import build_run_profiles
+from agent_eval.runs.profiles import RunProfile, build_run_profiles
 from agent_eval.runs.queue import (
     acquire_worker_lease,
     claim_next_run,
@@ -253,6 +254,7 @@ def run_payload(fixture: RunFixture, name: str = "Demo Evaluation") -> dict[str,
         "dataset_version_ids": [str(value) for value in fixture.dataset_version_ids],
         "judge_config_id": str(fixture.judge_config_id),
         "score_config_id": str(fixture.score_config_id),
+        "trial_count": 1,
     }
 
 
@@ -2516,3 +2518,81 @@ async def test_stale_canceled_run_abandons_inflight_attempt_then_releases_slot(
         assert attempt_status == AttemptStatus.ABANDONED
     finally:
         await engine.dispose()
+
+
+def test_resolve_trial_count_defaults_by_profile_eligibility() -> None:
+    profile = RunProfile(
+        key="comprehensive",
+        name="Comprehensive",
+        description="",
+        scope=RunScope.COMPREHENSIVE,
+        target_ability=None,
+        dataset_version_ids=(),
+        question_count=0,
+        benchmark_count=0,
+        publishes_to=(),
+        ranking_eligible=True,
+        score_config_id=None,
+        ability_weights={},
+    )
+
+    assert resolve_trial_count(None, profile) == 5
+    assert resolve_trial_count(None, replace(profile, ranking_eligible=False)) == 1
+    assert resolve_trial_count(3, profile) == 3
+
+
+async def test_run_api_rejects_out_of_range_trial_count(tmp_path: Path) -> None:
+    async with run_client(tmp_path) as (client, _app, _database_path, fixture):
+        mutation_headers = await login_operator(client)
+        payload = run_payload(fixture, "Trial Count Boundaries")
+
+        payload["trial_count"] = 0
+        rejected_low = await client.post(
+            "/api/v1/evaluation-runs", headers=mutation_headers, json=payload
+        )
+        assert rejected_low.status_code == 422
+
+        payload["trial_count"] = 11
+        rejected_high = await client.post(
+            "/api/v1/evaluation-runs", headers=mutation_headers, json=payload
+        )
+        assert rejected_high.status_code == 422
+
+        payload["trial_count"] = 11
+        rejected_batch = await client.post(
+            "/api/v1/evaluation-runs/batch",
+            headers=mutation_headers,
+            json={**payload, "agent_version_ids": [str(fixture.agent_version_ids[0])]},
+        )
+        assert rejected_batch.status_code == 422
+
+        payload["trial_count"] = 10
+        created = await client.post(
+            "/api/v1/evaluation-runs", headers=mutation_headers, json=payload
+        )
+        assert created.status_code == 201
+        body = created.json()
+        assert body["trial_count"] == 10
+        assert body["execution_item_count"] == 30
+
+
+async def test_run_api_defaults_to_five_trials_for_ranking_eligible_profile(
+    tmp_path: Path,
+) -> None:
+    async with run_client(tmp_path) as (client, _app, _database_path, fixture):
+        mutation_headers = await login_operator(client)
+        payload = run_payload(fixture, "Trial Count Default")
+        del payload["trial_count"]
+
+        created = await client.post(
+            "/api/v1/evaluation-runs", headers=mutation_headers, json=payload
+        )
+
+        assert created.status_code == 201
+        body = created.json()
+        assert body["trial_count"] == 5
+        assert body["execution_item_count"] == 15
+        progress = await client.get(f"/api/v1/evaluation-runs/{body['id']}/progress")
+        assert progress.status_code == 200
+        assert progress.json()["trial_count"] == 5
+        assert progress.json()["total"] == 15

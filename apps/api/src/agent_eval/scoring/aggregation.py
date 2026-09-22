@@ -6,6 +6,14 @@ from math import ceil
 from uuid import UUID
 
 from agent_eval.db.enums import Ability, Language, ResultValidityStatus
+from agent_eval.scoring.statistics import (
+    QuestionReliability,
+    pass_at_1,
+    pass_at_k,
+    pass_pow_k,
+    stratified_bootstrap_ci,
+    summarize_question,
+)
 
 DISPLAY_QUANTUM = Decimal("0.01")
 AGGREGATION_VERSION = "2"
@@ -24,6 +32,8 @@ class AggregateItem:
     succeeded: bool
     call_count: int
     attempts: tuple["AggregateAttempt", ...] = ()
+    question_id: UUID | None = None
+    trial_index: int = 0
 
 
 @dataclass(frozen=True)
@@ -72,6 +82,45 @@ class AgentAggregate:
     latency_p50_ms: int | None
     latency_p95_ms: int | None
     latency_sample_count: int
+    pass_at_1: Decimal
+    pass_at_k: Decimal
+    pass_pow_k: Decimal
+    ci_low: Decimal | None
+    ci_high: Decimal | None
+
+
+@dataclass(frozen=True)
+class QuestionScore:
+    benchmark_id: UUID
+    benchmark_name: str
+    ability: Ability
+    language: Language
+    reliability: QuestionReliability
+
+    @property
+    def question_mean(self) -> Decimal:
+        return self.reliability.question_mean
+
+
+def group_question_scores(items: list[AggregateItem]) -> list[QuestionScore]:
+    groups: dict[UUID | int, list[AggregateItem]] = {}
+    for index, item in enumerate(items):
+        key: UUID | int = item.question_id if item.question_id is not None else -(index + 1)
+        groups.setdefault(key, []).append(item)
+    question_scores: list[QuestionScore] = []
+    for group in groups.values():
+        first = group[0]
+        trials = sorted(group, key=lambda item: item.trial_index)
+        question_scores.append(
+            QuestionScore(
+                benchmark_id=first.benchmark_id,
+                benchmark_name=first.benchmark_name,
+                ability=first.ability,
+                language=first.language,
+                reliability=summarize_question([item.final_score for item in trials]),
+            )
+        )
+    return question_scores
 
 
 def mean(values: list[Decimal]) -> Decimal:
@@ -98,28 +147,37 @@ def aggregate_agent(
     if not items:
         raise ValueError("cannot aggregate an agent without execution items")
 
-    by_benchmark: dict[UUID, list[AggregateItem]] = defaultdict(list)
-    for item in items:
-        by_benchmark[item.benchmark_id].append(item)
+    question_scores = group_question_scores(items)
+    by_benchmark: dict[UUID, list[QuestionScore]] = defaultdict(list)
+    for question in question_scores:
+        by_benchmark[question.benchmark_id].append(question)
     benchmarks = [
         BenchmarkAggregate(
             benchmark_id=benchmark_id,
-            name=benchmark_items[0].benchmark_name,
-            ability=benchmark_items[0].ability,
-            language=benchmark_items[0].language,
-            score=mean([item.final_score for item in benchmark_items]),
+            name=benchmark_questions[0].benchmark_name,
+            ability=benchmark_questions[0].ability,
+            language=benchmark_questions[0].language,
+            score=mean([question.question_mean for question in benchmark_questions]),
         )
-        for benchmark_id, benchmark_items in by_benchmark.items()
+        for benchmark_id, benchmark_questions in by_benchmark.items()
     ]
     benchmarks.sort(key=lambda item: (item.name.casefold(), str(item.benchmark_id)))
 
     ability_scores = {
-        ability: mean([item.final_score for item in items if item.ability == ability])
+        ability: mean(
+            [question.question_mean for question in question_scores if question.ability == ability]
+        )
         for ability in Ability
-        if any(item.ability == ability for item in items)
+        if any(question.ability == ability for question in question_scores)
     }
     language_scores = {
-        language: mean([item.final_score for item in items if item.language == language])
+        language: mean(
+            [
+                question.question_mean
+                for question in question_scores
+                if question.language == language
+            ]
+        )
         for language in Language
     }
     if sum(ability_weights.values()) != 100:
@@ -136,6 +194,11 @@ def aggregate_agent(
         ),
         start=Decimal(0),
     ) / covered_weight_total
+    reliabilities = [question.reliability for question in question_scores]
+    questions_by_ability: dict[Ability, list[QuestionReliability]] = defaultdict(list)
+    for question in question_scores:
+        questions_by_ability[question.ability].append(question.reliability)
+    ci_low, ci_high = stratified_bootstrap_ci(questions_by_ability, ability_weights)
     citation_scores = [
         item.citation_score or Decimal(0) for item in items if item.requires_citations
     ]
@@ -179,6 +242,11 @@ def aggregate_agent(
         latency_p50_ms=nearest_rank(latencies, 50),
         latency_p95_ms=nearest_rank(latencies, 95),
         latency_sample_count=len(latencies),
+        pass_at_1=pass_at_1(reliabilities),
+        pass_at_k=pass_at_k(reliabilities),
+        pass_pow_k=pass_pow_k(reliabilities),
+        ci_low=ci_low,
+        ci_high=ci_high,
     )
 
 
@@ -246,6 +314,11 @@ def serialize_aggregate(aggregate: AgentAggregate, rank: int) -> dict[str, objec
         "latency_p50_ms": aggregate.latency_p50_ms,
         "latency_p95_ms": aggregate.latency_p95_ms,
         "latency_sample_count": aggregate.latency_sample_count,
+        "pass_at_1": display(aggregate.pass_at_1),
+        "pass_at_k": display(aggregate.pass_at_k),
+        "pass_pow_k": display(aggregate.pass_pow_k),
+        "ci_low": display(aggregate.ci_low) if aggregate.ci_low is not None else None,
+        "ci_high": display(aggregate.ci_high) if aggregate.ci_high is not None else None,
     }
 
 

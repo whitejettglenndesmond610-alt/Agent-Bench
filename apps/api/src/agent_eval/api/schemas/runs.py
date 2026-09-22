@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal, Self
+from typing import Any, Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -29,6 +29,7 @@ class EvaluationRunCreate(BaseModel):
     judge_config_id: UUID
     score_config_id: UUID
     force_retest: bool = False
+    trial_count: int | None = Field(default=None, ge=1, le=10)
 
     @field_validator("name")
     @classmethod
@@ -57,6 +58,7 @@ class EvaluationRunBatchCreate(BaseModel):
     judge_config_id: UUID
     score_config_id: UUID
     force_retest: bool = False
+    trial_count: int | None = Field(default=None, ge=1, le=10)
 
     @field_validator("name")
     @classmethod
@@ -90,6 +92,7 @@ class EvaluationRunResponse(BaseModel):
     run_scope: RunScope
     target_ability: Ability | None
     ranking_eligible: bool
+    trial_count: int
     protocol_hash: str
     judge_config_id: UUID
     score_config_id: UUID
@@ -146,6 +149,7 @@ class EvaluationRunStateResponse(BaseModel):
     run_scope: RunScope
     target_ability: Ability | None
     ranking_eligible: bool
+    trial_count: int
     heartbeat_at: datetime | None
     started_at: datetime | None
     finished_at: datetime | None
@@ -201,6 +205,11 @@ class RunAgentResultSummary(BaseModel):
     latency_p50_ms: int | None = None
     latency_p95_ms: int | None = None
     latency_sample_count: int = 0
+    pass_at_1: float | None = None
+    pass_at_k: float | None = None
+    pass_pow_k: float | None = None
+    ci_low: float | None = None
+    ci_high: float | None = None
 
 
 class EvaluationRunProgress(EvaluationRunStateResponse):
@@ -241,6 +250,12 @@ class RunEvidenceScoreSummary(RunEvidenceSchema):
 class RunEvidenceScoreDetail(RunEvidenceScoreSummary):
     judge_reason: str | None
     judge_artifact: RunEvidenceArtifactMetadata | None
+    judge_provider: str | None = None
+    judge_model_requested: str | None = None
+    judge_model_returned: str | None = None
+    judge_prompt_version: str | None = None
+    judge_temperature: float | None = None
+    judge_details: dict[str, Any] | None = None
 
 
 class RunEvidenceListItem(RunEvidenceSchema):

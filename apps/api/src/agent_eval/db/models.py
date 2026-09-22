@@ -42,6 +42,8 @@ from agent_eval.db.enums import (
     DesiredRunState,
     EvaluationCaseStatus,
     ExecutionStatus,
+    JudgeCalibrationAgreement,
+    JudgeCalibrationStatus,
     Language,
     NotificationType,
     OnlineDataEnvironment,
@@ -508,6 +510,9 @@ class EvaluationRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     ranking_eligible: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=true(), nullable=False
     )
+    trial_count: Mapped[int] = mapped_column(
+        SmallInteger, default=1, server_default=text("1"), nullable=False
+    )
     protocol_hash: Mapped[str] = mapped_column(
         String(64), default=lambda: "0" * 64, server_default="0" * 64, nullable=False
     )
@@ -643,7 +648,12 @@ class ArtifactIndex(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 class ExecutionItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "execution_items"
     __table_args__ = (
-        UniqueConstraint("run_agent_id", "question_id", name="uq_execution_items_agent_question"),
+        UniqueConstraint(
+            "run_agent_id",
+            "question_id",
+            "trial_index",
+            name="uq_execution_items_agent_question",
+        ),
         CheckConstraint("attempt_count BETWEEN 0 AND 2", name="attempt_count_range"),
         CheckConstraint("latency_ms IS NULL OR latency_ms >= 0", name="latency_nonnegative"),
     )
@@ -662,6 +672,9 @@ class ExecutionItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     answer_preview: Mapped[str | None] = mapped_column(String(500))
     answer_hash: Mapped[str | None] = mapped_column(String(64))
+    trial_index: Mapped[int] = mapped_column(
+        SmallInteger, default=0, server_default=text("0"), nullable=False
+    )
     attempt_count: Mapped[int] = mapped_column(SmallInteger, default=0, nullable=False)
     latency_ms: Mapped[int | None] = mapped_column(Integer)
     artifact_id: Mapped[UUID | None] = mapped_column(
@@ -796,9 +809,55 @@ class ScoreRecord(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     judge_artifact_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("artifact_index.id", ondelete="SET NULL")
     )
+    judge_provider: Mapped[str | None] = mapped_column(String(80))
+    judge_model_requested: Mapped[str | None] = mapped_column(String(120))
+    judge_model_returned: Mapped[str | None] = mapped_column(String(120))
+    judge_prompt_version: Mapped[str | None] = mapped_column(String(80))
+    judge_temperature: Mapped[Decimal | None] = mapped_column(Numeric(4, 2))
+    judge_details_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
     execution_item: Mapped[ExecutionItem] = relationship(back_populates="score")
     judge_artifact: Mapped[ArtifactIndex | None] = relationship(foreign_keys=[judge_artifact_id])
+    calibration_label: Mapped["JudgeCalibrationLabel | None"] = relationship(
+        back_populates="score_record", passive_deletes=True
+    )
+
+
+class JudgeCalibrationLabel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "judge_calibration_labels"
+    __table_args__ = (
+        CheckConstraint("judge_score BETWEEN 0 AND 100", name="judge_score_range"),
+        CheckConstraint(
+            "(status = 'pending' AND human_label IS NULL AND labeled_at IS NULL) OR "
+            "(status = 'labeled' AND human_label IS NOT NULL AND labeled_at IS NOT NULL)",
+            name="label_lifecycle_valid",
+        ),
+        Index("ix_judge_calibration_labels_status_created", "status", "created_at"),
+    )
+
+    score_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("score_records.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    judge_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    judge_details_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    status: Mapped[JudgeCalibrationStatus] = mapped_column(
+        enum_column(JudgeCalibrationStatus, name="judge_calibration_status"),
+        default=JudgeCalibrationStatus.PENDING,
+        server_default="pending",
+        nullable=False,
+    )
+    human_label: Mapped[JudgeCalibrationAgreement | None] = mapped_column(
+        enum_column(JudgeCalibrationAgreement, name="judge_calibration_agreement")
+    )
+    note: Mapped[str | None] = mapped_column(Text)
+    labeled_by_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("auth_users.id", ondelete="SET NULL")
+    )
+    labeler_subject_key: Mapped[str | None] = mapped_column(String(200))
+    labeler_display_name: Mapped[str | None] = mapped_column(String(160))
+    labeled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    score_record: Mapped[ScoreRecord] = relationship(back_populates="calibration_label")
 
 
 class BadPatternRule(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -1109,6 +1168,11 @@ class LeaderboardResult(UUIDPrimaryKeyMixin, Base):
     score: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
     protocol_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     benchmark_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    ci_low: Mapped[Decimal | None] = mapped_column(Numeric(38, 18))
+    ci_high: Mapped[Decimal | None] = mapped_column(Numeric(38, 18))
+    pass_at_1: Mapped[Decimal | None] = mapped_column(Numeric(38, 18))
+    pass_at_k: Mapped[Decimal | None] = mapped_column(Numeric(38, 18))
+    pass_pow_k: Mapped[Decimal | None] = mapped_column(Numeric(38, 18))
 
     snapshot: Mapped[LeaderboardSnapshot] = relationship(back_populates="results")
 

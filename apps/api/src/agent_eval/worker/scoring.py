@@ -1,7 +1,10 @@
 import asyncio
 import json
+import logging
 from dataclasses import dataclass
 from datetime import timedelta
+from decimal import Decimal
+from typing import Any
 from uuid import UUID, uuid4
 
 import httpx
@@ -34,10 +37,27 @@ from agent_eval.db.models import (
     RunAgent,
     ScoreRecord,
 )
-from agent_eval.judges.deepseek import JudgeError, Sleep, judge_open_answer, judge_short_answer
+from agent_eval.judges.deepseek import (
+    JUDGE_TEMPERATURE,
+    RUBRIC_PROMPT_VERSION,
+    JudgeError,
+    Sleep,
+    judge_open_answer,
+    judge_rubric_answer,
+    judge_short_answer,
+)
 from agent_eval.runs.queue import lock_owned_run
 from agent_eval.scoring.rules import score_exact_answer, score_multiple_choice
 from agent_eval.worker.limits import RequestLimit, concurrency_slot
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class JudgeRuntime:
+    provider: str
+    model: str
+    prompt_version: str
 
 
 @dataclass(frozen=True)
@@ -61,6 +81,12 @@ class ScoreResult:
     requires_citations: bool
     failed: bool
     raw_judge_response: bytes | None = None
+    judge_provider: str | None = None
+    judge_model_requested: str | None = None
+    judge_model_returned: str | None = None
+    judge_prompt_version: str | None = None
+    judge_temperature: float | None = None
+    judge_details: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -171,6 +197,16 @@ class ScoringWriter:
             final_score=result.answer_score,
             judge_reason=result.reason[:500],
             judge_artifact_id=judge_artifact_id,
+            judge_provider=result.judge_provider,
+            judge_model_requested=result.judge_model_requested,
+            judge_model_returned=result.judge_model_returned,
+            judge_prompt_version=result.judge_prompt_version,
+            judge_temperature=(
+                Decimal(str(result.judge_temperature))
+                if result.judge_temperature is not None
+                else None
+            ),
+            judge_details_json=result.judge_details,
         )
         session.add(score)
         item = await session.get(ExecutionItem, result.item_id)
@@ -192,7 +228,7 @@ async def execute_answer_scoring(
     owner_id: str,
     request_limit: RequestLimit | None = None,
 ) -> bool:
-    work, judge_model = await load_score_work(session_factory, settings, artifact_store, run_id)
+    work, judge_runtime = await load_score_work(session_factory, settings, artifact_store, run_id)
     writer = ScoringWriter(session_factory, settings, run_id, owner_id, artifact_store)
     writer_task = asyncio.create_task(writer.run(), name=f"scoring-writer-{run_id}")
     try:
@@ -229,7 +265,7 @@ async def execute_answer_scoring(
                             writer,
                             client,
                             settings,
-                            judge_model,
+                            judge_runtime,
                             sleep,
                             request_limit,
                         ),
@@ -260,7 +296,7 @@ async def load_score_work(
     settings: Settings,
     artifact_store: ArtifactStore,
     run_id: UUID,
-) -> tuple[list[ScoreWork], str]:
+) -> tuple[list[ScoreWork], JudgeRuntime]:
     async with session_factory() as session:
         run = await session.get(EvaluationRun, run_id)
         if run is None:
@@ -287,7 +323,20 @@ async def load_score_work(
                 .order_by(ExecutionItem.id)
             )
         )
-        model = judge_config.model
+        judge_runtime = JudgeRuntime(
+            provider=judge_config.provider,
+            model=judge_config.model,
+            prompt_version=judge_config.prompt_version,
+        )
+    logger.info(
+        "judge_config_resolved",
+        extra={
+            "run_id": str(run_id),
+            "judge_provider": judge_runtime.provider,
+            "judge_model": judge_runtime.model,
+            "judge_prompt_version": judge_runtime.prompt_version,
+        },
+    )
 
     work: list[ScoreWork] = []
     for item in items:
@@ -310,7 +359,7 @@ async def load_score_work(
                 failed=failed,
             )
         )
-    return work, model
+    return work, judge_runtime
 
 
 async def load_candidate_answer(artifact_store: ArtifactStore, item: ExecutionItem) -> str:
@@ -361,7 +410,7 @@ async def judge_worker(
     writer: ScoringWriter,
     client: httpx.AsyncClient,
     settings: Settings,
-    model: str,
+    judge_runtime: JudgeRuntime,
     sleep: Sleep,
     request_limit: RequestLimit | None = None,
 ) -> bool:
@@ -376,31 +425,81 @@ async def judge_worker(
         try:
             if item.candidate_answer is None:
                 raise RuntimeError("judge candidate answer is missing")
-            judge = (
-                judge_open_answer
-                if item.question_type == QuestionType.OPEN_ENDED
-                else judge_short_answer
-            )
+            score: int
+            reason: str
+            raw_response: bytes
+            model_returned: str | None
+            judge_details: dict[str, Any] | None = None
             async with concurrency_slot(request_limit):
-                judged = await judge(
-                    client,
-                    api_url=settings.deepseek_api_url,
-                    api_key=api_key.get_secret_value(),
-                    model=model,
-                    question=item.question,
-                    reference_answer=item.reference_answer,
-                    candidate_answer=item.candidate_answer,
-                    timeout_seconds=settings.deepseek_timeout_seconds,
-                    sleep=sleep,
-                )
+                if (
+                    item.question_type == QuestionType.OPEN_ENDED
+                    and judge_runtime.prompt_version == RUBRIC_PROMPT_VERSION
+                ):
+                    judged_rubric = await judge_rubric_answer(
+                        client,
+                        api_url=settings.deepseek_api_url,
+                        api_key=api_key.get_secret_value(),
+                        model=judge_runtime.model,
+                        question=item.question,
+                        reference_answer=item.reference_answer,
+                        candidate_answer=item.candidate_answer,
+                        timeout_seconds=settings.deepseek_timeout_seconds,
+                        sleep=sleep,
+                    )
+                    score = judged_rubric.score
+                    reason = judged_rubric.reason
+                    raw_response = judged_rubric.raw_response
+                    model_returned = judged_rubric.model_returned
+                    judge_details = {
+                        "rubric": {
+                            "prompt_version": RUBRIC_PROMPT_VERSION,
+                            "dimensions": [
+                                {
+                                    "key": dimension.key,
+                                    "label": dimension.label,
+                                    "weight": dimension.weight,
+                                    "verdict": dimension.verdict,
+                                    "rationale": dimension.rationale,
+                                }
+                                for dimension in judged_rubric.dimensions
+                            ],
+                        }
+                    }
+                else:
+                    judge = (
+                        judge_open_answer
+                        if item.question_type == QuestionType.OPEN_ENDED
+                        else judge_short_answer
+                    )
+                    judged = await judge(
+                        client,
+                        api_url=settings.deepseek_api_url,
+                        api_key=api_key.get_secret_value(),
+                        model=judge_runtime.model,
+                        question=item.question,
+                        reference_answer=item.reference_answer,
+                        candidate_answer=item.candidate_answer,
+                        timeout_seconds=settings.deepseek_timeout_seconds,
+                        sleep=sleep,
+                    )
+                    score = judged.score
+                    reason = judged.reason
+                    raw_response = judged.raw_response
+                    model_returned = judged.model_returned
             written = await writer.write(
                 ScoreResult(
                     item_id=item.item_id,
-                    answer_score=judged.score,
-                    reason=judged.reason,
+                    answer_score=score,
+                    reason=reason,
                     requires_citations=item.requires_citations,
                     failed=False,
-                    raw_judge_response=judged.raw_response,
+                    raw_judge_response=raw_response,
+                    judge_provider=judge_runtime.provider,
+                    judge_model_requested=judge_runtime.model,
+                    judge_model_returned=model_returned,
+                    judge_prompt_version=judge_runtime.prompt_version,
+                    judge_temperature=JUDGE_TEMPERATURE,
+                    judge_details=judge_details,
                 )
             )
             if not written:

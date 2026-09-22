@@ -20,6 +20,13 @@ from agent_eval.api.schemas.quality import (
     BadPatternRuleCreate,
     BadPatternRuleResponse,
     BadPatternRuleUpdate,
+    CalibrationLabelInput,
+    CalibrationReportResponse,
+    CalibrationSampleInput,
+    CalibrationSampleResponse,
+    CalibrationSummaryResponse,
+    CalibrationTaskItem,
+    CalibrationTaskList,
     QualityBatchOperationResponse,
     QualityDashboardResponse,
     QualityDashboardSummary,
@@ -36,6 +43,8 @@ from agent_eval.db.base import utc_now
 from agent_eval.db.enums import (
     BadPatternFindingStatus,
     BadPatternSeverity,
+    JudgeCalibrationAgreement,
+    JudgeCalibrationStatus,
     QualityTaskStatus,
     SessionRole,
 )
@@ -52,12 +61,14 @@ from agent_eval.db.models import (
     EvaluationRun,
     ExecutionItem,
     HttpAttempt,
+    JudgeCalibrationLabel,
     QualityReview,
     QualityReviewTask,
     Question,
     RunAgent,
     ScoreRecord,
 )
+from agent_eval.quality.calibration import CalibrationSummary, summarize_calibration
 from agent_eval.quality.detector import InvalidBadPatternRule, compile_pattern, scan_bad_patterns
 
 router = APIRouter(prefix="/api/v1/quality", tags=["quality-review"])
@@ -934,4 +945,288 @@ async def update_bad_pattern_rule(
         open_count=open_count or 0,
         created_at=rule.created_at,
         updated_at=rule.updated_at,
+    )
+
+
+def calibration_snapshot(score: ScoreRecord) -> dict[str, Any]:
+    return {
+        "answer_score": float(score.answer_score),
+        "judge_reason": score.judge_reason,
+        "judge_provider": score.judge_provider,
+        "judge_model_requested": score.judge_model_requested,
+        "judge_model_returned": score.judge_model_returned,
+        "judge_prompt_version": score.judge_prompt_version,
+        "judge_temperature": (
+            float(score.judge_temperature) if score.judge_temperature is not None else None
+        ),
+        "details": score.judge_details_json,
+    }
+
+
+def calibration_context_query() -> Any:
+    return (
+        select(
+            JudgeCalibrationLabel,
+            ScoreRecord,
+            ExecutionItem,
+            RunAgent,
+            EvaluationRun,
+            AgentVersion,
+            Agent,
+            Question,
+            Benchmark,
+        )
+        .join(ScoreRecord, ScoreRecord.id == JudgeCalibrationLabel.score_record_id)
+        .join(ExecutionItem, ExecutionItem.id == ScoreRecord.execution_item_id)
+        .join(RunAgent, RunAgent.id == ExecutionItem.run_agent_id)
+        .join(EvaluationRun, EvaluationRun.id == RunAgent.run_id)
+        .join(AgentVersion, AgentVersion.id == RunAgent.agent_version_id)
+        .join(Agent, Agent.id == AgentVersion.agent_id)
+        .join(Question, Question.id == ExecutionItem.question_id)
+        .join(DatasetVersion, DatasetVersion.id == Question.dataset_version_id)
+        .join(Benchmark, Benchmark.id == DatasetVersion.benchmark_id)
+    )
+
+
+def calibration_task_item(
+    task: JudgeCalibrationLabel,
+    score: ScoreRecord,
+    item: ExecutionItem,
+    run_agent: RunAgent,
+    run: EvaluationRun,
+    version: AgentVersion,
+    agent: Agent,
+    question: Question,
+    benchmark: Benchmark,
+) -> CalibrationTaskItem:
+    return CalibrationTaskItem(
+        id=task.id,
+        score_record_id=score.id,
+        execution_item_id=item.id,
+        run_id=run.id,
+        run_name=run.name,
+        agent_name=agent.name,
+        question_external_id=question.external_id,
+        question_type=question.type,
+        ability=benchmark.ability,
+        judge_score=float(task.judge_score),
+        judge_details=task.judge_details_json,
+        status=task.status,
+        human_label=task.human_label,
+        note=task.note,
+        labeler_display_name=task.labeler_display_name,
+        labeled_at=task.labeled_at,
+        created_at=task.created_at,
+    )
+
+
+def calibration_summary_response(summary: CalibrationSummary) -> CalibrationSummaryResponse:
+    return CalibrationSummaryResponse(
+        labeled=summary.labeled,
+        agree=summary.agree,
+        disagree=summary.disagree,
+        agreement=summary.agreement,
+        kappa=summary.kappa,
+        insufficient_sample=summary.insufficient_sample,
+    )
+
+
+@router.post("/calibration/sample", response_model=CalibrationSampleResponse)
+async def sample_calibration_tasks(
+    payload: CalibrationSampleInput,
+    database: DatabaseSession,
+    _authorization: OperatorCsrfSession,
+) -> CalibrationSampleResponse:
+    if payload.run_id is not None:
+        if (
+            await database.scalar(
+                select(EvaluationRun.id).where(EvaluationRun.id == payload.run_id)
+            )
+            is None
+        ):
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "run_not_found", "message": "评测任务不存在"},
+            )
+        run_ids = [payload.run_id]
+    else:
+        run_ids = list(
+            await database.scalars(
+                select(EvaluationRun.id)
+                .order_by(EvaluationRun.created_at.desc(), EvaluationRun.id.desc())
+                .limit(payload.recent_run_count)
+            )
+        )
+    if not run_ids:
+        return CalibrationSampleResponse(requested=payload.sample_size, eligible=0, created=0)
+
+    eligible_filter = [
+        RunAgent.run_id.in_(run_ids),
+        JudgeCalibrationLabel.id.is_(None),
+    ]
+    eligible = (
+        await database.scalar(
+            select(func.count())
+            .select_from(ScoreRecord)
+            .join(ExecutionItem, ExecutionItem.id == ScoreRecord.execution_item_id)
+            .join(RunAgent, RunAgent.id == ExecutionItem.run_agent_id)
+            .outerjoin(
+                JudgeCalibrationLabel,
+                JudgeCalibrationLabel.score_record_id == ScoreRecord.id,
+            )
+            .where(*eligible_filter)
+        )
+    ) or 0
+    candidates = list(
+        await database.scalars(
+            select(ScoreRecord)
+            .join(ExecutionItem, ExecutionItem.id == ScoreRecord.execution_item_id)
+            .join(RunAgent, RunAgent.id == ExecutionItem.run_agent_id)
+            .outerjoin(
+                JudgeCalibrationLabel,
+                JudgeCalibrationLabel.score_record_id == ScoreRecord.id,
+            )
+            .where(*eligible_filter)
+            .order_by(func.random())
+            .limit(payload.sample_size)
+        )
+    )
+    for score in candidates:
+        database.add(
+            JudgeCalibrationLabel(
+                score_record_id=score.id,
+                judge_score=score.answer_score,
+                judge_details_json=calibration_snapshot(score),
+            )
+        )
+    await database.commit()
+    return CalibrationSampleResponse(
+        requested=payload.sample_size, eligible=eligible, created=len(candidates)
+    )
+
+
+@router.get("/calibration/tasks", response_model=CalibrationTaskList)
+async def list_calibration_tasks(
+    database: DatabaseSession,
+    _authorization: OperatorSession,
+    calibration_status: Annotated[JudgeCalibrationStatus | None, Query(alias="status")] = None,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> CalibrationTaskList:
+    query = calibration_context_query()
+    if calibration_status is not None:
+        query = query.where(JudgeCalibrationLabel.status == calibration_status)
+    total = await database.scalar(
+        select(func.count()).select_from(query.order_by(None).subquery())
+    )
+    rows = (
+        await database.execute(
+            query.order_by(JudgeCalibrationLabel.created_at.desc(), JudgeCalibrationLabel.id)
+            .limit(limit)
+            .offset(offset)
+        )
+    ).all()
+    return CalibrationTaskList(
+        items=[calibration_task_item(*row) for row in rows],
+        total=total or 0,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post("/calibration/tasks/{task_id}/label", response_model=CalibrationTaskItem)
+async def label_calibration_task(
+    task_id: UUID,
+    payload: CalibrationLabelInput,
+    database: DatabaseSession,
+    authorization: OperatorCsrfSession,
+) -> CalibrationTaskItem:
+    task = await database.get(JudgeCalibrationLabel, task_id)
+    if task is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "calibration_task_not_found", "message": "校准任务不存在"},
+        )
+    if task.status != JudgeCalibrationStatus.PENDING:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "calibration_task_labeled", "message": "校准任务已标注"},
+        )
+    user = authorization.user
+    if user is None:
+        raise HTTPException(
+            status_code=401, detail={"code": "user_missing", "message": "登录已失效"}
+        )
+    task.status = JudgeCalibrationStatus.LABELED
+    task.human_label = payload.label
+    task.note = payload.note.strip() if payload.note else None
+    task.labeled_by_user_id = None if user.is_shared else user.id
+    task.labeler_subject_key = user.subject_key
+    task.labeler_display_name = user.display_name
+    task.labeled_at = utc_now()
+    await database.commit()
+    row = (
+        await database.execute(
+            calibration_context_query().where(JudgeCalibrationLabel.id == task_id)
+        )
+    ).one()
+    return calibration_task_item(*row)
+
+
+@router.get("/calibration/report", response_model=CalibrationReportResponse)
+async def get_calibration_report(
+    database: DatabaseSession,
+    _authorization: OperatorSession,
+    run_id: UUID | None = None,
+) -> CalibrationReportResponse:
+    filters = [JudgeCalibrationLabel.status == JudgeCalibrationStatus.LABELED]
+    if run_id is not None:
+        filters.append(RunAgent.run_id == run_id)
+    rows = (
+        await database.execute(
+            select(
+                JudgeCalibrationLabel.judge_score,
+                JudgeCalibrationLabel.human_label,
+                ScoreRecord.judge_prompt_version,
+                Question.type,
+                Benchmark.ability,
+            )
+            .join(ScoreRecord, ScoreRecord.id == JudgeCalibrationLabel.score_record_id)
+            .join(ExecutionItem, ExecutionItem.id == ScoreRecord.execution_item_id)
+            .join(RunAgent, RunAgent.id == ExecutionItem.run_agent_id)
+            .join(Question, Question.id == ExecutionItem.question_id)
+            .join(DatasetVersion, DatasetVersion.id == Question.dataset_version_id)
+            .join(Benchmark, Benchmark.id == DatasetVersion.benchmark_id)
+            .where(*filters)
+        )
+    ).all()
+
+    def pair(row: Any) -> tuple[float, bool]:
+        judge_score, human_label, _, _, _ = row
+        return float(judge_score), human_label == JudgeCalibrationAgreement.AGREE
+
+    by_question_type: dict[str, list[tuple[float, bool]]] = {}
+    by_ability: dict[str, list[tuple[float, bool]]] = {}
+    by_prompt_version: dict[str, list[tuple[float, bool]]] = {}
+    for row in rows:
+        _, _, prompt_version, question_type, ability = row
+        by_question_type.setdefault(question_type.value, []).append(pair(row))
+        by_ability.setdefault(ability.value, []).append(pair(row))
+        by_prompt_version.setdefault(prompt_version or "unrecorded", []).append(pair(row))
+    return CalibrationReportResponse(
+        overall=calibration_summary_response(
+            summarize_calibration([pair(row) for row in rows])
+        ),
+        by_question_type={
+            key: calibration_summary_response(summarize_calibration(pairs))
+            for key, pairs in sorted(by_question_type.items())
+        },
+        by_ability={
+            key: calibration_summary_response(summarize_calibration(pairs))
+            for key, pairs in sorted(by_ability.items())
+        },
+        by_prompt_version={
+            key: calibration_summary_response(summarize_calibration(pairs))
+            for key, pairs in sorted(by_prompt_version.items())
+        },
     )

@@ -47,6 +47,7 @@ from agent_eval.db.models import (
     RunAgent,
     ScoreConfig,
 )
+from agent_eval.judges.deepseek import RUBRIC_PROMPT_VERSION
 from agent_eval.leaderboards.service import get_agent_evaluation_statuses
 from agent_eval.runs.compatibility import analyze_profile_compatibility
 from agent_eval.runs.evidence import (
@@ -105,6 +106,7 @@ def state_response(run: EvaluationRun) -> EvaluationRunStateResponse:
         run_scope=run.run_scope,
         target_ability=run.target_ability,
         ranking_eligible=run.ranking_eligible,
+        trial_count=run.trial_count,
         heartbeat_at=run.heartbeat_at,
         started_at=run.started_at,
         finished_at=run.finished_at,
@@ -142,6 +144,7 @@ def run_response(prepared: PreparedRun) -> EvaluationRunResponse:
         run_scope=run.run_scope,
         target_ability=run.target_ability,
         ranking_eligible=run.ranking_eligible,
+        trial_count=run.trial_count,
         protocol_hash=run.protocol_hash,
         judge_config_id=run.judge_config_id,
         score_config_id=run.score_config_id,
@@ -185,6 +188,12 @@ async def resolve_profile(
 def run_name_for_agent(base_name: str, agent_name: str) -> str:
     suffix = f" · {agent_name}"
     return f"{base_name[: 160 - len(suffix)]}{suffix}"
+
+
+def resolve_trial_count(requested: int | None, profile: RunProfile) -> int:
+    if requested is not None:
+        return requested
+    return 5 if profile.ranking_eligible else 1
 
 
 def compatibility_response(
@@ -277,7 +286,12 @@ async def get_evaluation_run_options(
     judge = await database.scalar(
         select(JudgeConfig)
         .where(JudgeConfig.enabled.is_(True))
-        .order_by(JudgeConfig.provider, JudgeConfig.model, JudgeConfig.id)
+        .order_by(
+            JudgeConfig.prompt_version != RUBRIC_PROMPT_VERSION,
+            JudgeConfig.provider,
+            JudgeConfig.model,
+            JudgeConfig.id,
+        )
     )
     score = (
         await database.get(ScoreConfig, selected_profile.score_config_id)
@@ -434,6 +448,7 @@ async def create_evaluation_run(
             run_scope=profile.scope,
             target_ability=profile.target_ability,
             ranking_eligible=profile.ranking_eligible,
+            trial_count=resolve_trial_count(payload.trial_count, profile),
             prevent_duplicates=True,
             force_retest=payload.force_retest,
         )
@@ -497,6 +512,7 @@ async def create_evaluation_run_batch(
                     run_scope=profile.scope,
                     target_ability=profile.target_ability,
                     ranking_eligible=profile.ranking_eligible,
+                    trial_count=resolve_trial_count(payload.trial_count, profile),
                     prevent_duplicates=True,
                     force_retest=payload.force_retest,
                 )
