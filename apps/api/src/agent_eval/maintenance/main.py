@@ -20,6 +20,7 @@ from agent_eval.core.storage import ensure_storage
 from agent_eval.datasets.audit import AuditPolicy, audit_question_records, render_audit_report
 from agent_eval.datasets.balanced_builder import build_balanced_v2_dataset
 from agent_eval.datasets.demo_builder import build_demo_dataset
+from agent_eval.datasets.hle_builder import HLE_BENCHMARK, HLE_QUOTA, build_hle_dataset
 from agent_eval.datasets.importer import (
     BALANCED_V2_COHORT_KEY,
     OFFICIAL_V4_COHORT_KEY,
@@ -266,6 +267,35 @@ async def import_livebench(path: Path) -> None:
         f"imported {len(records)} held-out livebench questions across "
         f"{len(imported)} benchmarks"
     )
+
+
+async def import_hle(path: Path) -> None:
+    records = load_question_records(path)
+    counts = {record.benchmark: 0 for record in records}
+    for record in records:
+        counts[record.benchmark] += 1
+    if counts != {HLE_BENCHMARK: HLE_QUOTA}:
+        raise SystemExit(f"hle import requires {HLE_QUOTA} {HLE_BENCHMARK} questions, got {counts}")
+
+    settings = Settings()
+    configure_logging(settings.log_level)
+    ensure_storage(settings)
+    engine = create_engine(settings)
+    session_factory = create_session_factory(engine)
+    try:
+        async with session_scope(session_factory) as session:
+            imported = await import_question_records(
+                session, records, cohort_key=HELDOUT_V1_COHORT_KEY, held_out=True
+            )
+    finally:
+        await engine.dispose()
+    for item in imported:
+        action = "created" if item.created else "reused"
+        print(
+            f"{action} {item.benchmark} v{item.version}: "
+            f"{item.question_count} questions, sha256={item.content_hash}"
+        )
+    print(f"imported {len(records)} held-out hle questions across {len(imported)} benchmarks")
 
 
 def audit_dataset(path: Path, policy: str | None, enforce: bool) -> None:
@@ -597,6 +627,10 @@ def main() -> None:
     )
     livebench_import_parser = subparsers.add_parser("import-livebench")
     livebench_import_parser.add_argument("path", type=Path)
+    hle_parser = subparsers.add_parser("build-hle")
+    hle_parser.add_argument("output", type=Path, nargs="?", default=Path("data/hle-heldout"))
+    hle_import_parser = subparsers.add_parser("import-hle")
+    hle_import_parser.add_argument("path", type=Path)
     bootstrap_parser = subparsers.add_parser("bootstrap")
     bootstrap_parser.add_argument("--dataset", type=Path, default=Path("/datasets/demo"))
     preflight_parser = subparsers.add_parser("preflight")
@@ -722,6 +756,11 @@ def main() -> None:
         print(f"built {len(livebench_records)} livebench questions in {arguments.output}")
     elif arguments.command == "import-livebench":
         asyncio.run(import_livebench(arguments.path))
+    elif arguments.command == "build-hle":
+        hle_records = build_hle_dataset(arguments.output)
+        print(f"built {len(hle_records)} hle questions in {arguments.output}")
+    elif arguments.command == "import-hle":
+        asyncio.run(import_hle(arguments.path))
     elif arguments.command == "build-balanced-v2":
         local_anchors = Path("data/demo-dataset")
         anchor_path = arguments.anchors or (

@@ -52,6 +52,7 @@ HELDOUT_V1_EXPECTED = {
     "LiveBench-Math": 20,
     "LiveBench-Reasoning": 20,
     "LiveBench-DataAnalysis": 20,
+    "HLE-TextOnly": 40,
 }
 
 # The first balanced-v2 release used these two names before the Original prefix
@@ -304,7 +305,7 @@ async def build_run_profiles(session: AsyncSession) -> list[RunProfile]:
             _profile(
                 key=HELDOUT_V1_PROFILE_KEY,
                 name="Held-out V1 Comprehensive",
-                description="Private LiveBench held-out cohort with masked question text.",
+                description="Private LiveBench and HLE held-out cohort with masked question text.",
                 scope=RunScope.COMPREHENSIVE,
                 target_ability=None,
                 datasets=heldout_datasets,

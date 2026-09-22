@@ -371,7 +371,7 @@ async def prepare_evaluation_run(
         dataset_versions
     ):
         raise RunConfigurationError(
-            "heldout_v1_incomplete", "heldout-v1 必须使用完整的 60 题 LiveBench 私有配置"
+            "heldout_v1_incomplete", "heldout-v1 必须使用完整的 100 题 LiveBench+HLE 私有配置"
         )
 
     for version in agent_versions:

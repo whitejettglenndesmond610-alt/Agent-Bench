@@ -8,12 +8,14 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import select
+from test_hle import hle_rows
 from test_quality import login_operator as quality_login
 from test_quality import quality_client, seed_quality_finding
 from test_run_evidence import create_run, seed_evidence
 from test_runs import login_operator, run_client
 
 from agent_eval.core.settings import Settings
+from agent_eval.datasets.hle_builder import build_hle_records
 from agent_eval.datasets.importer import (
     HELDOUT_V1_COHORT_KEY,
     LEGACY_COHORT_KEY,
@@ -163,13 +165,26 @@ def test_livebench_dataset_writes_per_benchmark_jsonl_and_manifest(
         assert len(lines) == quota
 
 
-async def seed_heldout_versions(session) -> list:
+async def seed_livebench_versions(session) -> list:
     records: list = []
     for category in sorted(LIVEBENCH_CATEGORIES):
         records.extend(build_livebench_category_records(category, livebench_rows(category)))
     return await import_question_records(
         session, records, cohort_key=HELDOUT_V1_COHORT_KEY, held_out=True
     )
+
+
+async def seed_heldout_versions(session) -> list:
+    imported = await seed_livebench_versions(session)
+    imported.extend(
+        await import_question_records(
+            session,
+            build_hle_records(hle_rows()),
+            cohort_key=HELDOUT_V1_COHORT_KEY,
+            held_out=True,
+        )
+    )
+    return imported
 
 
 async def test_held_out_import_marks_versions_and_rejects_conflicts(tmp_path: Path) -> None:
@@ -230,17 +245,22 @@ def _dataset(name: str, count: int, held_out: bool = True) -> SimpleNamespace:
     )
 
 
-def test_heldout_v1_completeness_requires_all_livebench_benchmarks() -> None:
-    datasets = [
+def _heldout_datasets() -> list[SimpleNamespace]:
+    return [
         _dataset("LiveBench-Math", 20),
         _dataset("LiveBench-Reasoning", 20),
         _dataset("LiveBench-DataAnalysis", 20),
+        _dataset("HLE-TextOnly", 40),
     ]
+
+
+def test_heldout_v1_completeness_requires_livebench_and_hle_benchmarks() -> None:
+    datasets = _heldout_datasets()
     assert is_complete_heldout_v1(datasets)
     assert not is_complete_heldout_v1(datasets[:-1])
-    assert not is_complete_heldout_v1([*datasets[:-1], _dataset("LiveBench-DataAnalysis", 21)])
+    assert not is_complete_heldout_v1([*datasets[:-1], _dataset("HLE-TextOnly", 41)])
     assert not is_complete_heldout_v1(
-        [*datasets[:-1], _dataset("LiveBench-DataAnalysis", 20, held_out=False)]
+        [*datasets[:-1], _dataset("HLE-TextOnly", 40, held_out=False)]
     )
 
 
@@ -253,6 +273,14 @@ async def test_heldout_v1_profile_is_exposed_without_stealing_default(tmp_path: 
     session_factory = create_session_factory(engine)
     try:
         async with session_scope(session_factory) as session:
+            await seed_livebench_versions(session)
+        async with session_factory() as session:
+            livebench_only_keys = {
+                profile.key for profile in await build_run_profiles(session)
+            }
+        assert HELDOUT_V1_PROFILE_KEY not in livebench_only_keys
+
+        async with session_scope(session_factory) as session:
             await seed_heldout_versions(session)
         async with session_factory() as session:
             profiles = await build_run_profiles(session)
@@ -262,8 +290,8 @@ async def test_heldout_v1_profile_is_exposed_without_stealing_default(tmp_path: 
         heldout = next(
             profile for profile in profiles if profile.key == HELDOUT_V1_PROFILE_KEY
         )
-        assert heldout.question_count == 60
-        assert heldout.benchmark_count == 3
+        assert heldout.question_count == 100
+        assert heldout.benchmark_count == 4
         assert heldout.ranking_eligible
         assert set(heldout.publishes_to) == {"overall", "reasoning", "data_reasoning"}
         assert HELDOUT_V1_PROFILE_KEY in {profile.key for profile in available}

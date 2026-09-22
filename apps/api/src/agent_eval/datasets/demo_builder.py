@@ -63,8 +63,11 @@ class DemoDatasetBuildError(RuntimeError):
     pass
 
 
-def fetch_bytes(url: str) -> bytes:
-    request = Request(url, headers={"User-Agent": USER_AGENT})
+def fetch_bytes(url: str, *, bearer_token: str | None = None) -> bytes:
+    headers = {"User-Agent": USER_AGENT}
+    if bearer_token:
+        headers["Authorization"] = f"Bearer {bearer_token}"
+    request = Request(url, headers=headers)
     for attempt in range(7):
         time.sleep(0.2)
         try:
@@ -81,8 +84,8 @@ def fetch_bytes(url: str) -> bytes:
     raise DemoDatasetBuildError(f"failed to download {url}")
 
 
-def fetch_json(url: str) -> Any:
-    return json.loads(fetch_bytes(url))
+def fetch_json(url: str, *, bearer_token: str | None = None) -> Any:
+    return json.loads(fetch_bytes(url, bearer_token=bearer_token))
 
 
 def stable_hash(value: str) -> bytes:
