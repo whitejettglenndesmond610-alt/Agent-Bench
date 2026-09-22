@@ -25,6 +25,9 @@ jobs:
       - name: Mypy
         run: uv run mypy
 
+      - name: Build demo dataset fixture
+        run: uv run python -m agent_eval.maintenance.main build-demo-dataset
+
       - name: Pytest
         run: uv run pytest -q
 
