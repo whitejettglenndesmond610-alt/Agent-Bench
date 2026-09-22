@@ -6,7 +6,7 @@ from fastapi import APIRouter, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.sql.base import ExecutableOption
 
 from agent_eval.api.dependencies import (
@@ -54,6 +54,10 @@ def release_options() -> tuple[ExecutableOption, ...]:
         selectinload(DatasetRelease.case_links).joinedload(
             DatasetReleaseCase.evaluation_case
         ),
+        selectinload(DatasetRelease.case_links)
+        .joinedload(DatasetReleaseCase.evaluation_case)
+        .joinedload(EvaluationCase.formal_question)
+        .joinedload(Question.dataset_version),
         selectinload(DatasetRelease.dataset_versions).joinedload(DatasetVersion.benchmark),
     )
 
@@ -81,12 +85,22 @@ async def owned_release(
     return release
 
 
+def _case_held_out(evaluation_case: EvaluationCase) -> bool:
+    formal_question = evaluation_case.formal_question
+    return formal_question is not None and formal_question.dataset_version.held_out
+
+
 def release_response(release: DatasetRelease) -> DatasetReleaseResponse:
     cases = [
         DatasetReleaseCaseResponse(
             id=link.evaluation_case.id,
             position=link.position,
-            prompt=link.evaluation_case.prompt,
+            prompt=(
+                None
+                if _case_held_out(link.evaluation_case)
+                else link.evaluation_case.prompt
+            ),
+            held_out=_case_held_out(link.evaluation_case),
             language=link.evaluation_case.language,
             ability=link.evaluation_case.ability,
             question_type=link.evaluation_case.question_type,
@@ -189,6 +203,9 @@ async def create_release_locked(
     stored_cases = list(
         await database.scalars(
             select(EvaluationCase)
+            .options(
+                joinedload(EvaluationCase.formal_question).joinedload(Question.dataset_version)
+            )
             .where(
                 EvaluationCase.id.in_(payload.evaluation_case_ids),
                 EvaluationCase.owner_user_id == owner_user_id,

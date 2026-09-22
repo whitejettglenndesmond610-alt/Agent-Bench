@@ -334,8 +334,8 @@ export function QualityPage() {
                 </header>
 
                 <section className="quality-evidence-grid">
-                  <article><span>PROMPT</span><p>{detail.prompt}</p></article>
-                  <article><span>REFERENCE</span><p>{detail.reference_answer || "未提供标准答案"}</p></article>
+                  <article><span>PROMPT</span><p>{detail.prompt ?? "held-out 私有题，原文已遮蔽"}</p></article>
+                  <article><span>REFERENCE</span><p>{detail.reference_answer ?? (detail.held_out ? "held-out 私有题，参考答案已遮蔽" : "未提供标准答案")}</p></article>
                   <article className="is-answer"><span>AGENT ANSWER</span><p>{detail.answer ?? detail.answer_preview ?? "没有可读取的回答"}</p></article>
                   <article className="is-hit"><span>DETECTOR HIT · {detail.match_count} MATCHES</span><p>{detail.snippet}</p></article>
                 </section>

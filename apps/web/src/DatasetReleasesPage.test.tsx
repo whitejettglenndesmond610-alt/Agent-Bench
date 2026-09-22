@@ -87,6 +87,7 @@ function makeRelease(status: DatasetRelease["status"], revision: number): Datase
       id: evaluationCase.id,
       position: 1,
       prompt: evaluationCase.prompt,
+      held_out: false,
       language: "zh",
       ability: "reasoning",
       question_type: "short_answer",

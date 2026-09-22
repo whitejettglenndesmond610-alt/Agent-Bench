@@ -15,6 +15,7 @@ from agent_eval.scoring.configs import ensure_balanced_v2_score_config
 LEGACY_COHORT_KEY = "legacy-v1"
 BALANCED_V2_COHORT_KEY = "balanced-v2"
 OFFICIAL_V4_COHORT_KEY = "official-v4"
+HELDOUT_V1_COHORT_KEY = "heldout-v1"
 
 
 class DatasetImportError(ValueError):
@@ -36,6 +37,7 @@ async def import_question_records(
     *,
     cohort_key: str = LEGACY_COHORT_KEY,
     allow_candidate: bool = False,
+    held_out: bool = False,
 ) -> list[ImportedVersion]:
     cohort_key = cohort_key.strip()
     if not cohort_key or len(cohort_key) > 80:
@@ -59,8 +61,12 @@ async def import_question_records(
             raise DatasetImportError("balanced-v2 import requires a complete passing audit")
         validate_balanced_v2_quality(records, report)
         await ensure_balanced_v2_score_config(session)
-    elif cohort_key not in {LEGACY_COHORT_KEY, OFFICIAL_V4_COHORT_KEY}:
-        raise DatasetImportError("generic imports must use the legacy-v1 or official-v4 cohort")
+    elif cohort_key not in {LEGACY_COHORT_KEY, OFFICIAL_V4_COHORT_KEY, HELDOUT_V1_COHORT_KEY}:
+        raise DatasetImportError(
+            "generic imports must use the legacy-v1, official-v4 or heldout-v1 cohort"
+        )
+    if held_out and cohort_key != HELDOUT_V1_COHORT_KEY:
+        raise DatasetImportError("held-out imports must use the heldout-v1 cohort")
     groups: dict[tuple[str, Language], list[QuestionRecord]] = defaultdict(list)
     for record in records:
         groups[(record.benchmark, record.language)].append(record)
@@ -102,6 +108,11 @@ async def import_question_records(
                     f"content hash for {benchmark_name} already belongs to "
                     f"cohort {existing.cohort_key}"
                 )
+            if existing.held_out != held_out:
+                raise DatasetImportError(
+                    f"content hash for {benchmark_name} already stored with "
+                    f"held_out={existing.held_out}"
+                )
             if existing.question_count != len(group):
                 raise DatasetImportError(
                     f"stored question count does not match content hash for {benchmark_name}"
@@ -130,6 +141,7 @@ async def import_question_records(
             content_hash=content_hash,
             question_count=len(group),
             cohort_key=cohort_key,
+            held_out=held_out,
             status=DatasetStatus.FROZEN,
             frozen_at=utc_now(),
         )

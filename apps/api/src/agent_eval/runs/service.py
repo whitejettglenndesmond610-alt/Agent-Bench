@@ -33,11 +33,13 @@ from agent_eval.db.models import (
 from agent_eval.runs.compatibility import analyze_profile_compatibility
 from agent_eval.runs.profiles import (
     BALANCED_V2_PROFILE_KEY,
+    HELDOUT_V1_PROFILE_KEY,
     OFFICIAL_V4_PROFILE_KEY,
     UNIFIED_V3_PROFILE_KEY,
     UNIFIED_V3_PROFILE_KEYS,
     build_run_profiles,
     is_complete_balanced_v2,
+    is_complete_heldout_v1,
     is_complete_official_v4,
     is_complete_unified_v3,
 )
@@ -272,7 +274,10 @@ async def prepare_evaluation_run(
     unified_profile = profile_key in UNIFIED_V3_PROFILE_KEYS
     if profile_key.startswith(UNIFIED_V3_PROFILE_KEY) and not unified_profile:
         raise RunConfigurationError("profile_not_found", "unified-v3 评测配置不存在")
-    locked_profile = unified_profile or profile_key == OFFICIAL_V4_PROFILE_KEY
+    locked_profile = unified_profile or profile_key in {
+        OFFICIAL_V4_PROFILE_KEY,
+        HELDOUT_V1_PROFILE_KEY,
+    }
     if locked_profile:
         profile = next(
             (
@@ -290,7 +295,15 @@ async def prepare_evaluation_run(
             or not ranking_eligible
         ):
             raise RunConfigurationError(
-                "unified_v3_incomplete" if unified_profile else "official_v4_incomplete",
+                (
+                    "unified_v3_incomplete"
+                    if unified_profile
+                    else (
+                        "official_v4_incomplete"
+                        if profile_key == OFFICIAL_V4_PROFILE_KEY
+                        else "heldout_v1_incomplete"
+                    )
+                ),
                 "必须使用完整且经过验证的精确评测配置",
             )
     else:
@@ -353,6 +366,12 @@ async def prepare_evaluation_run(
     ):
         raise RunConfigurationError(
             "official_v4_incomplete", "official-v4 必须使用完整的 100 题权威配置"
+        )
+    if profile_key == HELDOUT_V1_PROFILE_KEY and not is_complete_heldout_v1(
+        dataset_versions
+    ):
+        raise RunConfigurationError(
+            "heldout_v1_incomplete", "heldout-v1 必须使用完整的 60 题 LiveBench 私有配置"
         )
 
     for version in agent_versions:

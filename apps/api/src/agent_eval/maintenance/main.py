@@ -25,6 +25,12 @@ from agent_eval.datasets.importer import (
     OFFICIAL_V4_COHORT_KEY,
     import_question_records,
 )
+from agent_eval.datasets.livebench_builder import (
+    HELDOUT_V1_COHORT_KEY,
+    LIVEBENCH_CATEGORIES,
+    LIVEBENCH_QUOTAS,
+    build_livebench_dataset,
+)
 from agent_eval.datasets.official_builder import build_official_v4_dataset
 from agent_eval.datasets.schema import load_question_records, validate_demo_distribution
 from agent_eval.db.engine import create_engine, verify_database
@@ -228,6 +234,38 @@ async def import_official_v4(path: Path) -> None:
             f"{item.question_count} questions, sha256={item.content_hash}"
         )
     print(f"imported {len(records)} official-v4 questions across {len(imported)} benchmarks")
+
+
+async def import_livebench(path: Path) -> None:
+    records = load_question_records(path)
+    counts = {record.benchmark: 0 for record in records}
+    for record in records:
+        counts[record.benchmark] += 1
+    if counts != LIVEBENCH_QUOTAS:
+        raise SystemExit(f"livebench import requires quotas {LIVEBENCH_QUOTAS}, got {counts}")
+
+    settings = Settings()
+    configure_logging(settings.log_level)
+    ensure_storage(settings)
+    engine = create_engine(settings)
+    session_factory = create_session_factory(engine)
+    try:
+        async with session_scope(session_factory) as session:
+            imported = await import_question_records(
+                session, records, cohort_key=HELDOUT_V1_COHORT_KEY, held_out=True
+            )
+    finally:
+        await engine.dispose()
+    for item in imported:
+        action = "created" if item.created else "reused"
+        print(
+            f"{action} {item.benchmark} v{item.version}: "
+            f"{item.question_count} questions, sha256={item.content_hash}"
+        )
+    print(
+        f"imported {len(records)} held-out livebench questions across "
+        f"{len(imported)} benchmarks"
+    )
 
 
 def audit_dataset(path: Path, policy: str | None, enforce: bool) -> None:
@@ -546,6 +584,19 @@ def main() -> None:
     balanced_parser.add_argument("--anchors", type=Path)
     official_parser = subparsers.add_parser("build-official-v4")
     official_parser.add_argument("output", type=Path, nargs="?", default=Path("data/official-v4"))
+    livebench_parser = subparsers.add_parser("build-livebench")
+    livebench_parser.add_argument(
+        "output", type=Path, nargs="?", default=Path("data/livebench-heldout")
+    )
+    livebench_parser.add_argument(
+        "--release",
+        action="append",
+        default=[],
+        metavar="CATEGORY=YYYY-MM-DD",
+        help="override the LiveBench release date per category (math/reasoning/data_analysis)",
+    )
+    livebench_import_parser = subparsers.add_parser("import-livebench")
+    livebench_import_parser.add_argument("path", type=Path)
     bootstrap_parser = subparsers.add_parser("bootstrap")
     bootstrap_parser.add_argument("--dataset", type=Path, default=Path("/datasets/demo"))
     preflight_parser = subparsers.add_parser("preflight")
@@ -657,6 +708,20 @@ def main() -> None:
     elif arguments.command == "build-official-v4":
         official_records = build_official_v4_dataset(arguments.output)
         print(f"built {len(official_records)} official-v4 questions in {arguments.output}")
+    elif arguments.command == "build-livebench":
+        releases: dict[str, str] = {}
+        for override in arguments.release:
+            category, separator, release = override.partition("=")
+            if not separator or category not in LIVEBENCH_CATEGORIES:
+                parser.error(
+                    "--release must look like math=2024-08-31 with a LiveBench category "
+                    "(math, reasoning, data_analysis)"
+                )
+            releases[category] = release
+        livebench_records = build_livebench_dataset(arguments.output, releases=releases)
+        print(f"built {len(livebench_records)} livebench questions in {arguments.output}")
+    elif arguments.command == "import-livebench":
+        asyncio.run(import_livebench(arguments.path))
     elif arguments.command == "build-balanced-v2":
         local_anchors = Path("data/demo-dataset")
         anchor_path = arguments.anchors or (

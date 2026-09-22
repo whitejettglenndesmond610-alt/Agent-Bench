@@ -144,6 +144,7 @@ def finding_response(
     run: EvaluationRun,
     review: QualityReview | None,
     task: QualityReviewTask | None,
+    held_out: bool = False,
 ) -> BadPatternFindingListItem:
     return BadPatternFindingListItem(
         id=finding.id,
@@ -154,6 +155,7 @@ def finding_response(
         agent_version=version.version,
         question_external_id=question.external_id,
         benchmark_name=benchmark.name,
+        held_out=held_out,
         rule_id=rule.id,
         rule_key=rule.key,
         rule_name=rule.name,
@@ -189,6 +191,7 @@ def finding_query() -> Any:
             EvaluationRun,
             QualityReview,
             QualityReviewTask,
+            DatasetVersion.held_out,
         )
         .join(BadPatternRule, BadPatternRule.id == BadPatternFinding.rule_id)
         .join(ExecutionItem, ExecutionItem.id == BadPatternFinding.execution_item_id)
@@ -547,7 +550,20 @@ async def export_quality_feedback(
     exported_at = utc_now()
     lines: list[str] = []
     for row in rows:
-        finding, rule, item, _, version, agent, question, benchmark, run, review, task = row
+        (
+            finding,
+            rule,
+            item,
+            _,
+            version,
+            agent,
+            question,
+            benchmark,
+            run,
+            review,
+            task,
+            held_out,
+        ) = row
         lines.append(
             json.dumps(
                 {
@@ -560,8 +576,9 @@ async def export_quality_feedback(
                     "benchmark": benchmark.name,
                     "question": {
                         "external_id": question.external_id,
-                        "prompt": question.prompt,
-                        "reference_answer": question.reference_answer,
+                        "held_out": held_out,
+                        "prompt": None if held_out else question.prompt,
+                        "reference_answer": None if held_out else question.reference_answer,
                     },
                     "answer": await load_execution_answer(request, database, item, version),
                     "bad_pattern": {
@@ -619,7 +636,20 @@ async def get_quality_finding(
     _authorization: OperatorSession,
 ) -> BadPatternFindingDetail:
     row = await require_finding_context(database, finding_id)
-    finding, rule, item, run_agent, version, agent, question, benchmark, run, review, task = row
+    (
+        finding,
+        rule,
+        item,
+        run_agent,
+        version,
+        agent,
+        question,
+        benchmark,
+        run,
+        review,
+        task,
+        held_out,
+    ) = row
     attempts = list(
         await database.scalars(
             select(HttpAttempt)
@@ -700,8 +730,8 @@ async def get_quality_finding(
     base = finding_response(*row)
     return BadPatternFindingDetail(
         **base.model_dump(),
-        prompt=question.prompt,
-        reference_answer=question.reference_answer,
+        prompt=None if held_out else question.prompt,
+        reference_answer=None if held_out else question.reference_answer,
         answer=await load_execution_answer(request, database, item, version),
         final_score=float(score.final_score) if score else None,
         judge_reason=score.judge_reason if score else None,

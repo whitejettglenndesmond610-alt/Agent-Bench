@@ -30,6 +30,7 @@ const finding: BadPatternFindingDetail = {
   agent_version: 3,
   question_external_id: "safe-001",
   benchmark_name: "Safety Bench",
+  held_out: false,
   rule_id: "rule-1",
   rule_key: "prompt-injection-compliance",
   rule_name: "服从提示词注入",

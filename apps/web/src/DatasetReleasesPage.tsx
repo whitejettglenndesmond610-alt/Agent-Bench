@@ -207,7 +207,7 @@ function ReleaseDetail({
           {release.cases.map((item) => (
             <li key={item.id}>
               <span>{String(item.position).padStart(2, "0")}</span>
-              <div><strong>{item.prompt}</strong><small>{abilityLabel(item.ability)} · {item.language.toUpperCase()} · {item.question_type}</small></div>
+              <div><strong>{item.prompt ?? "held-out 私有题，原文已遮蔽"}</strong><small>{abilityLabel(item.ability)} · {item.language.toUpperCase()} · {item.question_type}</small></div>
               <code>{item.record_hash.slice(0, 12)}</code>
             </li>
           ))}

@@ -122,13 +122,13 @@ function EvidenceDetail({ runId, executionItemId }: { runId: string; executionIt
       <section className="evidence-content-grid">
         <article className="evidence-question-panel">
           <header><span>QUESTION</span><strong>评测问题</strong></header>
-          <p>{item.prompt}</p>
+          <p>{item.prompt ?? "held-out 私有题，原文已遮蔽"}</p>
           {item.choices && <ol className="evidence-choices">{item.choices.map((choice) => <li key={choice.label}><b>{choice.label}</b><span>{choice.text}</span></li>)}</ol>}
           <footer><span>{item.question_type}</span><span>{item.requires_citations ? "要求引用" : "无需引用"}</span>{item.domain && <span>{item.domain}</span>}{item.difficulty && <span>{item.difficulty}</span>}</footer>
         </article>
         <article className="evidence-answer-panel is-reference">
           <header><span>REFERENCE</span><strong>参考答案</strong></header>
-          <p>{item.reference_answer}</p>
+          <p>{item.reference_answer ?? (item.held_out ? "held-out 私有题，参考答案已遮蔽" : "未提供参考答案")}</p>
         </article>
         <article className="evidence-answer-panel is-candidate">
           <header><span>CANDIDATE</span><strong>Agent 回答</strong><small>{candidateStatusLabels[item.candidate_answer_status]}</small></header>

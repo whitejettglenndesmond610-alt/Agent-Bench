@@ -289,6 +289,9 @@ class DatasetVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     run_eligible: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=true(), nullable=False, index=True
     )
+    held_out: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False, index=True
+    )
     dataset_release_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("dataset_releases.id", ondelete="RESTRICT"), index=True
     )

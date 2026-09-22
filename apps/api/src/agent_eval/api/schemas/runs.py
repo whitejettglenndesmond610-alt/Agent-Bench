@@ -332,9 +332,10 @@ RunEvidenceCandidateAnswerStatus = Literal[
 
 
 class RunEvidenceDetail(RunEvidenceListItem):
-    prompt: str
+    prompt: str | None
     choices: list[RunEvidenceQuestionChoice] | None
-    reference_answer: str
+    reference_answer: str | None
+    held_out: bool = False
     candidate_answer: str | None
     candidate_answer_status: RunEvidenceCandidateAnswerStatus
     attempts: list[RunEvidenceAttempt]

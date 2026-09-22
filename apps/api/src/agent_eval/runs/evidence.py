@@ -142,15 +142,20 @@ async def get_run_evidence_detail(
     summary = _list_item(item).model_dump()
     summary["score"] = _score_detail(item.score)
     question = item.question
+    held_out = question.dataset_version.held_out
     return RunEvidenceDetail(
         **summary,
-        prompt=question.prompt,
+        prompt=None if held_out else question.prompt,
         choices=(
-            [RunEvidenceQuestionChoice.model_validate(choice) for choice in question.choices_json]
-            if question.choices_json is not None
-            else None
+            None
+            if held_out or question.choices_json is None
+            else [
+                RunEvidenceQuestionChoice.model_validate(choice)
+                for choice in question.choices_json
+            ]
         ),
-        reference_answer=question.reference_answer,
+        reference_answer=None if held_out else question.reference_answer,
+        held_out=held_out,
         candidate_answer=candidate_answer,
         candidate_answer_status=answer_status,
         attempts=[

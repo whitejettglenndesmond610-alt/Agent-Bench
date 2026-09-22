@@ -134,6 +134,7 @@ class BadPatternFindingListItem(QualitySchema):
     agent_version: int
     question_external_id: str
     benchmark_name: str
+    held_out: bool = False
     rule_id: UUID
     rule_key: str
     rule_name: str
@@ -164,8 +165,8 @@ class QualityTraceEvent(QualitySchema):
 
 
 class BadPatternFindingDetail(BadPatternFindingListItem):
-    prompt: str
-    reference_answer: str
+    prompt: str | None
+    reference_answer: str | None
     answer: str | None
     final_score: float | None
     judge_reason: str | None

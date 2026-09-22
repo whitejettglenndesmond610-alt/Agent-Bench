@@ -13,6 +13,7 @@ from agent_eval.datasets.audit import (
 )
 from agent_eval.datasets.importer import (
     BALANCED_V2_COHORT_KEY,
+    HELDOUT_V1_COHORT_KEY,
     LEGACY_COHORT_KEY,
     OFFICIAL_V4_COHORT_KEY,
 )
@@ -46,6 +47,12 @@ OFFICIAL_V4_LEGACY_RETRIEVAL = {"BrowseComp", "BrowseComp-ZH"}
 OFFICIAL_V4_LEGACY_DATA = {"FinQA"}
 OFFICIAL_V4_EXPECTED_NEW = {"GPQA-Diamond": 20, "CMMLU": 20, "GSM8K": 20}
 OFFICIAL_V4_EXPECTED_LEGACY = {"BrowseComp": 10, "BrowseComp-ZH": 20, "FinQA": 10}
+HELDOUT_V1_PROFILE_KEY = "heldout-v1"
+HELDOUT_V1_EXPECTED = {
+    "LiveBench-Math": 20,
+    "LiveBench-Reasoning": 20,
+    "LiveBench-DataAnalysis": 20,
+}
 
 # The first balanced-v2 release used these two names before the Original prefix
 # convention was applied consistently. Their source is still the frozen original cohort.
@@ -279,6 +286,33 @@ async def build_run_profiles(session: AsyncSession) -> list[RunProfile]:
                 score_config=legacy_score,
             )
         )
+    heldout_datasets = sorted(
+        (
+            item
+            for (cohort_key, _), item in latest_by_benchmark.items()
+            if cohort_key == HELDOUT_V1_COHORT_KEY
+        ),
+        key=lambda item: (item.benchmark.name.casefold(), str(item.id)),
+    )
+    if await _stored_heldout_v1_is_complete(session, heldout_datasets):
+        heldout_abilities = [
+            ability
+            for ability in (Ability.REASONING, Ability.RETRIEVAL, Ability.DATA_REASONING)
+            if any(item.benchmark.ability == ability for item in heldout_datasets)
+        ]
+        profiles.append(
+            _profile(
+                key=HELDOUT_V1_PROFILE_KEY,
+                name="Held-out V1 Comprehensive",
+                description="Private LiveBench held-out cohort with masked question text.",
+                scope=RunScope.COMPREHENSIVE,
+                target_ability=None,
+                datasets=heldout_datasets,
+                publishes_to=["overall", *(ability.value for ability in heldout_abilities)],
+                ranking_eligible=True,
+                score_config=legacy_score,
+            )
+        )
     return profiles
 
 
@@ -291,7 +325,7 @@ def default_profile_key(profiles: list[RunProfile]) -> str:
 
 
 def available_run_profiles(profiles: list[RunProfile]) -> list[RunProfile]:
-    allowed = {"smoke", OFFICIAL_V4_PROFILE_KEY, *UNIFIED_V3_PROFILE_KEYS}
+    allowed = {"smoke", OFFICIAL_V4_PROFILE_KEY, HELDOUT_V1_PROFILE_KEY, *UNIFIED_V3_PROFILE_KEYS}
     if any(profile.key in allowed and profile.key != "smoke" for profile in profiles):
         return [profile for profile in profiles if profile.key in allowed]
     return profiles
@@ -409,6 +443,30 @@ def is_complete_official_v4(datasets: list[DatasetVersion]) -> bool:
     if set(by_name) != set(expected):
         return False
     return all(by_name[name].question_count == count for name, count in expected.items())
+
+
+async def _stored_heldout_v1_is_complete(
+    session: AsyncSession, datasets: list[DatasetVersion]
+) -> bool:
+    if not is_complete_heldout_v1(datasets):
+        return False
+    questions = list(
+        await session.scalars(
+            select(Question).where(Question.dataset_version_id.in_(item.id for item in datasets))
+        )
+    )
+    return len(questions) == sum(item.question_count for item in datasets)
+
+
+def is_complete_heldout_v1(datasets: list[DatasetVersion]) -> bool:
+    if any(not item.held_out for item in datasets):
+        return False
+    by_name = {item.benchmark.name: item for item in datasets}
+    if set(by_name) != set(HELDOUT_V1_EXPECTED):
+        return False
+    return all(
+        by_name[name].question_count == count for name, count in HELDOUT_V1_EXPECTED.items()
+    )
 
 
 def _is_balanced_v2_original(dataset: DatasetVersion) -> bool:

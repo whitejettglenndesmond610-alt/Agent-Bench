@@ -54,7 +54,8 @@ class DatasetReleasePublish(BaseModel):
 class DatasetReleaseCaseResponse(BaseModel):
     id: UUID
     position: int
-    prompt: str
+    prompt: str | None
+    held_out: bool = False
     language: Language
     ability: Ability
     question_type: QuestionType

@@ -996,7 +996,8 @@ export type DatasetReleaseStatus = "draft" | "approved" | "published";
 export interface DatasetReleaseCase {
   id: string;
   position: number;
-  prompt: string;
+  prompt: string | null;
+  held_out: boolean;
   language: "zh" | "en";
   ability: Ability;
   question_type: EvaluationQuestionType;
@@ -1269,9 +1270,10 @@ export interface RunEvidenceCitation {
 }
 
 export interface RunEvidenceDetail extends RunEvidenceListItem {
-  prompt: string;
+  prompt: string | null;
   choices: Array<{ label: string; text: string }> | null;
-  reference_answer: string;
+  reference_answer: string | null;
+  held_out: boolean;
   candidate_answer: string | null;
   candidate_answer_status: "available" | "not_recorded" | "expired" | "unavailable";
   attempts: RunEvidenceAttempt[];
@@ -1387,6 +1389,7 @@ export interface BadPatternFinding {
   agent_version: number;
   question_external_id: string;
   benchmark_name: string;
+  held_out: boolean;
   rule_id: string;
   rule_key: string;
   rule_name: string;
@@ -1417,8 +1420,8 @@ export interface QualityTraceEvent {
 }
 
 export interface BadPatternFindingDetail extends BadPatternFinding {
-  prompt: string;
-  reference_answer: string;
+  prompt: string | null;
+  reference_answer: string | null;
   answer: string | null;
   final_score: number | null;
   judge_reason: string | null;
