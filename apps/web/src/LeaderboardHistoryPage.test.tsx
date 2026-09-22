@@ -43,6 +43,101 @@ test("lists immutable leaderboard publications and marks the current snapshot", 
   expect(screen.getByRole("link", { name: "六月正式榜单" })).toHaveAttribute("href", "/leaderboard/history/snapshot-old-123456");
 });
 
+test("renders confidence interval and pass metrics in a snapshot when present", async () => {
+  const snapshot = {
+    id: "snapshot-1",
+    run_id: "run-1",
+    run_name: "七月正式榜单",
+    dataset_bundle_hash: "dataset-bundle-hash",
+    published_at: "2026-07-19T08:00:00Z",
+    rankings: [{
+      rank: 1,
+      run_agent_id: "run-agent-1",
+      agent_id: "agent-a",
+      agent_version_id: "version-a",
+      agent_name: "Agent Alpha",
+      provider: "Provider A",
+      version: 3,
+      overall_score: 92.5,
+      ability_scores: {},
+      language_scores: { zh: 92.5, en: 90 },
+      benchmark_scores: [],
+      answer_quality: 94,
+      citation_quality: 88,
+      success_rate: 98,
+      anomaly_rate: 2,
+      http_call_count: 100,
+      latency_p50_ms: 120,
+      latency_p95_ms: 350,
+      ci_low: 90.1,
+      ci_high: 94.3,
+      pass_at_1: 97.5,
+      pass_at_k: 100,
+      pass_pow_k: 84
+    }]
+  };
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(snapshot)));
+  render(
+    <QueryClientProvider client={client()}>
+      <MemoryRouter initialEntries={["/leaderboard/history/snapshot-1"]}>
+        <Routes><Route path="/leaderboard/history/:snapshotId" element={<LeaderboardSnapshotPage />} /></Routes>
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+
+  expect(await screen.findByRole("heading", { name: "七月正式榜单" })).toBeInTheDocument();
+  expect(screen.getByText("92.50 (90.10–94.30)")).toBeInTheDocument();
+  expect(screen.getByText("97.50% / 84.00%")).toBeInTheDocument();
+});
+
+test("falls back to plain score and placeholders for legacy snapshots", async () => {
+  const snapshot = {
+    id: "snapshot-1",
+    run_id: "run-1",
+    run_name: "六月正式榜单",
+    dataset_bundle_hash: "dataset-bundle-hash",
+    published_at: "2026-06-19T08:00:00Z",
+    rankings: [{
+      rank: 1,
+      run_agent_id: "run-agent-1",
+      agent_id: "agent-a",
+      agent_version_id: "version-a",
+      agent_name: "Agent Alpha",
+      provider: "Provider A",
+      version: 3,
+      overall_score: 92.5,
+      ability_scores: {},
+      language_scores: { zh: 92.5, en: 90 },
+      benchmark_scores: [],
+      answer_quality: 94,
+      citation_quality: 88,
+      success_rate: 98,
+      anomaly_rate: 2,
+      http_call_count: 100,
+      latency_p50_ms: null,
+      latency_p95_ms: null,
+      ci_low: null,
+      ci_high: null,
+      pass_at_1: null,
+      pass_at_k: null,
+      pass_pow_k: null
+    }]
+  };
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(snapshot)));
+  const page = render(
+    <QueryClientProvider client={client()}>
+      <MemoryRouter initialEntries={["/leaderboard/history/snapshot-1"]}>
+        <Routes><Route path="/leaderboard/history/:snapshotId" element={<LeaderboardSnapshotPage />} /></Routes>
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+
+  expect(await screen.findByRole("heading", { name: "六月正式榜单" })).toBeInTheDocument();
+  expect(screen.getByText("92.50")).toBeInTheDocument();
+  expect(screen.getAllByText("-- / --").length).toBeGreaterThan(0);
+  expect(page.container.textContent).not.toContain("null");
+});
+
 test("renders and exports a published snapshot with public Agent links", async () => {
   const snapshot = {
     id: "snapshot-1",

@@ -19,7 +19,7 @@ import {
   fetchRuns,
   retryRunScoring
 } from "./api";
-import { Button, FormField, Input, LoadingState, Modal, Table } from "./components";
+import { Button, FormField, Input, LoadingState, Modal, Select, Table } from "./components";
 import { randomId } from "./randomId";
 import { abilityMetrics, leaderboardMetrics } from "./metrics";
 
@@ -161,6 +161,7 @@ function LaunchRunModal({
   const [selected, setSelected] = useState<string[]>(
     initialAgentVersion ? [initialAgentVersion] : []
   );
+  const [trialCount, setTrialCount] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const experimentSubmission = useRef<{ fingerprint: string; key: string } | null>(null);
 
@@ -186,7 +187,8 @@ function LaunchRunModal({
       if (selectedAgentIds.length === 1) {
         const run = await createRun({
           ...common,
-          agent_version_ids: [selectedAgentIds[0]]
+          agent_version_ids: [selectedAgentIds[0]],
+          ...(trialCount ? { trial_count: Number(trialCount) } : {})
         });
         return { kind: "run" as const, id: run.id };
       }
@@ -353,6 +355,28 @@ function LaunchRunModal({
               })}
             </div>
           </fieldset>
+          <FormField
+            label="每题运行次数"
+            htmlFor="run-trial-count"
+            hint={selectedAgentIds.length >= 2
+              ? "评测实验暂按缺省次数运行：计入排行榜的 Profile 默认 5 次，其余默认 1 次。"
+              : `留空则按缺省规则：当前 Profile 默认 ${selectedProfile?.ranking_eligible ? 5 : 1} 次。多次运行可统计 pass@1 / pass^k 可靠性指标。`}
+          >
+            <Select
+              id="run-trial-count"
+              value={trialCount}
+              disabled={selectedAgentIds.length >= 2}
+              onChange={(event) => {
+                setTrialCount(event.target.value);
+                setFormError(null);
+              }}
+            >
+              <option value="">自动（按缺省规则）</option>
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((count) => (
+                <option key={count} value={String(count)}>{count} 次</option>
+              ))}
+            </Select>
+          </FormField>
           {formError && <div className="result-banner is-error" role="alert">{formError}</div>}
           <div className="modal-actions"><Button type="button" className="is-ghost" onClick={() => setStep(1)}>返回 Agent</Button><Button type="submit">下一步：确认配置</Button></div>
         </form>
@@ -362,6 +386,7 @@ function LaunchRunModal({
           <dl className="review-metrics">
              <div><dt>{selectedAgentIds.length >= 2 ? "实验成员" : "独立运行"}</dt><dd>{selectedAgentIds.length} 个</dd></div>
             <div><dt>每任务题目</dt><dd>{selectedProfile.question_count}</dd></div>
+            <div><dt>每题运行</dt><dd>{selectedAgentIds.length >= 2 ? "按缺省规则" : trialCount ? `${trialCount} 次` : `默认 ${selectedProfile.ranking_eligible ? 5 : 1} 次`}</dd></div>
             <div><dt>预计总调用</dt><dd>{selectedProfile.question_count * selectedAgentIds.length}</dd></div>
             <div><dt>运行 Profile</dt><dd>{selectedProfile.name}</dd></div>
           </dl>
@@ -489,7 +514,7 @@ function RunDetail({ runId }: { runId: string }) {
     <main className="workspace run-detail-workspace">
       <Link className="back-link" to="/runs">← 返回任务列表</Link>
       <header className="run-detail-header">
-        <div><p className="eyebrow">RUN / {run.id.slice(0, 8).toUpperCase()}</p><h1>{run.name}</h1><div className="run-meta"><span className={`run-status ${statusClass(run.status)}`}><i />{run.desired_state === "canceled" && run.status !== "canceled" ? "取消处理中" : statusLabels[run.status]}</span><span>{runProfileLabel(run)}</span><span>{stageLabels[run.stage]}</span><span>创建于 {formatDate(run.created_at)}</span></div></div>
+        <div><p className="eyebrow">RUN / {run.id.slice(0, 8).toUpperCase()}</p><h1>{run.name}</h1><div className="run-meta"><span className={`run-status ${statusClass(run.status)}`}><i />{run.desired_state === "canceled" && run.status !== "canceled" ? "取消处理中" : statusLabels[run.status]}</span><span>{runProfileLabel(run)}</span><span>{stageLabels[run.stage]}</span><span>每题 {run.trial_count} 次</span><span>创建于 {formatDate(run.created_at)}</span></div></div>
         <div className="run-detail-actions">
           {run.experiment_id && <Link className="button is-ghost" to={`/experiments/${run.experiment_id}`}>所属实验</Link>}
           <Link className="button is-ghost" to={`/runs/${run.id}/evidence`}>查看运行证据</Link>
@@ -512,7 +537,7 @@ function RunDetail({ runId }: { runId: string }) {
       <section className="agent-progress-grid">
         {run.agents.map((agent, index) => {
           const percent = agent.total ? agent.processed * 100 / agent.total : 0;
-          return <article key={agent.run_agent_id}><header><span>{String(index + 1).padStart(2, "0")}</span><div><strong><Link to={`/agents/${agent.agent_id}`}>{agent.agent_name}</Link></strong><small>{agent.provider} · V{agent.version}</small></div><Link className="agent-evidence-link" to={`/runs/${run.id}/evidence?run_agent_id=${encodeURIComponent(agent.run_agent_id)}`}>此 Agent 证据</Link></header><div className="agent-progress-value"><strong>{percent.toFixed(0)}%</strong><span>{agent.processed} / {agent.total}</span></div><div className="agent-progress-bar"><i style={{ width: `${percent}%` }} /></div><footer><span>成功 <b>{agent.completed}</b></span><span>失败 <b>{agent.failed}</b></span><span>重试 <b>{agent.retried}</b></span></footer>{agent.validity_status === "invalid" && <div className="result-validity-invalid"><strong>接入配置无效，不进入排行榜</strong><span>{validityReasonLabels[agent.validity_reason ?? ""] ?? agent.validity_reason} · {agent.configuration_failure_count} 项 / {agent.configuration_failure_rate.toFixed(2)}%</span></div>}{agent.result && <section className="run-result-summary six-metric-grid">{leaderboardMetrics.map((metric) => <div key={metric.key}><span>{metric.shortLabel}</span><strong>{metric.key === "overall" ? agent.result?.overall_score.toFixed(2) : agent.result?.ability_scores[metric.key]?.toFixed(2) ?? "—"}</strong></div>)}<footer><span>成功率 {agent.result.success_rate.toFixed(2)}%</span><span>HTTP {agent.result.http_call_count}</span><span>Token {formatCount(agent.result.total_tokens)}</span><span>P50/P95 {agent.result.latency_p50_ms ?? "—"}/{agent.result.latency_p95_ms ?? "—"} ms</span></footer></section>}{Object.keys(agent.failure_categories ?? {}).length > 0 && <div className="failure-category-list">{Object.entries(agent.failure_categories).map(([category, count]) => <span key={category}>{failureLabels[category] ?? category}<b>{count}</b></span>)}</div>}</article>;
+          return <article key={agent.run_agent_id}><header><span>{String(index + 1).padStart(2, "0")}</span><div><strong><Link to={`/agents/${agent.agent_id}`}>{agent.agent_name}</Link></strong><small>{agent.provider} · V{agent.version}</small></div><Link className="agent-evidence-link" to={`/runs/${run.id}/evidence?run_agent_id=${encodeURIComponent(agent.run_agent_id)}`}>此 Agent 证据</Link></header><div className="agent-progress-value"><strong>{percent.toFixed(0)}%</strong><span>{agent.processed} / {agent.total}</span></div><div className="agent-progress-bar"><i style={{ width: `${percent}%` }} /></div><footer><span>成功 <b>{agent.completed}</b></span><span>失败 <b>{agent.failed}</b></span><span>重试 <b>{agent.retried}</b></span></footer>{agent.validity_status === "invalid" && <div className="result-validity-invalid"><strong>接入配置无效，不进入排行榜</strong><span>{validityReasonLabels[agent.validity_reason ?? ""] ?? agent.validity_reason} · {agent.configuration_failure_count} 项 / {agent.configuration_failure_rate.toFixed(2)}%</span></div>}{agent.result && <section className="run-result-summary six-metric-grid">{leaderboardMetrics.map((metric) => <div key={metric.key}><span>{metric.shortLabel}</span><strong>{metric.key === "overall" ? agent.result?.overall_score.toFixed(2) : agent.result?.ability_scores[metric.key]?.toFixed(2) ?? "—"}</strong></div>)}<footer><span>成功率 {agent.result.success_rate.toFixed(2)}%</span>{agent.result.pass_at_1 !== null && agent.result.pass_at_1 !== undefined && <span>pass@1 {agent.result.pass_at_1.toFixed(2)}%</span>}{agent.result.pass_pow_k !== null && agent.result.pass_pow_k !== undefined && <span>pass^k {agent.result.pass_pow_k.toFixed(2)}%</span>}{agent.result.ci_low !== null && agent.result.ci_low !== undefined && agent.result.ci_high !== null && agent.result.ci_high !== undefined && <span>95% CI {agent.result.ci_low.toFixed(2)}–{agent.result.ci_high.toFixed(2)}</span>}<span>HTTP {agent.result.http_call_count}</span><span>Token {formatCount(agent.result.total_tokens)}</span><span>P50/P95 {agent.result.latency_p50_ms ?? "—"}/{agent.result.latency_p95_ms ?? "—"} ms</span></footer></section>}{Object.keys(agent.failure_categories ?? {}).length > 0 && <div className="failure-category-list">{Object.entries(agent.failure_categories).map(([category, count]) => <span key={category}>{failureLabels[category] ?? category}<b>{count}</b></span>)}</div>}</article>;
         })}
       </section>
 

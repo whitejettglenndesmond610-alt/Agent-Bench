@@ -764,6 +764,7 @@ export interface RunState {
   run_scope: RunScope;
   target_ability: Ability | null;
   ranking_eligible: boolean;
+  trial_count: number;
   heartbeat_at: string | null;
   started_at: string | null;
   finished_at: string | null;
@@ -821,6 +822,11 @@ export interface RunAgentResultSummary {
   latency_p50_ms?: number | null;
   latency_p95_ms?: number | null;
   latency_sample_count?: number;
+  pass_at_1?: number | null;
+  pass_at_k?: number | null;
+  pass_pow_k?: number | null;
+  ci_low?: number | null;
+  ci_high?: number | null;
 }
 
 export interface RunProgress extends RunState {
@@ -1106,6 +1112,7 @@ export interface RunCreateInput {
   judge_config_id: string;
   score_config_id: string;
   force_retest?: boolean;
+  trial_count?: number | null;
 }
 
 export interface RunCreateResult {
@@ -1114,6 +1121,7 @@ export interface RunCreateResult {
   experiment_position?: number | null;
   name: string;
   status: RunStatus;
+  trial_count: number;
   question_count: number;
   execution_item_count: number;
 }
@@ -1778,6 +1786,7 @@ export interface RunBatchCreateInput {
   judge_config_id: string;
   score_config_id: string;
   force_retest?: boolean;
+  trial_count?: number | null;
 }
 
 export function createRunsBatch(input: RunBatchCreateInput): Promise<RunBatchCreateResult> {
@@ -1860,6 +1869,11 @@ export interface AgentRanking {
   total_tokens?: number | null;
   latency_p50_ms?: number | null;
   latency_p95_ms?: number | null;
+  pass_at_1?: number | null;
+  pass_at_k?: number | null;
+  pass_pow_k?: number | null;
+  ci_low?: number | null;
+  ci_high?: number | null;
 }
 
 export interface LeaderboardSnapshot {
@@ -1912,6 +1926,11 @@ export interface GlobalRankedAgent {
   success_rate: number;
   anomaly_rate: number;
   http_call_count: number;
+  pass_at_1?: number | null;
+  pass_at_k?: number | null;
+  pass_pow_k?: number | null;
+  ci_low?: number | null;
+  ci_high?: number | null;
   benchmark_scores: BenchmarkRanking[];
 }
 
@@ -1975,6 +1994,11 @@ export interface GlobalOverviewMetric {
   latency_p50_ms?: number | null;
   latency_p95_ms?: number | null;
   latency_sample_count?: number;
+  pass_at_1?: number | null;
+  pass_at_k?: number | null;
+  pass_pow_k?: number | null;
+  ci_low?: number | null;
+  ci_high?: number | null;
   benchmark_scores: BenchmarkRanking[];
 }
 

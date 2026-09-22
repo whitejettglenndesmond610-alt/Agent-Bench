@@ -86,6 +86,42 @@ function renderPage() {
   );
 }
 
+test("shows confidence interval and pass metrics when the snapshot provides them", async () => {
+  const alpha = agent("a", "Agent Alpha", 90, 1);
+  alpha.metrics.overall = metric(90, 1, {
+    ci_low: 88,
+    ci_high: 92,
+    pass_at_1: 96.5,
+    pass_at_k: 100,
+    pass_pow_k: 81.25
+  });
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(overview({ agents: [alpha] }))));
+  renderPage();
+
+  await screen.findByRole("heading", { name: "Agent 排行榜" });
+  expect(screen.getAllByText("90.00 (88.00–92.00)").length).toBeGreaterThan(0);
+
+  fireEvent.click(screen.getByRole("button", { name: /Agent Alpha/ }));
+  const detail = screen.getByLabelText("Agent Alpha 评测详情");
+  expect(detail).toHaveTextContent("pass@1 单次成功率");
+  expect(detail).toHaveTextContent("96.50%");
+  expect(detail).toHaveTextContent("pass^k 多次全对占比");
+  expect(detail).toHaveTextContent("81.25%");
+});
+
+test("hides confidence interval and pass metrics for legacy snapshots without them", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(overview())));
+  const page = renderPage();
+
+  await screen.findByRole("heading", { name: "Agent 排行榜" });
+  expect(screen.queryByText(/\(/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /Agent Alpha/ }));
+  const detail = screen.getByLabelText("Agent Alpha 评测详情");
+  expect(detail).not.toHaveTextContent("pass@1");
+  expect(detail).not.toHaveTextContent("pass^k");
+  expect(page.container.textContent).not.toContain("null");
+});
+
 test("renders a compact podium and the six-metric overview matrix", async () => {
   const fetchMock = vi.fn().mockResolvedValue(response(overview()));
   vi.stubGlobal("fetch", fetchMock);

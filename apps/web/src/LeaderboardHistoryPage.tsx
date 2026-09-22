@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { fetchLeaderboardHistory, fetchLeaderboardSnapshot } from "./api";
 import { LoadingState } from "./components";
+import { formatScoreWithCi } from "./metrics";
 import { downloadJson, downloadMarkdown, formatUserDate, snapshotMarkdown } from "./userProduct";
 
 export function LeaderboardHistoryPage() {
@@ -39,8 +40,8 @@ export function LeaderboardSnapshotPage() {
       <Link className="back-link" to="/leaderboard/history">← 返回榜单历史</Link>
       <header className="section-header"><div><p className="eyebrow">PUBLISHED SNAPSHOT</p><h1>{snapshot.run_name}</h1><p>{formatUserDate(snapshot.published_at, true)} 正式发布 · {snapshot.rankings.length} 个 Agent</p></div><div className="snapshot-actions"><button className="button is-ghost" type="button" onClick={() => downloadMarkdown(snapshot.run_name, snapshotMarkdown(snapshot))}>导出 Markdown</button><button className="button is-ghost" type="button" onClick={() => downloadJson(snapshot.run_name, snapshot)}>导出 JSON</button></div></header>
       <aside className="snapshot-protocol"><span>数据集组合指纹</span><code>{snapshot.dataset_bundle_hash}</code><small>快照是只读发布记录，排名不会随当前榜单变化。</small></aside>
-      <div className="table-frame snapshot-ranking-table"><table><thead><tr><th>排名 / Agent</th><th>综合分</th><th>回答质量</th><th>引用质量</th><th>成功率</th><th>异常率</th><th>延迟 P50 / P95</th><th>公开详情</th></tr></thead><tbody>{snapshot.rankings.map((ranking) => (
-        <tr key={ranking.agent_version_id}><td><strong>#{String(ranking.rank).padStart(2, "0")} <Link to={`/plaza/${ranking.agent_id}`}>{ranking.agent_name}</Link></strong><small>{ranking.provider} · V{ranking.version}</small></td><td>{ranking.overall_score.toFixed(2)}</td><td>{ranking.answer_quality.toFixed(2)}</td><td>{ranking.citation_quality.toFixed(2)}</td><td>{ranking.success_rate.toFixed(2)}%</td><td>{ranking.anomaly_rate.toFixed(2)}%</td><td>{ranking.latency_p50_ms ?? "--"} / {ranking.latency_p95_ms ?? "--"} ms</td><td><Link className="row-link" to={`/plaza/${ranking.agent_id}`}>查看趋势</Link></td></tr>
+      <div className="table-frame snapshot-ranking-table"><table><thead><tr><th>排名 / Agent</th><th>综合分</th><th>回答质量</th><th>引用质量</th><th>成功率</th><th>异常率</th><th>pass@1 / pass^k</th><th>延迟 P50 / P95</th><th>公开详情</th></tr></thead><tbody>{snapshot.rankings.map((ranking) => (
+        <tr key={ranking.agent_version_id}><td><strong>#{String(ranking.rank).padStart(2, "0")} <Link to={`/plaza/${ranking.agent_id}`}>{ranking.agent_name}</Link></strong><small>{ranking.provider} · V{ranking.version}</small></td><td>{formatScoreWithCi(ranking.overall_score, ranking.ci_low, ranking.ci_high)}</td><td>{ranking.answer_quality.toFixed(2)}</td><td>{ranking.citation_quality.toFixed(2)}</td><td>{ranking.success_rate.toFixed(2)}%</td><td>{ranking.anomaly_rate.toFixed(2)}%</td><td>{ranking.pass_at_1 === null || ranking.pass_at_1 === undefined ? "--" : `${ranking.pass_at_1.toFixed(2)}%`} / {ranking.pass_pow_k === null || ranking.pass_pow_k === undefined ? "--" : `${ranking.pass_pow_k.toFixed(2)}%`}</td><td>{ranking.latency_p50_ms ?? "--"} / {ranking.latency_p95_ms ?? "--"} ms</td><td><Link className="row-link" to={`/plaza/${ranking.agent_id}`}>查看趋势</Link></td></tr>
       ))}</tbody></table></div>
     </main>
   );

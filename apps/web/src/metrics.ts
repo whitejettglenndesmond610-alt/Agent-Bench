@@ -29,3 +29,14 @@ export const metricByKey = Object.fromEntries(
 export function profileKeyForMetric(metric: GlobalLeaderboardMetric): string {
   return metric === "overall" ? "unified-v3" : `unified-v3-${metric}`;
 }
+
+export function formatScoreWithCi(
+  score: number,
+  ciLow?: number | null,
+  ciHigh?: number | null
+): string {
+  if (ciLow === null || ciLow === undefined || ciHigh === null || ciHigh === undefined) {
+    return score.toFixed(2);
+  }
+  return `${score.toFixed(2)} (${ciLow.toFixed(2)}–${ciHigh.toFixed(2)})`;
+}

@@ -12,7 +12,7 @@ import {
   GlobalOverviewAgent
 } from "./api";
 import { LoadingState } from "./components";
-import { abilityMetrics, leaderboardMetrics, metricByKey } from "./metrics";
+import { abilityMetrics, formatScoreWithCi, leaderboardMetrics, metricByKey } from "./metrics";
 import { downloadJson, downloadMarkdown } from "./userProduct";
 
 use([RadarChart, TooltipComponent, LegendComponent, AriaComponent, SVGRenderer]);
@@ -90,6 +90,8 @@ function metricRows(agents: GlobalOverviewAgent[]) {
     ...leaderboardMetrics.map((metric) => ({ group: metric.key === "overall" ? "总览" : "能力", label: metric.label, values: agents.map((agent) => score(agent, metric.key)) })),
     { group: "稳定性", label: "最近评测成功率", values: agents.map((agent) => quality(agent)?.success_rate === null || quality(agent)?.success_rate === undefined ? "—" : `${quality(agent)?.success_rate?.toFixed(2)}%`) },
     { group: "稳定性", label: "最近评测异常率", values: agents.map((agent) => quality(agent)?.anomaly_rate === null || quality(agent)?.anomaly_rate === undefined ? "—" : `${quality(agent)?.anomaly_rate?.toFixed(2)}%`) },
+    { group: "稳定性", label: "pass@1 单次成功率", values: agents.map((agent) => quality(agent)?.pass_at_1 === null || quality(agent)?.pass_at_1 === undefined ? "—" : `${quality(agent)?.pass_at_1?.toFixed(2)}%`) },
+    { group: "稳定性", label: "pass^k 多次全对占比", values: agents.map((agent) => quality(agent)?.pass_pow_k === null || quality(agent)?.pass_pow_k === undefined ? "—" : `${quality(agent)?.pass_pow_k?.toFixed(2)}%`) },
     { group: "观测", label: "最近评测 HTTP 调用", values: agents.map((agent) => String(quality(agent)?.http_call_count ?? "—")) }
   ];
 }
@@ -142,7 +144,7 @@ export function ComparePage() {
 
       <section className="compare-primary-grid">
         <article className="radar-panel"><header><div><p className="eyebrow">ABILITY SHAPE</p><h2>五项能力雷达</h2></div><span>固定范围 0—100</span></header>{radarAgents.length ? <AbilityRadar agents={radarAgents} /> : <div className="compare-radar-empty">所选 Agent 尚未同时完成五项专项评测，暂不绘制雷达图。</div>}</article>
-        <article className="compare-scorecards"><header><p className="eyebrow">TOTAL SCORE</p><h2>综合分</h2></header>{agents.map((agent, index) => <div key={agent.agent_id}><span style={{ background: colors[index] }} /><strong>{agent.metrics.overall.score?.toFixed(2) ?? "—"}</strong><p>{agent.agent_name}</p><small>{agent.metrics.overall.rank === null ? "尚未完成综合评测" : `综合排名 #${agent.metrics.overall.rank}`}</small></div>)}</article>
+        <article className="compare-scorecards"><header><p className="eyebrow">TOTAL SCORE</p><h2>综合分</h2></header>{agents.map((agent, index) => <div key={agent.agent_id}><span style={{ background: colors[index] }} /><strong>{agent.metrics.overall.score === null ? "—" : formatScoreWithCi(agent.metrics.overall.score, agent.metrics.overall.ci_low, agent.metrics.overall.ci_high)}</strong><p>{agent.agent_name}</p><small>{agent.metrics.overall.rank === null ? "尚未完成综合评测" : `综合排名 #${agent.metrics.overall.rank}`}</small></div>)}</article>
       </section>
 
       <section className="comparison-matrix">

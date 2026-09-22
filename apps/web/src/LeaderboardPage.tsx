@@ -10,7 +10,7 @@ import {
   GlobalOverviewMetric
 } from "./api";
 import { LoadingState } from "./components";
-import { leaderboardMetrics, metricByKey, profileKeyForMetric } from "./metrics";
+import { leaderboardMetrics, metricByKey, profileKeyForMetric, formatScoreWithCi } from "./metrics";
 
 type BoardView = "overview" | GlobalLeaderboardMetric;
 
@@ -83,7 +83,7 @@ function MetricCell({
   return (
     <div className={`overview-metric-cell is-${result.status}`} data-metric-label={label} style={{ "--metric-color": metricByKey[metric].color } as CSSProperties}>
       <small>#{String(result.rank).padStart(2, "0")}</small>
-      <strong>{result.score.toFixed(2)}</strong>
+      <strong>{formatScoreWithCi(result.score, result.ci_low, result.ci_high)}</strong>
       <span>{statusLabels[result.status]}</span>
     </div>
   );
@@ -128,10 +128,12 @@ function AgentDetail({
           {leaderboardMetrics.map((metric) => <article key={metric.key}><span>{metric.shortLabel}</span><MetricCell metric={metric.key} agent={agent} compact isOperator={isOperator} /></article>)}
         </section>
         <section className="drawer-section">
-          <div className="drawer-section-heading"><div><p className="eyebrow">FOCUS METRIC</p><h3>{metricByKey[focusMetric].boardLabel}</h3></div>{focus.score !== null && <strong>{focus.score.toFixed(2)}</strong>}</div>
+          <div className="drawer-section-heading"><div><p className="eyebrow">FOCUS METRIC</p><h3>{metricByKey[focusMetric].boardLabel}</h3></div>{focus.score !== null && <strong>{formatScoreWithCi(focus.score, focus.ci_low, focus.ci_high)}</strong>}</div>
           <dl className="drawer-quality">
             <div><dt>成功率</dt><dd>{focus.success_rate === null ? "—" : `${focus.success_rate.toFixed(2)}%`}</dd></div>
             <div><dt>异常率</dt><dd>{focus.anomaly_rate === null ? "—" : `${focus.anomaly_rate.toFixed(2)}%`}</dd></div>
+            {focus.pass_at_1 !== null && focus.pass_at_1 !== undefined && <div><dt>pass@1 单次成功率</dt><dd>{focus.pass_at_1.toFixed(2)}%</dd></div>}
+            {focus.pass_pow_k !== null && focus.pass_pow_k !== undefined && <div><dt>pass^k 多次全对占比</dt><dd>{focus.pass_pow_k.toFixed(2)}%</dd></div>}
             <div><dt>HTTP 调用</dt><dd>{focus.http_call_count ?? "—"}</dd></div>
             <div><dt>Benchmark</dt><dd>{focus.benchmark_count || "—"}</dd></div>
             <div><dt>Token</dt><dd>{focus.total_tokens === null || focus.total_tokens === undefined ? "—" : new Intl.NumberFormat("zh-CN").format(focus.total_tokens)}</dd></div>
@@ -237,7 +239,7 @@ export function LeaderboardPage({ isOperator = true, workspaceEnabled = true }: 
         {[0, 1, 2].map((index) => {
           const agent = leaders[index];
           const result = agent?.metrics[activeMetric];
-          return <article key={agent?.agent_id ?? index} className={index === 0 ? "is-first" : ""}><span>{String(index + 1).padStart(2, "0")}</span>{agent ? <><div><small>{metricByKey[activeMetric].shortLabel}领先</small><strong>{agent.agent_name}</strong><p>{agent.provider} · V{agent.version}</p></div><b>{result?.score?.toFixed(2)}</b></> : <div className="podium-empty"><small>等待补位</small><strong>暂无 Agent</strong></div>}</article>;
+          return <article key={agent?.agent_id ?? index} className={index === 0 ? "is-first" : ""}><span>{String(index + 1).padStart(2, "0")}</span>{agent ? <><div><small>{metricByKey[activeMetric].shortLabel}领先</small><strong>{agent.agent_name}</strong><p>{agent.provider} · V{agent.version}</p></div><b>{result?.score === null || result?.score === undefined ? null : formatScoreWithCi(result.score, result.ci_low, result.ci_high)}</b></> : <div className="podium-empty"><small>等待补位</small><strong>暂无 Agent</strong></div>}</article>;
         })}
       </section>
 

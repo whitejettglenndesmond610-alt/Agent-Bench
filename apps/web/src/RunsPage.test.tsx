@@ -117,6 +117,7 @@ function progress(
     run_scope: "specialist",
     target_ability: "reasoning",
     ranking_eligible: true,
+    trial_count: 5,
     heartbeat_at: "2026-07-16T08:02:00Z",
     started_at: "2026-07-16T08:00:00Z",
     finished_at: null,
@@ -216,6 +217,99 @@ async function reachReview(agentNames: string[], profileName = "推理专项 Pro
   fireEvent.click(screen.getByRole("radio", { name: profileName }));
   fireEvent.click(screen.getByRole("button", { name: "下一步：确认配置" }));
 }
+
+test("submits the chosen per-question trial count with a single-agent run", async () => {
+  let createBody: Record<string, unknown> | null = null;
+  vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string, init?: RequestInit) => {
+    if (input === "/api/v1/evaluation-runs" && !init?.method) return Promise.resolve(response([]));
+    if (input === "/api/v1/evaluation-runs/options") return Promise.resolve(response(runOptions()));
+    if (input === "/api/v1/evaluation-runs" && init?.method === "POST") {
+      createBody = JSON.parse(String(init.body));
+      return Promise.resolve(response({ id: "run-1", name: "专项独立评测", status: "queued", trial_count: 3, question_count: 40, execution_item_count: 120 }, 201));
+    }
+    if (input === "/api/v1/evaluation-runs/run-1/progress") {
+      return Promise.resolve(response(progress("running", "专项独立评测")));
+    }
+    throw new Error(`Unexpected request: ${input}`);
+  }));
+  renderPage();
+
+  await screen.findByRole("heading", { name: "尚未发起评测" });
+  fireEvent.click(screen.getByRole("button", { name: "+ 发起评测" }));
+  fireEvent.click(await screen.findByRole("checkbox", { name: /Agent Alpha/ }));
+  fireEvent.click(screen.getByRole("button", { name: "下一步：选择 Profile" }));
+  fireEvent.change(screen.getByLabelText(/^每题运行次数/), { target: { value: "3" } });
+  fireEvent.click(screen.getByRole("button", { name: "下一步：确认配置" }));
+
+  expect(screen.getByText("每题运行").parentElement).toHaveTextContent("3 次");
+  fireEvent.click(screen.getByRole("button", { name: "创建单 Agent 评测运行" }));
+
+  expect(await screen.findByRole("heading", { name: "专项独立评测" })).toBeInTheDocument();
+  expect(createBody).toMatchObject({ trial_count: 3, agent_version_ids: ["version-1"] });
+});
+
+test("omits trial_count from the payload when the selector stays on default", async () => {
+  let createBody: Record<string, unknown> | null = null;
+  vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string, init?: RequestInit) => {
+    if (input === "/api/v1/evaluation-runs" && !init?.method) return Promise.resolve(response([]));
+    if (input === "/api/v1/evaluation-runs/options") return Promise.resolve(response(runOptions()));
+    if (input === "/api/v1/evaluation-runs" && init?.method === "POST") {
+      createBody = JSON.parse(String(init.body));
+      return Promise.resolve(response({ id: "run-1", name: "专项独立评测", status: "queued", trial_count: 5, question_count: 40, execution_item_count: 200 }, 201));
+    }
+    if (input === "/api/v1/evaluation-runs/run-1/progress") {
+      return Promise.resolve(response(progress("running", "专项独立评测")));
+    }
+    throw new Error(`Unexpected request: ${input}`);
+  }));
+  renderPage();
+
+  await screen.findByRole("heading", { name: "尚未发起评测" });
+  await reachReview(["Agent Alpha"]);
+
+  expect(screen.getByText("每题运行").parentElement).toHaveTextContent("默认 5 次");
+  fireEvent.click(screen.getByRole("button", { name: "创建单 Agent 评测运行" }));
+
+  expect(await screen.findByRole("heading", { name: "专项独立评测" })).toBeInTheDocument();
+  expect(createBody).not.toHaveProperty("trial_count");
+});
+
+test("shows trial count and reliability metrics on the run detail when present", async () => {
+  const withReliability = progress();
+  withReliability.agents[0].result = {
+    ...withReliability.agents[0].result!,
+    pass_at_1: 96,
+    pass_at_k: 100,
+    pass_pow_k: 80,
+    ci_low: 70,
+    ci_high: 75
+  };
+  vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => {
+    if (input === "/api/v1/evaluation-runs/run-1/progress") return Promise.resolve(response(withReliability));
+    if (input === "/api/v1/evaluation-runs") return Promise.resolve(response([]));
+    throw new Error(`Unexpected request: ${input}`);
+  }));
+  renderPage("/runs/run-1");
+
+  expect(await screen.findByText("每题 5 次")).toBeInTheDocument();
+  expect(screen.getByText("pass@1 96.00%")).toBeInTheDocument();
+  expect(screen.getByText("pass^k 80.00%")).toBeInTheDocument();
+  expect(screen.getByText("95% CI 70.00–75.00")).toBeInTheDocument();
+});
+
+test("hides reliability metrics when the result summary has none", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => {
+    if (input === "/api/v1/evaluation-runs/run-1/progress") return Promise.resolve(response(progress()));
+    if (input === "/api/v1/evaluation-runs") return Promise.resolve(response([]));
+    throw new Error(`Unexpected request: ${input}`);
+  }));
+  const page = renderPage("/runs/run-1");
+
+  expect(await screen.findByText("每题 5 次")).toBeInTheDocument();
+  expect(screen.queryByText(/pass@1/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/pass\^k/)).not.toBeInTheDocument();
+  expect(page.container.textContent).not.toContain("null");
+});
 
 test("creates one persisted experiment for multiple selected Agents with a stable idempotency key", async () => {
   vi.spyOn(crypto, "randomUUID").mockReturnValue("00000000-0000-4000-8000-000000000301");
