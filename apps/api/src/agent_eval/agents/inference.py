@@ -38,6 +38,9 @@ class AgentPromptResult:
     content: bytes
     status_code: int
     latency_ms: int
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -139,11 +142,15 @@ def post_agent_prompt(
         raise AgentPromptError(
             error_type(classify_agent_failure(status_code=response.status_code, error=str(error)))
         ) from error
+    input_tokens, output_tokens, total_tokens = extract_token_usage(payload)
     return AgentPromptResult(
         answer=redact_secret(answer, config.token),
         content=redacted,
         status_code=response.status_code,
         latency_ms=latency_ms,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=total_tokens,
     )
 
 

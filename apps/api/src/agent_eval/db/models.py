@@ -685,6 +685,10 @@ class ExecutionItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     error_type: Mapped[str | None] = mapped_column(String(80), index=True)
     task_reward: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
+    # DeepSeek user-simulator tokens for interactive (tau2) items: evaluation
+    # overhead recorded per item, surfaced in run metadata, never agent cost.
+    simulator_input_tokens: Mapped[int | None] = mapped_column(Integer)
+    simulator_output_tokens: Mapped[int | None] = mapped_column(Integer)
 
     run_agent: Mapped[RunAgent] = relationship(back_populates="execution_items")
     question: Mapped[Question] = relationship(back_populates="execution_items")

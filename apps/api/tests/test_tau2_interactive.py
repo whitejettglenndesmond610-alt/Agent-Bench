@@ -105,13 +105,18 @@ def mock_tools_and_policy() -> tuple[list, str]:
     return environment.get_tools(), environment.get_policy()
 
 
-def mock_transport_agent(replies: list[str]) -> tuple[HttpTextProtocolAgent, list[dict]]:
+def mock_transport_agent(
+    replies: list[str], *, usage: dict[str, int] | None = None
+) -> tuple[HttpTextProtocolAgent, list[dict]]:
     recorded: list[dict] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         recorded.append(json.loads(request.content))
         reply = replies[min(len(recorded) - 1, len(replies) - 1)]
-        return httpx.Response(200, json={"answer": reply})
+        payload: dict = {"answer": reply}
+        if usage is not None:
+            payload["usage"] = usage
+        return httpx.Response(200, json=payload)
 
     tools, policy = mock_tools_and_policy()
     agent = HttpTextProtocolAgent(
@@ -147,8 +152,9 @@ class FakeUserSimulator:
 class scripted_agent_server:
     """Local HTTP server answering agent prompts with scripted replies."""
 
-    def __init__(self, replies: list[str]) -> None:
+    def __init__(self, replies: list[str], usage: dict[str, int] | None = None) -> None:
         self._replies = replies
+        self._usage = usage
         self.requests: list[dict] = []
 
     def __enter__(self) -> "scripted_agent_server":
@@ -159,7 +165,10 @@ class scripted_agent_server:
                 length = int(self.headers.get("Content-Length") or 0)
                 outer.requests.append(json.loads(self.rfile.read(length)))
                 reply = outer._replies[min(len(outer.requests) - 1, len(outer._replies) - 1)]
-                payload = json.dumps({"answer": reply}).encode()
+                body: dict = {"answer": reply}
+                if outer._usage is not None:
+                    body["usage"] = outer._usage
+                payload = json.dumps(body).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(payload)))
@@ -190,9 +199,9 @@ def episode_settings(tmp_path: Path) -> Settings:
 
 
 def run_episode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replies: list[str],
-                task_id: str = "mock-1"):
+                task_id: str = "mock-1", usage: dict[str, int] | None = None):
     monkeypatch.setattr("tau2.user.user_simulator.UserSimulator", FakeUserSimulator)
-    with scripted_agent_server(replies) as server:
+    with scripted_agent_server(replies, usage=usage) as server:
         result = run_tau2_episode(
             config=make_config(server.url),
             task_ref=f"tau2:mock:{task_id}",
@@ -263,7 +272,8 @@ def test_agent_respond_and_tool_actions() -> None:
     assert isinstance(first, AssistantMessage) and first.is_tool_call()
     assert first.tool_calls is not None and first.tool_calls[0].name == "get_users"
     assert first.tool_calls[0].arguments == {}
-    assert first.cost == 0.0 and first.usage is not None
+    # endpoint reported no usage: the message carries None, not fake zeros
+    assert first.cost == 0.0 and first.usage is None
 
     second, state = agent.generate_next_message(first, state)
     assert not second.is_tool_call() and second.content == "Here is what I found."
@@ -340,6 +350,21 @@ def test_interactive_scoring_maps_reward_to_answer_score() -> None:
 
     zero = local_score(interactive_work(task_reward=None))
     assert zero.answer_score == 0 and zero.failed is False
+
+
+def test_interactive_scoring_carries_simulator_tokens() -> None:
+    work = interactive_work(task_reward=Decimal("1.0"))
+    work = ScoreWork(
+        **{
+            **work.__dict__,
+            "simulator_input_tokens": 1234,
+            "simulator_output_tokens": 56,
+        }
+    )
+    result = local_score(work)
+    assert result.judge_details is not None
+    assert result.judge_details["tau2"]["simulator_input_tokens"] == 1234
+    assert result.judge_details["tau2"]["simulator_output_tokens"] == 56
 
 
 def test_interactive_scoring_failed_item_stays_failed() -> None:
@@ -490,6 +515,9 @@ def test_episode_respond_then_user_stop(
     assert result.trajectory["termination_reason"] == "user_stop"
     assert result.trajectory["agent_protocol"] == "http-text-json-v1"
     assert "reward=1.0000" in (result.answer or "")
+    # the scripted endpoint reported no usage: tokens stay None (cost stays None)
+    assert result.input_tokens is None and result.output_tokens is None
+    assert result.simulator_input_tokens is None and result.simulator_output_tokens is None
 
 
 def test_episode_tool_call_then_stop(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -552,3 +580,57 @@ def test_episode_invalid_task_ref(tmp_path: Path) -> None:
             timeout_seconds=60,
             settings=episode_settings(tmp_path),
         )
+
+def test_episode_sums_agent_token_usage_into_attempt_fields(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    usage = {"prompt_tokens": 100, "completion_tokens": 25}
+    result = run_episode(
+        tmp_path,
+        monkeypatch,
+        [
+            fenced({"action": "tool", "name": "get_users", "arguments": {}}),
+            fenced({"action": "respond", "content": "There are no users."}),
+        ],
+        usage=usage,
+    )
+    assert result.success is True
+    # two agent HTTP turns, each reporting 100/25
+    assert result.input_tokens == 200
+    assert result.output_tokens == 50
+    assert result.total_tokens == 250
+    # the fake user simulator reports no usage
+    assert result.simulator_input_tokens is None
+    assert result.simulator_output_tokens is None
+
+
+def test_episode_protocol_error_still_records_partial_usage(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    usage = {"prompt_tokens": 40, "completion_tokens": 5}
+    result = run_episode(tmp_path, monkeypatch, ["nonsense"], usage=usage)
+    assert result.success is True and result.error_type == "agent_protocol_error"
+    # invalid reply + correction retry both consumed tokens
+    assert result.input_tokens == 80
+    assert result.output_tokens == 10
+    assert result.total_tokens == 90
+
+
+def test_agent_message_carries_merged_usage_after_correction() -> None:
+    usage = {"prompt_tokens": 60, "completion_tokens": 10}
+    agent, _ = mock_transport_agent(
+        ["not protocol", fenced({"action": "respond", "content": "ok"})], usage=usage
+    )
+    message, _ = agent.generate_next_message(
+        UserMessage(role="user", content="hi"), agent.get_init_state()
+    )
+    assert message.usage == {"prompt_tokens": 120, "completion_tokens": 20}
+
+
+def test_agent_message_usage_none_when_endpoint_omits_it() -> None:
+    agent, _ = mock_transport_agent([fenced({"action": "respond", "content": "ok"})])
+    message, _ = agent.generate_next_message(
+        UserMessage(role="user", content="hi"), agent.get_init_state()
+    )
+    assert message.usage is None
+

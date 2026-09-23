@@ -93,6 +93,10 @@ class AgentAggregate:
     cost_per_task_usd: Decimal | None
     input_token_share: Decimal | None
     output_token_share: Decimal | None
+    # DeepSeek user-simulator tokens (tau2 interactive runs): evaluation
+    # overhead, kept out of every cost figure above.
+    simulator_input_tokens: int | None = None
+    simulator_output_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -150,6 +154,8 @@ def aggregate_agent(
     configuration_failure_count: int = 0,
     configuration_failure_rate: Decimal = Decimal(0),
     pricing: ModelPricing | None = None,
+    simulator_input_tokens: int | None = None,
+    simulator_output_tokens: int | None = None,
 ) -> AgentAggregate:
     if not items:
         raise ValueError("cannot aggregate an agent without execution items")
@@ -269,6 +275,8 @@ def aggregate_agent(
         output_token_share=(
             Decimal(100) - input_token_share if input_token_share is not None else None
         ),
+        simulator_input_tokens=simulator_input_tokens,
+        simulator_output_tokens=simulator_output_tokens,
     )
 
 
@@ -353,6 +361,8 @@ def serialize_aggregate(aggregate: AgentAggregate, rank: int) -> dict[str, objec
             if aggregate.output_token_share is not None
             else None
         ),
+        "simulator_input_tokens": aggregate.simulator_input_tokens,
+        "simulator_output_tokens": aggregate.simulator_output_tokens,
     }
 
 

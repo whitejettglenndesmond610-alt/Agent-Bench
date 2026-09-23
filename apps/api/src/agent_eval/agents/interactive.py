@@ -31,14 +31,29 @@ from tau2.environment.tool import Tool
 
 from agent_eval.agents.inference import (
     AgentPromptError,
+    AgentPromptResult,
     InferenceConfig,
     post_agent_prompt,
 )
 
 STOP_TOKEN = "###STOP###"
 AGENT_PROTOCOL = "http-text-json-v1"
-ZERO_USAGE = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 MAX_CORRECTION_REPLY_CHARS = 1000
+
+
+def merge_token_usage(results: list[AgentPromptResult]) -> dict[str, int] | None:
+    """Sum per-call usage (tau2 dict shape); None when no call reported usage."""
+    observed = [
+        result
+        for result in results
+        if result.input_tokens is not None and result.output_tokens is not None
+    ]
+    if not observed:
+        return None
+    return {
+        "prompt_tokens": sum(result.input_tokens or 0 for result in observed),
+        "completion_tokens": sum(result.output_tokens or 0 for result in observed),
+    }
 
 
 class AgentProtocolError(RuntimeError):
@@ -176,6 +191,12 @@ class HttpTextProtocolAgent(HalfDuplexAgent):  # type: ignore[misc]
         self._config = config
         self._tool_names = {tool.name for tool in tools}
         self._correction: str | None = None
+        self._spent: list[AgentPromptResult] = []
+
+    @property
+    def session_usage(self) -> dict[str, int] | None:
+        """Usage of every HTTP call made this episode, including failed parses."""
+        return merge_token_usage(self._spent)
 
     def get_init_state(
         self, message_history: list[Message] | None = None
@@ -204,28 +225,30 @@ class HttpTextProtocolAgent(HalfDuplexAgent):  # type: ignore[misc]
         return reply, history
 
     def _next_reply(self, history: list[Message]) -> AssistantMessage:
-        answer = self._ask(history)
+        result = self._ask(history)
+        results = [result]
         try:
-            action = parse_protocol_action(answer, tool_names=self._tool_names)
+            action = parse_protocol_action(result.answer, tool_names=self._tool_names)
         except ProtocolParseError as first_error:
             if self._correction is not None:
                 raise AgentProtocolError(str(first_error)) from first_error
-            truncated = answer[:MAX_CORRECTION_REPLY_CHARS]
+            truncated = result.answer[:MAX_CORRECTION_REPLY_CHARS]
             self._correction = (
                 f"Your previous reply was invalid: {first_error}\n"
                 f"Your previous reply was:\n{truncated}\n"
                 "Reply again with exactly one fenced ```json block that follows "
                 "the protocol above."
             )
-            retry_answer = self._ask(history)
+            retry = self._ask(history)
+            results.append(retry)
             try:
-                action = parse_protocol_action(retry_answer, tool_names=self._tool_names)
+                action = parse_protocol_action(retry.answer, tool_names=self._tool_names)
             except ProtocolParseError as second_error:
                 raise AgentProtocolError(str(second_error)) from second_error
         self._correction = None
-        return self._to_message(action)
+        return self._to_message(action, usage=merge_token_usage(results))
 
-    def _ask(self, history: list[Message]) -> str:
+    def _ask(self, history: list[Message]) -> AgentPromptResult:
         prompt = render_protocol_prompt(
             domain_policy=self.domain_policy,
             tools=self.tools,
@@ -233,15 +256,19 @@ class HttpTextProtocolAgent(HalfDuplexAgent):  # type: ignore[misc]
             correction=self._correction,
         )
         try:
-            return post_agent_prompt(self._client, self._config, prompt).answer
+            result = post_agent_prompt(self._client, self._config, prompt)
         except AgentPromptError:
             raise
+        self._spent.append(result)
+        return result
 
     @staticmethod
-    def _to_message(action: ProtocolAction) -> AssistantMessage:
+    def _to_message(
+        action: ProtocolAction, *, usage: dict[str, int] | None
+    ) -> AssistantMessage:
         if action.action == "respond":
             assert action.content is not None
-            return AssistantMessage.text(action.content, cost=0.0, usage=dict(ZERO_USAGE))
+            return AssistantMessage.text(action.content, cost=0.0, usage=usage)
         if action.action == "tool":
             assert action.tool_name is not None and action.tool_arguments is not None
             return AssistantMessage(
@@ -256,6 +283,6 @@ class HttpTextProtocolAgent(HalfDuplexAgent):  # type: ignore[misc]
                     )
                 ],
                 cost=0.0,
-                usage=dict(ZERO_USAGE),
+                usage=usage,
             )
-        return AssistantMessage.text(STOP_TOKEN, cost=0.0, usage=dict(ZERO_USAGE))
+        return AssistantMessage.text(STOP_TOKEN, cost=0.0, usage=usage)

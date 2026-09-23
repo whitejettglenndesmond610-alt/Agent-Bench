@@ -78,6 +78,15 @@ class EpisodeResult:
     answer: str | None
     trajectory: dict[str, Any] | None
     latency_ms: int
+    # Tested-agent token totals (feed the standard attempt/cost aggregation);
+    # None when the agent endpoint reported no usage.
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
+    # DeepSeek user-simulator tokens are evaluation overhead, not agent cost;
+    # they are stored per item and surface in run metadata only.
+    simulator_input_tokens: int | None = None
+    simulator_output_tokens: int | None = None
 
 
 def tau2_version() -> str:
@@ -203,6 +212,14 @@ def run_tau2_episode(
                 "reward_info": None,
                 "messages": _dump_messages(orchestrator.trajectory),
             }
+            # the failed turn produced no message, so read usage the agent
+            # already spent on HTTP calls (including the rejected replies)
+            spent = agent.session_usage
+            input_tokens = spent["prompt_tokens"] if spent else None
+            output_tokens = spent["completion_tokens"] if spent else None
+            simulator_input, simulator_output = _sum_message_usage(
+                orchestrator.trajectory, role="user"
+            )
             return EpisodeResult(
                 success=True,
                 error_type="agent_protocol_error",
@@ -210,11 +227,18 @@ def run_tau2_episode(
                 answer=f"agent_protocol_error: {error}",
                 trajectory=trajectory,
                 latency_ms=latency_ms,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=_total_tokens(input_tokens, output_tokens),
+                simulator_input_tokens=simulator_input,
+                simulator_output_tokens=simulator_output,
             )
 
     latency_ms = elapsed_ms(started_at)
     reward_info = simulation.reward_info
     reward = float(reward_info.reward) if reward_info is not None else 0.0
+    input_tokens, output_tokens = _sum_message_usage(simulation.messages, role="assistant")
+    simulator_input, simulator_output = _sum_message_usage(simulation.messages, role="user")
     termination = simulation.termination_reason
     termination_value = getattr(termination, "value", str(termination))
     trajectory = {
@@ -236,11 +260,46 @@ def run_tau2_episode(
         answer=answer,
         trajectory=trajectory,
         latency_ms=latency_ms,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=_total_tokens(input_tokens, output_tokens),
+        simulator_input_tokens=simulator_input,
+        simulator_output_tokens=simulator_output,
     )
 
 
 def _dump_messages(messages: list[Any]) -> list[dict[str, Any]]:
     return [message.model_dump(mode="json") for message in messages]
+
+
+def _total_tokens(input_tokens: int | None, output_tokens: int | None) -> int | None:
+    if input_tokens is None or output_tokens is None:
+        return None
+    return input_tokens + output_tokens
+
+
+def _sum_message_usage(
+    messages: list[Any], *, role: str
+) -> tuple[int | None, int | None]:
+    """Sum prompt/completion tokens over messages of one role (tau2 usage shape)."""
+    prompt_tokens = 0
+    completion_tokens = 0
+    observed = False
+    for message in messages:
+        if getattr(message, "role", None) != role:
+            continue
+        usage = getattr(message, "usage", None)
+        if not usage:
+            continue
+        prompt = usage.get("prompt_tokens")
+        completion = usage.get("completion_tokens")
+        if isinstance(prompt, int) and isinstance(completion, int):
+            prompt_tokens += prompt
+            completion_tokens += completion
+            observed = True
+    if not observed:
+        return None, None
+    return prompt_tokens, completion_tokens
 
 
 def _reward_summary(reward_info: Any) -> str:
@@ -393,6 +452,9 @@ async def _run_interactive_item(
             status_code=None,
             latency_ms=result.latency_ms,
             error_type=result.error_type,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            total_tokens=result.total_tokens,
         )
     )
     outcome = InferenceOutcome(
@@ -413,5 +475,7 @@ async def _run_interactive_item(
         outcome=outcome,
         task_reward=result.task_reward,
         trajectory=result.trajectory,
+        simulator_input_tokens=result.simulator_input_tokens,
+        simulator_output_tokens=result.simulator_output_tokens,
     )
     await record_outcome(outcome, item.prompt_characters)

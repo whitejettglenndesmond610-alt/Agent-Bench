@@ -9,6 +9,7 @@ from agent_eval.scoring.aggregation import (
     AggregateItem,
     aggregate_agent,
     build_rankings,
+    serialize_aggregate,
 )
 from agent_eval.scoring.pricing import ModelPricing
 
@@ -346,3 +347,38 @@ def test_cost_aggregation_is_none_without_pricing_or_usage() -> None:
     assert no_usage.cost_per_task_usd is None
     assert no_usage.input_token_share is None
     assert no_usage.output_token_share is None
+
+def test_simulator_tokens_stay_out_of_cost_and_reach_run_metadata() -> None:
+    usage_item = replace(
+        item(uuid4(), "Tau2-Retail", Ability.AGENTIC, 100),
+        attempts=(AggregateAttempt(10, 1_000, 200, 1_200),),
+    )
+    pricing = ModelPricing(input_per_mtok=Decimal("2"), output_per_mtok=Decimal("10"))
+
+    aggregate = aggregate_agent(
+        run_agent_id=uuid4(),
+        agent_id=uuid4(),
+        agent_version_id=uuid4(),
+        agent_name="Agent",
+        provider="Provider",
+        version=1,
+        items=[usage_item],
+        ability_weights={Ability.AGENTIC: 100},
+        pricing=pricing,
+        simulator_input_tokens=40_000,
+        simulator_output_tokens=8_000,
+    )
+    # cost reflects only the tested agent's tokens
+    assert aggregate.total_cost_usd == Decimal("0.004")
+    assert aggregate.simulator_input_tokens == 40_000
+    assert aggregate.simulator_output_tokens == 8_000
+
+    serialized = serialize_aggregate(aggregate, 1)
+    assert serialized["simulator_input_tokens"] == 40_000
+    assert serialized["simulator_output_tokens"] == 8_000
+
+    plain = aggregate_with_pricing([item(uuid4(), "Reasoning", Ability.REASONING, 80)], pricing)
+    assert plain.simulator_input_tokens is None
+    assert plain.simulator_output_tokens is None
+    assert serialize_aggregate(plain, 1)["simulator_input_tokens"] is None
+

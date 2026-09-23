@@ -11,6 +11,7 @@ from agent_eval.agents.inference import (
     AttemptCompletion,
     InferenceConfig,
     execute_inference,
+    post_agent_prompt,
 )
 from agent_eval.agents.preflight import _build_probes
 from agent_eval.agents.prompt import PromptBuildError, build_question_prompt
@@ -419,3 +420,43 @@ async def test_cancellation_before_attempt_prevents_http_request() -> None:
 
     assert outcome.canceled is True
     assert requests == 0
+
+def post_config(endpoint_url: str) -> InferenceConfig:
+    return InferenceConfig(
+        endpoint_url=endpoint_url,
+        auth_type=AuthType.NONE,
+        token=None,
+        request_template='{"query":"{{prompt}}"}',
+        answer_jsonpath="$.answer",
+        citations_jsonpath=None,
+        timeout_seconds=5,
+    )
+
+
+def test_post_agent_prompt_extracts_openai_style_usage() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "answer": "ok",
+                "usage": {"prompt_tokens": 120, "completion_tokens": 30},
+            },
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    result = post_agent_prompt(client, post_config("http://agent.test/run"), "hello")
+    assert result.answer == "ok"
+    assert (result.input_tokens, result.output_tokens) == (120, 30)
+    assert result.total_tokens == 150  # computed from input+output when absent
+
+
+def test_post_agent_prompt_without_usage_reports_none() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"answer": "ok"})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    result = post_agent_prompt(client, post_config("http://agent.test/run"), "hello")
+    assert result.input_tokens is None
+    assert result.output_tokens is None
+    assert result.total_tokens is None
+

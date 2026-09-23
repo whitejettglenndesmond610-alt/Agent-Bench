@@ -344,6 +344,16 @@ def aggregate_run_agent(run_agent: RunAgent, score_config: ScoreConfig | None) -
                 "runs without a score configuration must cover exactly one ability"
             )
         weights = {covered.pop(): 100}
+    simulator_input = [
+        item.simulator_input_tokens
+        for item in run_agent.execution_items
+        if item.simulator_input_tokens is not None
+    ]
+    simulator_output = [
+        item.simulator_output_tokens
+        for item in run_agent.execution_items
+        if item.simulator_output_tokens is not None
+    ]
     return aggregate_agent(
         run_agent_id=run_agent.id,
         agent_id=version.agent_id,
@@ -362,4 +372,6 @@ def aggregate_run_agent(run_agent: RunAgent, score_config: ScoreConfig | None) -
             private_model=version.private_model,
             request_template=version.request_template,
         ),
+        simulator_input_tokens=sum(simulator_input) if simulator_input else None,
+        simulator_output_tokens=sum(simulator_output) if simulator_output else None,
     )

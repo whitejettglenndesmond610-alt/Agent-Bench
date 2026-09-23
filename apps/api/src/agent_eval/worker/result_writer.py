@@ -61,6 +61,8 @@ class FinalizeItemCommand:
     future: asyncio.Future[None]
     task_reward: Decimal | None = None
     trajectory: dict[str, Any] | None = None
+    simulator_input_tokens: int | None = None
+    simulator_output_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -119,6 +121,8 @@ class ResultWriter:
         outcome: InferenceOutcome,
         task_reward: Decimal | None = None,
         trajectory: dict[str, Any] | None = None,
+        simulator_input_tokens: int | None = None,
+        simulator_output_tokens: int | None = None,
     ) -> None:
         future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         await self._queue.put(
@@ -131,6 +135,8 @@ class ResultWriter:
                 future=future,
                 task_reward=task_reward,
                 trajectory=trajectory,
+                simulator_input_tokens=simulator_input_tokens,
+                simulator_output_tokens=simulator_output_tokens,
             )
         )
         await future
@@ -266,6 +272,10 @@ class ResultWriter:
             item.artifact_id = artifact.id
         if command.task_reward is not None:
             item.task_reward = command.task_reward
+        if command.simulator_input_tokens is not None:
+            item.simulator_input_tokens = command.simulator_input_tokens
+        if command.simulator_output_tokens is not None:
+            item.simulator_output_tokens = command.simulator_output_tokens
 
         item.status = ExecutionStatus.ANSWERED if outcome.success else ExecutionStatus.FAILED
         item.latency_ms = outcome.latency_ms

@@ -73,6 +73,8 @@ class ScoreWork:
     failed: bool
     task_reward: Decimal | None = None
     reward_summary: str = ""
+    simulator_input_tokens: int | None = None
+    simulator_output_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -367,6 +369,8 @@ async def load_score_work(
                 failed=failed,
                 task_reward=item.task_reward if interactive else None,
                 reward_summary=(item.answer_preview or "") if interactive else "",
+                simulator_input_tokens=item.simulator_input_tokens if interactive else None,
+                simulator_output_tokens=item.simulator_output_tokens if interactive else None,
             )
         )
     return work, judge_runtime
@@ -448,6 +452,8 @@ def interactive_score(item: ScoreWork) -> ScoreResult:
                 "domain": domain,
                 "task_split": TASK_SPLIT,
                 "task_reward": float(reward),
+                "simulator_input_tokens": item.simulator_input_tokens,
+                "simulator_output_tokens": item.simulator_output_tokens,
             }
         },
     )
