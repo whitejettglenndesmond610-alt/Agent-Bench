@@ -662,6 +662,16 @@ a.evaluation-state:hover { text-decoration: underline; }
 .radar-panel > header .eyebrow, .compare-scorecards header .eyebrow, .benchmark-comparison > header .eyebrow { margin-bottom: 7px; }
 .radar-panel > header span, .benchmark-comparison > header > small { color: #65717e; font: 8px "SFMono-Regular", Consolas, monospace; }
 .ability-radar { width: 100%; height: 385px; }
+.drawer-radar { width: 100%; height: 320px; }
+.snapshot-trend-panel { margin-top: 22px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow-sm); overflow: hidden; }
+.snapshot-trend-panel > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding: 21px 23px 17px; border-bottom: 1px solid var(--line); }
+.snapshot-trend-panel > header .eyebrow { margin-bottom: 7px; }
+.snapshot-trend-panel > header p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
+.snapshot-trend-panel > header button { color: var(--muted); background: none; border: 0; cursor: pointer; font-size: 22px; }
+.snapshot-trend-panel > .table-state, .snapshot-trend-panel > .user-section-state { margin: 18px 23px 22px; }
+.snapshot-trend-chart { width: 100%; height: 300px; padding: 8px 10px 4px; box-sizing: border-box; }
+button.row-link { background: none; border: 0; padding: 0; cursor: pointer; color: var(--accent); font: 10px "SFMono-Regular", Consolas, monospace; white-space: nowrap; }
+button.row-link:hover { text-decoration: underline; }
 .compare-radar-empty { display: grid; place-items: center; min-height: 385px; padding: 40px; color: #687582; font-size: 10px; line-height: 1.7; text-align: center; }
 .compare-scorecards { display: grid; grid-template-rows: auto repeat(5, 1fr); }
 .compare-scorecards > header { padding: 21px 22px 17px; border-bottom: 1px solid var(--line); }

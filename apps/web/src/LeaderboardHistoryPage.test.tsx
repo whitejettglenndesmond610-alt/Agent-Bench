@@ -192,3 +192,80 @@ test("renders and exports a published snapshot with public Agent links", async (
   expect(DownloadURL.createObjectURL).toHaveBeenCalledTimes(2);
   expect(clickedDownloads).toEqual(["七月正式榜单.md", "七月正式榜单.json"]);
 });
+
+test("shows an overall score trend chart for a ranked agent across snapshots", async () => {
+  const snapshot = {
+    id: "snapshot-1",
+    run_id: "run-1",
+    run_name: "七月正式榜单",
+    dataset_bundle_hash: "dataset-bundle-hash",
+    published_at: "2026-07-19T08:00:00Z",
+    rankings: [{
+      rank: 1,
+      run_agent_id: "run-agent-1",
+      agent_id: "agent-a",
+      agent_version_id: "version-a",
+      agent_name: "Agent Alpha",
+      provider: "Provider A",
+      version: 3,
+      overall_score: 92.5,
+      ability_scores: {},
+      language_scores: { zh: 92.5, en: 90 },
+      benchmark_scores: [],
+      answer_quality: 94,
+      citation_quality: 88,
+      success_rate: 98,
+      anomaly_rate: 2,
+      http_call_count: 100
+    }]
+  };
+  const trendPoint = (score: number, publishedAt: string) => ({
+    score,
+    protocol_hash: "protocol-hash",
+    protocol_matches_current: true,
+    is_current_source: true,
+    agent_version_id: "version-a",
+    version: 3,
+    source_snapshot_id: `snapshot-${publishedAt}`,
+    source_run_id: "run-1",
+    source_run_name: "正式评测",
+    source_profile_key: "unified-v3",
+    source_published_at: publishedAt,
+    benchmark_count: 1
+  });
+  const detail = {
+    agent_id: "agent-a",
+    agent_version_id: "version-a",
+    agent_name: "Agent Alpha",
+    provider: "Provider A",
+    description: null,
+    logo_url: null,
+    version: 3,
+    metrics: {},
+    score_history: {
+      overall: [trendPoint(88, "2026-06-19T08:00:00Z"), trendPoint(92.5, "2026-07-19T08:00:00Z")],
+      reasoning: [],
+      retrieval: [],
+      data_reasoning: [],
+      instruction_following: [],
+      long_context: []
+    }
+  };
+  vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) =>
+    Promise.resolve(response(input.startsWith("/api/v1/leaderboards/agents/") ? detail : snapshot))));
+  render(
+    <QueryClientProvider client={client()}>
+      <MemoryRouter initialEntries={["/leaderboard/history/snapshot-1"]}>
+        <Routes><Route path="/leaderboard/history/:snapshotId" element={<LeaderboardSnapshotPage />} /></Routes>
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+
+  expect(await screen.findByRole("heading", { name: "七月正式榜单" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "分数趋势" }));
+
+  expect(await screen.findByRole("img")).toBeInTheDocument();
+  expect(screen.getByLabelText("Agent Alpha 综合分趋势")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "关闭趋势" }));
+  expect(screen.queryByLabelText("Agent Alpha 综合分趋势")).not.toBeInTheDocument();
+});

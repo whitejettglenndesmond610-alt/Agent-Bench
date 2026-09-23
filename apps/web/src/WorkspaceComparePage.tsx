@@ -23,7 +23,7 @@ import {
 import { AgentPicker } from "./AgentPicker";
 import { Button, Input, LoadingState, Modal } from "./components";
 import { randomId } from "./randomId";
-import { Citations, MarkdownContent } from "./WorkspacePage";
+import { Citations, MarkdownContent } from "./markdown";
 import {
   AttemptAnnotationControls,
   ClipboardButton,

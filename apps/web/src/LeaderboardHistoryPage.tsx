@@ -1,8 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { fetchLeaderboardHistory, fetchLeaderboardSnapshot } from "./api";
+import { fetchAgentLeaderboardDetail, fetchLeaderboardHistory, fetchLeaderboardSnapshot } from "./api";
+import { scoreTrendOption } from "./chartOptions";
 import { LoadingState } from "./components";
+import { EChart } from "./EChart";
 import { formatScoreWithCi } from "./metrics";
 import { downloadJson, downloadMarkdown, formatUserDate, snapshotMarkdown } from "./userProduct";
 
@@ -24,8 +27,40 @@ export function LeaderboardHistoryPage() {
   );
 }
 
+function AgentScoreTrendPanel({ agentId, agentName, onClose }: { agentId: string; agentName: string; onClose: () => void }) {
+  const detailQuery = useQuery({
+    queryKey: ["leaderboard-agent-detail", agentId],
+    queryFn: () => fetchAgentLeaderboardDetail(agentId),
+    retry: false
+  });
+  const points = detailQuery.data?.score_history.overall ?? [];
+  const trendOption = useMemo(
+    () => scoreTrendOption(detailQuery.data?.score_history.overall ?? []).option,
+    [detailQuery.data]
+  );
+  return (
+    <section className="snapshot-trend-panel" aria-label={`${agentName} 综合分趋势`}>
+      <header>
+        <div><p className="eyebrow">SCORE TREND</p><h2>{agentName} 综合分趋势</h2><p>同一 Agent 跨榜单快照的综合分，按发布时间排序。</p></div>
+        <button type="button" aria-label="关闭趋势" onClick={onClose}>×</button>
+      </header>
+      {detailQuery.isPending ? <LoadingState label="正在读取分数趋势" />
+        : detailQuery.error ? <div className="table-state is-error" role="alert">{detailQuery.error.message}</div>
+        : points.length ? (
+          <EChart
+            option={trendOption}
+            className="snapshot-trend-chart"
+            ariaLabel={`${agentName} 跨快照综合分趋势折线图，0 到 100 分`}
+            fallbackHeight={300}
+          />
+        ) : <div className="user-section-state">该 Agent 尚无跨快照综合分记录。</div>}
+    </section>
+  );
+}
+
 export function LeaderboardSnapshotPage() {
   const { snapshotId = "" } = useParams();
+  const [trendAgent, setTrendAgent] = useState<{ id: string; name: string } | null>(null);
   const snapshotQuery = useQuery({
     queryKey: ["leaderboard-snapshot", snapshotId],
     queryFn: () => fetchLeaderboardSnapshot(snapshotId),
@@ -41,8 +76,9 @@ export function LeaderboardSnapshotPage() {
       <header className="section-header"><div><p className="eyebrow">PUBLISHED SNAPSHOT</p><h1>{snapshot.run_name}</h1><p>{formatUserDate(snapshot.published_at, true)} 正式发布 · {snapshot.rankings.length} 个 Agent</p></div><div className="snapshot-actions"><button className="button is-ghost" type="button" onClick={() => downloadMarkdown(snapshot.run_name, snapshotMarkdown(snapshot))}>导出 Markdown</button><button className="button is-ghost" type="button" onClick={() => downloadJson(snapshot.run_name, snapshot)}>导出 JSON</button></div></header>
       <aside className="snapshot-protocol"><span>数据集组合指纹</span><code>{snapshot.dataset_bundle_hash}</code><small>快照是只读发布记录，排名不会随当前榜单变化。</small></aside>
       <div className="table-frame snapshot-ranking-table"><table><thead><tr><th>排名 / Agent</th><th>综合分</th><th>回答质量</th><th>引用质量</th><th>成功率</th><th>异常率</th><th>pass@1 / pass^k</th><th>延迟 P50 / P95</th><th>公开详情</th></tr></thead><tbody>{snapshot.rankings.map((ranking) => (
-        <tr key={ranking.agent_version_id}><td><strong>#{String(ranking.rank).padStart(2, "0")} <Link to={`/plaza/${ranking.agent_id}`}>{ranking.agent_name}</Link></strong><small>{ranking.provider} · V{ranking.version}</small></td><td>{formatScoreWithCi(ranking.overall_score, ranking.ci_low, ranking.ci_high)}</td><td>{ranking.answer_quality.toFixed(2)}</td><td>{ranking.citation_quality.toFixed(2)}</td><td>{ranking.success_rate.toFixed(2)}%</td><td>{ranking.anomaly_rate.toFixed(2)}%</td><td>{ranking.pass_at_1 === null || ranking.pass_at_1 === undefined ? "--" : `${ranking.pass_at_1.toFixed(2)}%`} / {ranking.pass_pow_k === null || ranking.pass_pow_k === undefined ? "--" : `${ranking.pass_pow_k.toFixed(2)}%`}</td><td>{ranking.latency_p50_ms ?? "--"} / {ranking.latency_p95_ms ?? "--"} ms</td><td><Link className="row-link" to={`/plaza/${ranking.agent_id}`}>查看趋势</Link></td></tr>
+        <tr key={ranking.agent_version_id}><td><strong>#{String(ranking.rank).padStart(2, "0")} <Link to={`/plaza/${ranking.agent_id}`}>{ranking.agent_name}</Link></strong><small>{ranking.provider} · V{ranking.version}</small></td><td>{formatScoreWithCi(ranking.overall_score, ranking.ci_low, ranking.ci_high)}</td><td>{ranking.answer_quality.toFixed(2)}</td><td>{ranking.citation_quality.toFixed(2)}</td><td>{ranking.success_rate.toFixed(2)}%</td><td>{ranking.anomaly_rate.toFixed(2)}%</td><td>{ranking.pass_at_1 === null || ranking.pass_at_1 === undefined ? "--" : `${ranking.pass_at_1.toFixed(2)}%`} / {ranking.pass_pow_k === null || ranking.pass_pow_k === undefined ? "--" : `${ranking.pass_pow_k.toFixed(2)}%`}</td><td>{ranking.latency_p50_ms ?? "--"} / {ranking.latency_p95_ms ?? "--"} ms</td><td><button type="button" className="row-link" onClick={() => setTrendAgent({ id: ranking.agent_id, name: ranking.agent_name })}>分数趋势</button><Link className="row-link" to={`/plaza/${ranking.agent_id}`}>查看趋势</Link></td></tr>
       ))}</tbody></table></div>
+      {trendAgent && <AgentScoreTrendPanel agentId={trendAgent.id} agentName={trendAgent.name} onClose={() => setTrendAgent(null)} />}
     </main>
   );
 }

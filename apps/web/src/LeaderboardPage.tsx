@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { CSSProperties, useState } from "react";
+import { CSSProperties, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import {
@@ -10,7 +10,9 @@ import {
   GlobalOverviewMetric
 } from "./api";
 import { LoadingState } from "./components";
-import { leaderboardMetrics, metricByKey, profileKeyForMetric, formatCostUsd, formatScoreWithCi } from "./metrics";
+import { abilityRadarOption } from "./chartOptions";
+import { EChart } from "./EChart";
+import { abilityMetrics, leaderboardMetrics, metricByKey, profileKeyForMetric, formatCostUsd, formatScoreWithCi } from "./metrics";
 
 type BoardView = "overview" | GlobalLeaderboardMetric;
 
@@ -117,6 +119,14 @@ function AgentDetail({
   onClose: () => void;
 }) {
   const focus = agent.metrics[focusMetric];
+  const hasRadarScores = abilityMetrics.some((ability) => agent.metrics[ability.key].score !== null);
+  const radarOption = useMemo(
+    () => abilityRadarOption([{
+      name: agent.agent_name,
+      values: abilityMetrics.map((ability) => agent.metrics[ability.key].score)
+    }]),
+    [agent]
+  );
   return (
     <div className="leaderboard-drawer-backdrop" role="presentation">
       <aside className="leaderboard-drawer" aria-label={`${agent.agent_name} 评测详情`}>
@@ -127,6 +137,16 @@ function AgentDetail({
         <section className="drawer-metric-grid">
           {leaderboardMetrics.map((metric) => <article key={metric.key}><span>{metric.shortLabel}</span><MetricCell metric={metric.key} agent={agent} compact isOperator={isOperator} /></article>)}
         </section>
+        {hasRadarScores && (
+          <section className="drawer-section">
+            <div className="drawer-section-heading"><div><p className="eyebrow">ABILITY SHAPE</p><h3>能力雷达</h3></div><span>固定范围 0—100 · 缺失能力留空不按 0 分处理</span></div>
+            <EChart
+              option={radarOption}
+              className="drawer-radar"
+              ariaLabel={`${agent.agent_name} 五项能力雷达图，坐标范围 0 到 100`}
+            />
+          </section>
+        )}
         <section className="drawer-section">
           <div className="drawer-section-heading"><div><p className="eyebrow">FOCUS METRIC</p><h3>{metricByKey[focusMetric].boardLabel}</h3></div>{focus.score !== null && <strong>{formatScoreWithCi(focus.score, focus.ci_low, focus.ci_high)}</strong>}</div>
           <dl className="drawer-quality">

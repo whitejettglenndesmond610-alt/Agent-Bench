@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 
 import { RunTrajectory, TrajectoryMessage, TrajectoryToolCall } from "./api";
-import { MarkdownContent } from "./WorkspacePage";
+import { MarkdownContent } from "./markdown";
 
 const terminationLabels: Record<string, string> = {
   agent_stop: "Agent 主动结束",

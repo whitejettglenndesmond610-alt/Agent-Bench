@@ -1,9 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { RadarChart } from "echarts/charts";
-import { AriaComponent, LegendComponent, TooltipComponent } from "echarts/components";
-import { init, use } from "echarts/core";
-import { SVGRenderer } from "echarts/renderers";
-import { CSSProperties, useEffect, useRef } from "react";
+import { CSSProperties, useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import {
@@ -11,70 +7,27 @@ import {
   GlobalLeaderboardMetric,
   GlobalOverviewAgent
 } from "./api";
+import { abilityRadarOption, chartPalette } from "./chartOptions";
 import { LoadingState } from "./components";
+import { EChart } from "./EChart";
 import { abilityMetrics, formatScoreWithCi, leaderboardMetrics, metricByKey } from "./metrics";
 import { downloadJson, downloadMarkdown } from "./userProduct";
 
-use([RadarChart, TooltipComponent, LegendComponent, AriaComponent, SVGRenderer]);
-
-const colors = ["#4f46e5", "#0891b2", "#7c3aed", "#e11d48", "#059669"];
+const colors = chartPalette;
 
 function AbilityRadar({ agents }: { agents: GlobalOverviewAgent[] }) {
-  const chartRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const element = chartRef.current;
-    if (!element) return;
-    const chart = init(element, undefined, {
-      renderer: "svg",
-      width: element.clientWidth || 720,
-      height: element.clientHeight || 385
-    });
-    const reducedMotion = typeof window.matchMedia === "function"
-      && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    chart.setOption({
-      animation: !reducedMotion,
-      color: colors,
-      aria: { enabled: true, decal: { show: true } },
-      tooltip: { trigger: "item" },
-      legend: {
-        bottom: 0,
-        textStyle: { color: "#64748b", fontSize: 10 },
-        data: agents.map((agent) => `${agent.agent_name} · V${agent.version}`)
-      },
-      radar: {
-        center: ["50%", "43%"],
-        radius: "62%",
-        splitNumber: 5,
-        indicator: abilityMetrics.map((ability) => ({ name: ability.label, max: 100, min: 0 })),
-        axisName: { color: "#64748b", fontSize: 10 },
-        splitArea: { areaStyle: { color: ["#ffffff", "#f4f6ff"] } },
-        splitLine: { lineStyle: { color: "#dce3ee" } },
-        axisLine: { lineStyle: { color: "#cbd5e1" } }
-      },
-      series: [{
-        type: "radar",
-        symbolSize: 5,
-        lineStyle: { width: 2 },
-        areaStyle: { opacity: 0.12 },
-        data: agents.map((agent) => ({
-          name: `${agent.agent_name} · V${agent.version}`,
-          value: abilityMetrics.map((ability) => agent.metrics[ability.key].score)
-        }))
-      }]
-    });
-    const resize = () => chart.resize();
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(resize);
-    if (observer) observer.observe(element);
-    else window.addEventListener("resize", resize);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener("resize", resize);
-      chart.dispose();
-    };
-  }, [agents]);
-
-  return <div ref={chartRef} className="ability-radar" role="img" aria-label="Agent 五项能力雷达图，坐标范围 0 到 100" />;
+  const option = useMemo(() => abilityRadarOption(agents.map((agent) => ({
+    name: `${agent.agent_name} · V${agent.version}`,
+    values: abilityMetrics.map((ability) => agent.metrics[ability.key].score)
+  }))), [agents]);
+  return (
+    <EChart
+      option={option}
+      className="ability-radar"
+      ariaLabel="Agent 五项能力雷达图，坐标范围 0 到 100"
+      fallbackHeight={385}
+    />
+  );
 }
 
 function metricRows(agents: GlobalOverviewAgent[]) {

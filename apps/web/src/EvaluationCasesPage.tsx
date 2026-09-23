@@ -15,7 +15,7 @@ import {
   updateEvaluationCase
 } from "./api";
 import { LoadingState } from "./components";
-import { Citations, MarkdownContent } from "./WorkspacePage";
+import { Citations, MarkdownContent } from "./markdown";
 import { abilityMetrics } from "./metrics";
 
 const evaluationCasesKey = (userId: string) => ["workspace", userId, "evaluation-cases"] as const;

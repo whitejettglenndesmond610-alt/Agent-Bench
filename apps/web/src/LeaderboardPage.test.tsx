@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -250,4 +250,17 @@ test("explains an empty specialist metric", async () => {
   fireEvent.click(screen.getByRole("button", { name: /数据推理榜/ }));
   expect(screen.getByRole("heading", { name: "当前视图暂无可排名结果" })).toBeInTheDocument();
   expect(screen.getByText("Agent Pending")).toBeInTheDocument();
+});
+
+test("renders an ability radar chart inside the detail drawer", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(overview())));
+  renderPage();
+
+  await screen.findByRole("heading", { name: "Agent 排行榜" });
+  fireEvent.click(screen.getByRole("button", { name: /Agent Alpha/ }));
+
+  const detail = screen.getByLabelText("Agent Alpha 评测详情");
+  expect(within(detail).getByRole("img")).toBeInTheDocument();
+  expect(within(detail).getByText("ABILITY SHAPE")).toBeInTheDocument();
+  expect(detail.querySelector(".drawer-radar")).not.toBeNull();
 });

@@ -3,26 +3,68 @@ import { lazy, Suspense } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation, useParams } from "react-router-dom";
 
 import { fetchSession, login, logout, SessionInfo, SessionRole, userLogin } from "./api";
-import { AgentDetailPage } from "./AgentDetailPage";
-import { AgentPlazaDetailPage, AgentPlazaPage } from "./AgentPlazaPage";
-import { AgentsPage } from "./AgentsPage";
 import { LoadingState } from "./components";
-import { DashboardPage } from "./DashboardPage";
-import { ExperimentsPage } from "./ExperimentsPage";
-import { LoginPage } from "./LoginPage";
-import { LeaderboardPage } from "./LeaderboardPage";
-import { LeaderboardHistoryPage, LeaderboardSnapshotPage } from "./LeaderboardHistoryPage";
-import { MyApiPage } from "./MyApiPage";
-import { NotFoundPage } from "./NotFoundPage";
-import { OnlineDataPage } from "./OnlineDataPage";
-import { PromptTemplatesPage } from "./PromptTemplatesPage";
-import { QualityPage } from "./QualityPage";
-import { RecordsPage } from "./RecordsPage";
-import { RunEvidencePage } from "./RunEvidencePage";
-import { RunsPage } from "./RunsPage";
-import { ExperiencePage } from "./ExperiencePage";
-import { UserHomePage } from "./UserHomePage";
 
+const AgentDetailPage = lazy(() =>
+  import("./AgentDetailPage").then((module) => ({ default: module.AgentDetailPage }))
+);
+const AgentsPage = lazy(() =>
+  import("./AgentsPage").then((module) => ({ default: module.AgentsPage }))
+);
+const DashboardPage = lazy(() =>
+  import("./DashboardPage").then((module) => ({ default: module.DashboardPage }))
+);
+const ExperimentsPage = lazy(() =>
+  import("./ExperimentsPage").then((module) => ({ default: module.ExperimentsPage }))
+);
+const RunEvidencePage = lazy(() =>
+  import("./RunEvidencePage").then((module) => ({ default: module.RunEvidencePage }))
+);
+const RunsPage = lazy(() =>
+  import("./RunsPage").then((module) => ({ default: module.RunsPage }))
+);
+const QualityPage = lazy(() =>
+  import("./QualityPage").then((module) => ({ default: module.QualityPage }))
+);
+const OnlineDataPage = lazy(() =>
+  import("./OnlineDataPage").then((module) => ({ default: module.OnlineDataPage }))
+);
+const LeaderboardPage = lazy(() =>
+  import("./LeaderboardPage").then((module) => ({ default: module.LeaderboardPage }))
+);
+const LeaderboardHistoryPage = lazy(() =>
+  import("./LeaderboardHistoryPage").then((module) => ({ default: module.LeaderboardHistoryPage }))
+);
+const LeaderboardSnapshotPage = lazy(() =>
+  import("./LeaderboardHistoryPage").then((module) => ({ default: module.LeaderboardSnapshotPage }))
+);
+const UserHomePage = lazy(() =>
+  import("./UserHomePage").then((module) => ({ default: module.UserHomePage }))
+);
+const AgentPlazaPage = lazy(() =>
+  import("./AgentPlazaPage").then((module) => ({ default: module.AgentPlazaPage }))
+);
+const AgentPlazaDetailPage = lazy(() =>
+  import("./AgentPlazaPage").then((module) => ({ default: module.AgentPlazaDetailPage }))
+);
+const MyApiPage = lazy(() =>
+  import("./MyApiPage").then((module) => ({ default: module.MyApiPage }))
+);
+const RecordsPage = lazy(() =>
+  import("./RecordsPage").then((module) => ({ default: module.RecordsPage }))
+);
+const PromptTemplatesPage = lazy(() =>
+  import("./PromptTemplatesPage").then((module) => ({ default: module.PromptTemplatesPage }))
+);
+const ExperiencePage = lazy(() =>
+  import("./ExperiencePage").then((module) => ({ default: module.ExperiencePage }))
+);
+const LoginPage = lazy(() =>
+  import("./LoginPage").then((module) => ({ default: module.LoginPage }))
+);
+const NotFoundPage = lazy(() =>
+  import("./NotFoundPage").then((module) => ({ default: module.NotFoundPage }))
+);
 const ComparePage = lazy(() =>
   import("./ComparePage").then((module) => ({ default: module.ComparePage }))
 );
@@ -163,13 +205,14 @@ function AuthenticatedApp({ session }: { session: SessionInfo }) {
   const operator = session.role === "operator";
   const workspaceEnabled = session.workspace_enabled ?? operator;
   const workspaceFallback = <main className="workspace"><LoadingState label="正在加载 Agent 在线运行" /></main>;
+  const pageFallback = <main className="workspace"><LoadingState label="正在加载页面" /></main>;
 
   return (
     <div className="app-shell">
       <AppNavigation session={session} loggingOut={logoutMutation.isPending} onLogout={() => logoutMutation.mutate()} />
       <div className="shell-content">
         <ShellTopbar session={session} />
-        <div className="shell-route"><Routes>
+        <div className="shell-route"><Suspense fallback={pageFallback}><Routes>
         <Route path="/" element={operator ? <DashboardPage /> : <Navigate to={workspaceEnabled ? "/home" : "/leaderboard"} replace />} />
         <Route path="/agents" element={operator ? <AgentsPage /> : <Navigate to="/" replace />} />
         <Route path="/agents/:agentId" element={operator ? <AgentDetailPage /> : <Navigate to="/" replace />} />
@@ -205,7 +248,7 @@ function AuthenticatedApp({ session }: { session: SessionInfo }) {
         <Route path="/workspace/compare/:comparisonId" element={<LegacyCompareRedirect />} />
         <Route path="/workspace/:conversationId" element={workspaceEnabled ? <Suspense fallback={workspaceFallback}><WorkspacePage userId={session.user_id} canDraft={operator && !session.is_shared} /></Suspense> : <Navigate to="/" replace />} />
         <Route path="*" element={<NotFoundPage operator={operator} />} />
-        </Routes></div>
+        </Routes></Suspense></div>
       </div>
     </div>
   );
@@ -245,17 +288,19 @@ export function App() {
 
   if (!sessionQuery.data) {
     return (
-      <LoginPage
-        pending={loginMutation.isPending}
-        error={loginMutation.error instanceof Error ? loginMutation.error.message : undefined}
-        onLogin={async (role, password) => {
-          await loginMutation.mutateAsync({ mode: "role", role, password });
-        }}
-        onUserLogin={async (username, password) => {
-          await loginMutation.mutateAsync({ mode: "account", username, password });
-        }}
-        onResetError={loginMutation.reset}
-      />
+      <Suspense fallback={<main className="auth-loading"><span className="status-dot" />正在加载登录</main>}>
+        <LoginPage
+          pending={loginMutation.isPending}
+          error={loginMutation.error instanceof Error ? loginMutation.error.message : undefined}
+          onLogin={async (role, password) => {
+            await loginMutation.mutateAsync({ mode: "role", role, password });
+          }}
+          onUserLogin={async (username, password) => {
+            await loginMutation.mutateAsync({ mode: "account", username, password });
+          }}
+          onResetError={loginMutation.reset}
+        />
+      </Suspense>
     );
   }
 
