@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     tau2_data_dir: Path | None = Field(default=None, validation_alias="TAU2_DATA_DIR")
     interactive_concurrency: int = Field(default=4, ge=1, le=20)
     interactive_timeout_seconds: int = Field(default=900, gt=0, le=7200)
+    # MCPMark (MCP) evaluation. The worker resolves tasks and verify.py under
+    # this checkout (tasks/filesystem/...); the API process never needs it.
+    mcpmark_repo_path: Path | None = Field(default=None, validation_alias="MCPMARK_REPO_PATH")
     # Langfuse OTLP tracing (worker only). Compose passes these unprefixed; all
     # three must be set to enable tracing, otherwise it stays fully disabled.
     langfuse_host: str | None = Field(default=None, validation_alias="LANGFUSE_HOST")

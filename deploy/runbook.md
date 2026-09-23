@@ -289,6 +289,43 @@ limit, so the existing `deepseek-api-key` secret is the only credential required
 `--limit` is for development only: each profile stays hidden until its full task count is present.
 Do not commit or redistribute the tau2 data directory.
 
+## MCPMark Filesystem (MCP) Evaluation Data
+
+The `mcp-filesystem` profile (MCPMark filesystem easy suite, 10 tasks) is optional and never
+publishes to leaderboards. The worker image already ships the `mcp` dependency group, Node.js 24
+and a warm npx cache for `@modelcontextprotocol/server-filesystem@2025.12.18`; only the pinned
+MCPMark checkout needs provisioning. On the host that owns the data volume:
+
+```bash
+git clone https://github.com/eval-sys/mcpmark.git /tmp/mcpmark-src
+cd /tmp/mcpmark-src && git checkout cd45b7f57923b9b3985467f5139927575f83141c
+mkdir -p "$AGENT_EVAL_DATA_PATH/mcpmark"
+cp -r /tmp/mcpmark-src/tasks "$AGENT_EVAL_DATA_PATH/mcpmark/tasks"
+cd /tmp/mcpmark-src && git rev-parse HEAD > "$AGENT_EVAL_DATA_PATH/mcpmark/.mcpmark-commit"
+chown -R 10001:10001 "$AGENT_EVAL_DATA_PATH/mcpmark"
+rm -rf /tmp/mcpmark-src
+```
+
+Only the `tasks/` tree plus the `.mcpmark-commit` pin file are copied (the importer pins the
+commit into `source_version`, so the dataset content hash moves with the checkout). The compose
+worker and maintenance services set `MCPMARK_REPO_PATH=/data/mcpmark` (overridable via
+`.env.production`). Then import and verify:
+
+```bash
+docker compose --env-file .env.production --profile tools \
+  -f deploy/compose.yaml -f deploy/compose.production.yaml \
+  run --build --rm maintenance import-mcpmark-filesystem --suite easy
+```
+
+At episode time the worker downloads each task's initial-state zip from `meta_data.stateUrl`
+(storage.mcpmark.ai) on first use and caches it under `$AGENT_EVAL_DATA_DIR/mcpmark-states`;
+when meta.json carries a sha256/size pin it is enforced. The episode runs the pinned npm
+filesystem server over stdio with the per-episode workspace as its only allowed directory, and
+scores with the task's `verify.py` (exit 0 = reward 1). `verify.py` is external MCPMark code: it
+executes as the worker user, so only ever provision a checkout you pinned deliberately. The
+standard suite (30 tasks) is intentionally out of scope until M2; importing with `--limit` is for
+development only. Do not commit or redistribute the MCPMark checkout.
+
 ## Local Fake Rehearsal
 
 The demo overlay is local-only and must never be used for an official ranking. It starts two

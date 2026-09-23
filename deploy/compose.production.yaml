@@ -38,6 +38,9 @@ services:
       # tau2-bench interactive evaluation data (tau2/domains/...), provisioned
       # by the operator inside the data volume.
       TAU2_DATA_DIR: /data/tau2
+      # MCPMark (MCP) evaluation checkout (tasks/filesystem/...), provisioned
+      # by the operator inside the data volume at a pinned commit.
+      MCPMARK_REPO_PATH: /data/mcpmark
     volumes:
       - ${AGENT_EVAL_DATA_PATH:?Set AGENT_EVAL_DATA_PATH}:/data
       - ${AGENT_EVAL_SECRETS_PATH:?Set AGENT_EVAL_SECRETS_PATH}:/run/secrets:ro

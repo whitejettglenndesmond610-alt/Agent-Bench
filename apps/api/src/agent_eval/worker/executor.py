@@ -219,6 +219,13 @@ def question_prompt(question: Question) -> str:
     )
 
 
+def route_interactive_items(items: list[WorkItem]) -> tuple[list[WorkItem], list[WorkItem]]:
+    """Split INTERACTIVE items into (tau2, mcp) by the task_ref prefix."""
+    mcp_items = [item for item in items if item.reference_answer.startswith("mcp:")]
+    tau2_items = [item for item in items if not item.reference_answer.startswith("mcp:")]
+    return tau2_items, mcp_items
+
+
 async def execute_agent_work(
     work: AgentWork,
     writer: ResultWriter,
@@ -234,6 +241,9 @@ async def execute_agent_work(
     interactive_items = [
         item for item in work.items if item.question_type == QuestionType.INTERACTIVE
     ]
+    # INTERACTIVE items route on the task_ref prefix: "mcp:" goes to the MCP
+    # executor, everything else stays on the tau2 path.
+    tau2_items, mcp_items = route_interactive_items(interactive_items)
     standard_items = [
         item for item in work.items if item.question_type != QuestionType.INTERACTIVE
     ]
@@ -251,7 +261,7 @@ async def execute_agent_work(
                 version_request_limit=version_request_limit,
             )
         )
-    if interactive_items:
+    if tau2_items:
         from agent_eval.worker.interactive_executor import (
             InteractiveWorkItem,
             execute_interactive_items,
@@ -269,7 +279,7 @@ async def execute_agent_work(
                         task_ref=item.reference_answer,
                         prompt_characters=len(item.prompt),
                     )
-                    for item in interactive_items
+                    for item in tau2_items
                 ],
                 agent_id=work.agent_id,
                 version_id=work.version_id,
@@ -281,6 +291,34 @@ async def execute_agent_work(
                 request_limit=request_limit,
                 version_request_limit=version_request_limit,
                 simulator_request_limit=simulator_request_limit,
+            )
+        )
+    if mcp_items:
+        from agent_eval.worker.mcp_executor import McpWorkItem, execute_mcp_items
+
+        phases.append(
+            execute_mcp_items(
+                [
+                    McpWorkItem(
+                        item_id=item.id,
+                        run_agent_id=item.run_agent_id,
+                        question_id=item.question_id,
+                        attempt_count=item.attempt_count,
+                        trial_index=item.trial_index,
+                        task_ref=item.reference_answer,
+                        prompt_characters=len(item.prompt),
+                    )
+                    for item in mcp_items
+                ],
+                agent_id=work.agent_id,
+                version_id=work.version_id,
+                concurrency=work.concurrency,
+                config=work.config,
+                settings=settings,
+                writer=writer,
+                record_outcome=circuit_breaker.record,
+                request_limit=request_limit,
+                version_request_limit=version_request_limit,
             )
         )
     if phases:

@@ -39,6 +39,11 @@ tau2 = [
   "tau2 @ git+https://github.com/sierra-research/tau2-bench.git@v1.0.1",
   "httpx[socks]",
 ]
+mcp = [
+  "mcp==2.2.0",
+  # State-zip downloads honor proxy env vars; SOCKS proxies need socksio.
+  "httpx[socks]",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["apps/api/src/agent_eval"]
@@ -68,5 +73,5 @@ strict = true
 packages = ["agent_eval"]
 
 [[tool.mypy.overrides]]
-module = ["aiosqlite.*", "asyncpg.*", "boto3.*", "botocore.*", "jsonpath_ng.*", "regex.*", "tau2.*", "litellm.*"]
+module = ["aiosqlite.*", "asyncpg.*", "boto3.*", "botocore.*", "jsonpath_ng.*", "regex.*", "tau2.*", "litellm.*", "mcp.*", "mcp_types.*"]
 ignore_missing_imports = true

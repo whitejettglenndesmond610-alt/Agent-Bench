@@ -32,6 +32,12 @@ from agent_eval.datasets.livebench_builder import (
     LIVEBENCH_QUOTAS,
     build_livebench_dataset,
 )
+from agent_eval.datasets.mcpmark_importer import (
+    SUPPORTED_SUITES as MCPMARK_SUITES,
+)
+from agent_eval.datasets.mcpmark_importer import (
+    import_mcpmark_filesystem,
+)
 from agent_eval.datasets.official_builder import build_official_v4_dataset
 from agent_eval.datasets.schema import load_question_records, validate_demo_distribution
 from agent_eval.datasets.tau2_importer import (
@@ -319,6 +325,34 @@ async def import_tau2_command(
         async with session_scope(session_factory) as session:
             imported = await import_tau2(
                 session, domain=domain, data_dir=resolved_dir, limit=limit
+            )
+    finally:
+        await engine.dispose()
+    for item in imported:
+        action = "created" if item.created else "reused"
+        print(
+            f"{action} {item.benchmark} v{item.version}: "
+            f"{item.question_count} questions, sha256={item.content_hash}"
+        )
+
+
+async def import_mcpmark_filesystem_command(
+    suite: str, data_dir: Path | None, limit: int | None
+) -> None:
+    settings = Settings()
+    resolved_dir = data_dir or settings.mcpmark_repo_path
+    if resolved_dir is None:
+        raise SystemExit(
+            "MCPMark checkout required: pass --data-dir or set MCPMARK_REPO_PATH"
+        )
+    configure_logging(settings.log_level)
+    ensure_storage(settings)
+    engine = create_engine(settings)
+    session_factory = create_session_factory(engine)
+    try:
+        async with session_scope(session_factory) as session:
+            imported = await import_mcpmark_filesystem(
+                session, repo_dir=resolved_dir, suite=suite, limit=limit
             )
     finally:
         await engine.dispose()
@@ -720,6 +754,25 @@ def main() -> None:
         default=DEFAULT_IMPORT_LIMIT,
         help="number of retail tasks to import (default: the full base split)",
     )
+    mcpmark_parser = subparsers.add_parser("import-mcpmark-filesystem")
+    mcpmark_parser.add_argument(
+        "--suite",
+        choices=MCPMARK_SUITES,
+        default="easy",
+        help="MCPMark filesystem suite to import (default: easy)",
+    )
+    mcpmark_parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=None,
+        help="MCPMark checkout root (defaults to MCPMARK_REPO_PATH)",
+    )
+    mcpmark_parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="number of tasks to import (default: the full suite)",
+    )
     bootstrap_parser = subparsers.add_parser("bootstrap")
     bootstrap_parser.add_argument("--dataset", type=Path, default=Path("/datasets/demo"))
     preflight_parser = subparsers.add_parser("preflight")
@@ -878,6 +931,12 @@ def main() -> None:
         print(
             f"built {balanced_manifest['question_count']} balanced-v2 candidate questions in "
             f"{output_path}, sha256={balanced_manifest['canonical_bundle_hash']}"
+        )
+    elif arguments.command == "import-mcpmark-filesystem":
+        asyncio.run(
+            import_mcpmark_filesystem_command(
+                arguments.suite, data_dir=arguments.data_dir, limit=arguments.limit
+            )
         )
     elif arguments.command == "bootstrap":
         asyncio.run(bootstrap(arguments.dataset))

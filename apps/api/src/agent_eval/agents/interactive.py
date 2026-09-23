@@ -12,7 +12,6 @@ must stay importable without tau2.
 """
 
 import json
-import re
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -35,34 +34,30 @@ from agent_eval.agents.inference import (
     InferenceConfig,
     post_agent_prompt,
 )
+from agent_eval.agents.protocol import (
+    AgentProtocolError,
+    ProtocolParseError,
+    build_correction_message,
+    extract_fenced_payload,
+    merge_token_usage,
+    parse_tool_arguments,
+)
 from agent_eval.core.tracing import endpoint_host, set_attributes, trace_span
 
 STOP_TOKEN = "###STOP###"
 AGENT_PROTOCOL = "http-text-json-v1"
-MAX_CORRECTION_REPLY_CHARS = 1000
 
-
-def merge_token_usage(results: list[AgentPromptResult]) -> dict[str, int] | None:
-    """Sum per-call usage (tau2 dict shape); None when no call reported usage."""
-    observed = [
-        result
-        for result in results
-        if result.input_tokens is not None and result.output_tokens is not None
-    ]
-    if not observed:
-        return None
-    return {
-        "prompt_tokens": sum(result.input_tokens or 0 for result in observed),
-        "completion_tokens": sum(result.output_tokens or 0 for result in observed),
-    }
-
-
-class AgentProtocolError(RuntimeError):
-    """The agent repeatedly failed to follow the fenced-JSON protocol."""
-
-
-class ProtocolParseError(ValueError):
-    """A single agent reply could not be parsed into a protocol action."""
+__all__ = [
+    "AGENT_PROTOCOL",
+    "STOP_TOKEN",
+    "AgentProtocolError",
+    "HttpTextProtocolAgent",
+    "ProtocolParseError",
+    "merge_token_usage",
+    "parse_protocol_action",
+    "render_protocol_prompt",
+    "render_transcript",
+]
 
 
 @dataclass(frozen=True)
@@ -73,19 +68,8 @@ class ProtocolAction:
     tool_arguments: dict[str, Any] | None = None
 
 
-_FENCE_PATTERN = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
-
-
 def parse_protocol_action(answer: str, *, tool_names: set[str]) -> ProtocolAction:
-    match = _FENCE_PATTERN.search(answer)
-    if match is None:
-        raise ProtocolParseError("reply contains no fenced ```json block")
-    try:
-        payload: Any = json.loads(match.group(1))
-    except json.JSONDecodeError as error:
-        raise ProtocolParseError(f"fenced block is not valid JSON: {error}") from error
-    if not isinstance(payload, dict):
-        raise ProtocolParseError("fenced block must contain a JSON object")
+    payload = extract_fenced_payload(answer)
     action = payload.get("action")
     if action == "respond":
         content = payload.get("content")
@@ -98,10 +82,9 @@ def parse_protocol_action(answer: str, *, tool_names: set[str]) -> ProtocolActio
             raise ProtocolParseError(
                 f'"tool" action requires a "name" from the available tools {sorted(tool_names)}'
             )
-        arguments = payload.get("arguments", {})
-        if not isinstance(arguments, dict):
-            raise ProtocolParseError('"tool" action "arguments" must be a JSON object')
-        return ProtocolAction(action="tool", tool_name=name, tool_arguments=arguments)
+        return ProtocolAction(
+            action="tool", tool_name=name, tool_arguments=parse_tool_arguments(payload)
+        )
     if action == "stop":
         return ProtocolAction(action="stop")
     raise ProtocolParseError('"action" must be one of "respond", "tool" or "stop"')
@@ -233,13 +216,7 @@ class HttpTextProtocolAgent(HalfDuplexAgent):  # type: ignore[misc]
         except ProtocolParseError as first_error:
             if self._correction is not None:
                 raise AgentProtocolError(str(first_error)) from first_error
-            truncated = result.answer[:MAX_CORRECTION_REPLY_CHARS]
-            self._correction = (
-                f"Your previous reply was invalid: {first_error}\n"
-                f"Your previous reply was:\n{truncated}\n"
-                "Reply again with exactly one fenced ```json block that follows "
-                "the protocol above."
-            )
+            self._correction = build_correction_message(first_error, result.answer)
             retry = self._ask(history)
             results.append(retry)
             try:

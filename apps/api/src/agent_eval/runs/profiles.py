@@ -15,6 +15,7 @@ from agent_eval.datasets.importer import (
     BALANCED_V2_COHORT_KEY,
     HELDOUT_V1_COHORT_KEY,
     LEGACY_COHORT_KEY,
+    MCP_V1_COHORT_KEY,
     OFFICIAL_V4_COHORT_KEY,
     TAU2_V1_COHORT_KEY,
 )
@@ -71,6 +72,13 @@ TAU2_PROFILES: dict[str, tuple[str, str, int]] = {
     "tau2-airline": ("Tau2-Airline", "Tau2 Airline Interactive", 50),
 }
 TAU2_PROFILE_KEYS = frozenset(TAU2_PROFILES)
+MCP_FILESYSTEM_PROFILE_KEY = "mcp-filesystem"
+# Locked MCPMark filesystem profiles: benchmark, display name, expected tasks.
+# Only the easy suite (10 tasks) ships in M1; standard (30) lands with M2.
+MCP_PROFILES: dict[str, tuple[str, str, int]] = {
+    MCP_FILESYSTEM_PROFILE_KEY: ("MCPMark-Filesystem", "MCPMark Filesystem Easy", 10),
+}
+MCP_PROFILE_KEYS = frozenset(MCP_PROFILES)
 
 # The first balanced-v2 release used these two names before the Original prefix
 # convention was applied consistently. Their source is still the frozen original cohort.
@@ -360,6 +368,36 @@ async def build_run_profiles(session: AsyncSession) -> list[RunProfile]:
                 score_config=None,
             )
         )
+    mcp_datasets = sorted(
+        (
+            item
+            for (cohort_key, _), item in latest_by_benchmark.items()
+            if cohort_key == MCP_V1_COHORT_KEY
+        ),
+        key=lambda item: (item.benchmark.name.casefold(), str(item.id)),
+    )
+    for profile_key, (benchmark_name, profile_name, expected) in MCP_PROFILES.items():
+        domain_datasets = [
+            item for item in mcp_datasets if item.benchmark.name == benchmark_name
+        ]
+        if not is_complete_tau2_domain(domain_datasets, benchmark_name, expected):
+            continue
+        profiles.append(
+            _profile(
+                key=profile_key,
+                name=profile_name,
+                description=(
+                    f"MCPMark filesystem {profile_key.removeprefix('mcp-')} suite "
+                    f"({expected} tasks) against HTTP agents over MCP."
+                ),
+                scope=RunScope.SMOKE,
+                target_ability=None,
+                datasets=domain_datasets,
+                publishes_to=[],
+                ranking_eligible=False,
+                score_config=None,
+            )
+        )
     return profiles
 
 
@@ -377,10 +415,11 @@ def available_run_profiles(profiles: list[RunProfile]) -> list[RunProfile]:
         OFFICIAL_V4_PROFILE_KEY,
         HELDOUT_V1_PROFILE_KEY,
         *TAU2_PROFILE_KEYS,
+        *MCP_PROFILE_KEYS,
         *UNIFIED_V3_PROFILE_KEYS,
     }
-    # smoke and the tau2 profiles alone must not hide the legacy profile list.
-    standalone = {"smoke", *TAU2_PROFILE_KEYS}
+    # smoke and the tau2/mcp profiles alone must not hide the legacy profile list.
+    standalone = {"smoke", *TAU2_PROFILE_KEYS, *MCP_PROFILE_KEYS}
     if any(profile.key in allowed and profile.key not in standalone for profile in profiles):
         return [profile for profile in profiles if profile.key in allowed]
     return profiles

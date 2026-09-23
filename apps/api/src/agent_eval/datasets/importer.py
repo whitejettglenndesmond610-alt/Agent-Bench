@@ -17,6 +17,7 @@ BALANCED_V2_COHORT_KEY = "balanced-v2"
 OFFICIAL_V4_COHORT_KEY = "official-v4"
 HELDOUT_V1_COHORT_KEY = "heldout-v1"
 TAU2_V1_COHORT_KEY = "tau2-v1"
+MCP_V1_COHORT_KEY = "mcp-v1"
 
 
 class DatasetImportError(ValueError):
@@ -46,12 +47,13 @@ async def import_question_records(
     unreleased = sorted(
         {record.ability.value for record in records if record.ability not in RELEASED_ABILITIES}
     )
-    if cohort_key == TAU2_V1_COHORT_KEY:
-        # The tau2-v1 cohort is the controlled release channel for the agentic
-        # ability; interactive benchmarks never enter the released leaderboards.
+    if cohort_key in {TAU2_V1_COHORT_KEY, MCP_V1_COHORT_KEY}:
+        # The tau2-v1/mcp-v1 cohorts are the controlled release channel for the
+        # agentic ability; interactive benchmarks never enter the released
+        # leaderboards.
         if unreleased != [Ability.AGENTIC.value]:
             raise DatasetImportError(
-                "tau2-v1 imports may only contain agentic interactive questions"
+                f"{cohort_key} imports may only contain agentic interactive questions"
             )
     elif unreleased:
         if not allow_candidate:
@@ -74,9 +76,11 @@ async def import_question_records(
         OFFICIAL_V4_COHORT_KEY,
         HELDOUT_V1_COHORT_KEY,
         TAU2_V1_COHORT_KEY,
+        MCP_V1_COHORT_KEY,
     }:
         raise DatasetImportError(
-            "generic imports must use the legacy-v1, official-v4, heldout-v1 or tau2-v1 cohort"
+            "generic imports must use the legacy-v1, official-v4, heldout-v1, "
+            "tau2-v1 or mcp-v1 cohort"
         )
     if held_out and cohort_key != HELDOUT_V1_COHORT_KEY:
         raise DatasetImportError("held-out imports must use the heldout-v1 cohort")

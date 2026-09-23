@@ -88,6 +88,9 @@ services:
       # tau2-bench interactive evaluation: mount the tau2 data directory
       # (containing tau2/domains/...) into the worker at this path.
       TAU2_DATA_DIR: ${TAU2_DATA_DIR:-/data/tau2}
+      # MCPMark (MCP) evaluation: mount the pinned MCPMark checkout (containing
+      # tasks/filesystem/...) into the worker at this path.
+      MCPMARK_REPO_PATH: ${MCPMARK_REPO_PATH:-/data/mcpmark}
       AGENT_EVAL_INTERACTIVE_CONCURRENCY: ${AGENT_EVAL_INTERACTIVE_CONCURRENCY:-4}
       AGENT_EVAL_INTERACTIVE_TIMEOUT_SECONDS: ${AGENT_EVAL_INTERACTIVE_TIMEOUT_SECONDS:-900}
       # Optional Langfuse/OTLP tracing for agent, judge, and simulator calls.
@@ -144,6 +147,8 @@ services:
       AGENT_EVAL_MONITORING_MAX_QUEUED_WORKSPACE_ATTEMPTS: ${AGENT_EVAL_MONITORING_MAX_QUEUED_WORKSPACE_ATTEMPTS:-20}
       AGENT_EVAL_MONITORING_MAX_WORKSPACE_QUEUE_AGE_MINUTES: ${AGENT_EVAL_MONITORING_MAX_WORKSPACE_QUEUE_AGE_MINUTES:-30}
       AGENT_EVAL_MONITORING_MAX_RECENT_FAILED_WORKSPACE_ATTEMPTS: ${AGENT_EVAL_MONITORING_MAX_RECENT_FAILED_WORKSPACE_ATTEMPTS:-10}
+      # MCPMark checkout for import-mcpmark-filesystem (same layout as worker).
+      MCPMARK_REPO_PATH: ${MCPMARK_REPO_PATH:-/data/mcpmark}
     volumes:
       - app_data:/data
       - ${AGENT_EVAL_DATASET_PATH:-../data/demo-dataset}:/datasets/demo:ro
