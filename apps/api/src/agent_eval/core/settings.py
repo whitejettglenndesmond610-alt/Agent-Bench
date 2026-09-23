@@ -73,6 +73,11 @@ class Settings(BaseSettings):
     citation_max_redirects: int = Field(default=3, ge=0, le=10)
     citation_max_response_bytes: int = Field(default=2_097_152, gt=0, le=10_485_760)
     citation_max_text_bytes: int = Field(default=204_800, gt=0, le=1_048_576)
+    # Interactive (tau2-bench) evaluation. The worker sets TAU2_DATA_DIR before
+    # importing tau2; the API process never needs it.
+    tau2_data_dir: Path | None = Field(default=None, validation_alias="TAU2_DATA_DIR")
+    interactive_concurrency: int = Field(default=4, ge=1, le=20)
+    interactive_timeout_seconds: int = Field(default=900, gt=0, le=7200)
     read_only_password_hash: SecretStr | None = None
     read_only_password_hash_file: Path | None = None
     operator_password_hash: SecretStr | None = None

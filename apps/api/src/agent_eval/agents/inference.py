@@ -24,6 +24,22 @@ from agent_eval.db.enums import AttemptStatus, AuthType
 MAX_RESPONSE_BYTES = 1_048_576
 
 
+class AgentPromptError(RuntimeError):
+    """Single-shot agent HTTP call failure with a classified error type."""
+
+    def __init__(self, error_type: str) -> None:
+        super().__init__(error_type)
+        self.error_type = error_type
+
+
+@dataclass(frozen=True)
+class AgentPromptResult:
+    answer: str
+    content: bytes
+    status_code: int
+    latency_ms: int
+
+
 @dataclass(frozen=True)
 class InferenceConfig:
     endpoint_url: str
@@ -64,6 +80,71 @@ class InferenceOutcome:
 StartAttempt = Callable[[int], Awaitable[UUID | None]]
 FinishAttempt = Callable[[AttemptCompletion], Awaitable[None]]
 Sleep = Callable[[float], Awaitable[None]]
+
+
+def post_agent_prompt(
+    client: httpx.Client,
+    config: InferenceConfig,
+    prompt: str,
+) -> AgentPromptResult:
+    """Synchronously POST one rendered prompt and extract the mapped answer.
+
+    Shared by the interactive (tau2) adapter: template rendering, auth headers,
+    redaction, and JSONPath answer extraction behave exactly like execute_inference,
+    but retries and attempt bookkeeping are left to the caller.
+    """
+    request_body = render_request_template(config.request_template, prompt)
+    headers = json_request_headers(
+        auth_type=config.auth_type,
+        token=config.token,
+        extra_headers=config.extra_headers,
+        api_key_header=config.api_key_header,
+    )
+    started_at = perf_counter()
+    try:
+        response = client.post(
+            config.endpoint_url,
+            headers=headers,
+            json=request_body,
+            timeout=httpx.Timeout(config.timeout_seconds),
+        )
+        content = response.read()
+    except httpx.TimeoutException as error:
+        raise AgentPromptError(error_type("timeout")) from error
+    except (httpx.RequestError, UnicodeError, ValueError) as error:
+        raise AgentPromptError(error_type("network")) from error
+    latency_ms = elapsed_ms(started_at)
+    if len(content) > MAX_RESPONSE_BYTES:
+        raise AgentPromptError("agent_response_too_large")
+    redacted = redact_content(bytes(content), config.token)
+    if response.status_code == 429:
+        raise AgentPromptError(error_type("rate_limit"))
+    if response.status_code == 408:
+        raise AgentPromptError(error_type("timeout"))
+    if 500 <= response.status_code <= 599:
+        raise AgentPromptError(error_type("server_error"))
+    if not response.is_success:
+        raise AgentPromptError(
+            error_type(
+                classify_agent_failure(status_code=response.status_code, content=redacted)
+            )
+        )
+    try:
+        payload: Any = json.loads(content)
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise AgentPromptError(error_type("response_schema")) from error
+    try:
+        answer = extract_answer(payload, config.answer_jsonpath)
+    except ResponseMappingError as error:
+        raise AgentPromptError(
+            error_type(classify_agent_failure(status_code=response.status_code, error=str(error)))
+        ) from error
+    return AgentPromptResult(
+        answer=redact_secret(answer, config.token),
+        content=redacted,
+        status_code=response.status_code,
+        latency_ms=latency_ms,
+    )
 
 
 async def execute_inference(

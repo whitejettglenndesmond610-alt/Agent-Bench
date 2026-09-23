@@ -12,13 +12,18 @@ COPY --from=uv /uv /uvx /bin/
 
 WORKDIR /app
 
+# git is required to fetch the tau2 git dependency in the tau2 group.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --group tau2 --no-install-project
 
 COPY apps/api/src ./apps/api/src
 COPY alembic.ini ./
 COPY migrations ./migrations
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev --group tau2
 
 RUN useradd --create-home --uid 10001 appuser \
     && mkdir -p /data \

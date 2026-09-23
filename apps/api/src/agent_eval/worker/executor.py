@@ -1,7 +1,8 @@
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from functools import partial
+from typing import Any
 from uuid import UUID
 
 import httpx
@@ -20,7 +21,7 @@ from agent_eval.agents.prompt import build_question_prompt
 from agent_eval.auth.encryption import TokenCipher
 from agent_eval.core.artifact_store import ArtifactStore
 from agent_eval.core.settings import Settings
-from agent_eval.db.enums import ExecutionStatus
+from agent_eval.db.enums import ExecutionStatus, QuestionType
 from agent_eval.db.models import AgentVersion, DatasetVersion, ExecutionItem, Question, RunAgent
 from agent_eval.worker.limits import RequestLimit, agent_request_slots
 from agent_eval.worker.result_writer import ResultWriter
@@ -35,6 +36,9 @@ class WorkItem:
     question_id: UUID
     attempt_count: int
     prompt: str
+    question_type: QuestionType
+    reference_answer: str
+    trial_index: int
 
 
 @dataclass(frozen=True)
@@ -108,6 +112,7 @@ async def execute_run_inference(
     sleep: Sleep = asyncio.sleep,
     request_limit: RequestLimit | None = None,
     version_request_limit: RequestLimit | None = None,
+    simulator_request_limit: RequestLimit | None = None,
 ) -> bool:
     work = await load_run_work(session_factory, run_id, token_cipher)
     writer = ResultWriter(session_factory, settings, run_id, owner_id, artifact_store)
@@ -118,6 +123,7 @@ async def execute_run_inference(
                 execute_agent_work(
                     agent_work,
                     writer,
+                    settings=settings,
                     transport=(
                         transport_factory(agent_work.version_id)
                         if transport_factory is not None
@@ -126,6 +132,7 @@ async def execute_run_inference(
                     sleep=sleep,
                     request_limit=request_limit,
                     version_request_limit=version_request_limit,
+                    simulator_request_limit=simulator_request_limit,
                 )
                 for agent_work in work
             ]
@@ -168,7 +175,14 @@ async def load_run_work(
                 run_agent_id=run_agent.id,
                 question_id=item.question_id,
                 attempt_count=item.attempt_count,
-                prompt=question_prompt(item.question),
+                prompt=(
+                    item.question.prompt
+                    if item.question.type == QuestionType.INTERACTIVE
+                    else question_prompt(item.question)
+                ),
+                question_type=item.question.type,
+                reference_answer=item.question.reference_answer,
+                trial_index=item.trial_index,
             )
             for item in sorted(run_agent.execution_items, key=lambda value: str(value.question_id))
             if item.status == ExecutionStatus.PENDING
@@ -200,14 +214,83 @@ async def execute_agent_work(
     work: AgentWork,
     writer: ResultWriter,
     *,
+    settings: Settings,
+    transport: httpx.AsyncBaseTransport | None,
+    sleep: Sleep,
+    request_limit: RequestLimit | None = None,
+    version_request_limit: RequestLimit | None = None,
+    simulator_request_limit: RequestLimit | None = None,
+) -> None:
+    circuit_breaker = AgentCircuitBreaker()
+    interactive_items = [
+        item for item in work.items if item.question_type == QuestionType.INTERACTIVE
+    ]
+    standard_items = [
+        item for item in work.items if item.question_type != QuestionType.INTERACTIVE
+    ]
+    phases: list[Coroutine[Any, Any, None]] = []
+    if standard_items:
+        phases.append(
+            _execute_standard_items(
+                standard_items,
+                work,
+                writer,
+                circuit_breaker,
+                transport=transport,
+                sleep=sleep,
+                request_limit=request_limit,
+                version_request_limit=version_request_limit,
+            )
+        )
+    if interactive_items:
+        from agent_eval.worker.interactive_executor import (
+            InteractiveWorkItem,
+            execute_interactive_items,
+        )
+
+        phases.append(
+            execute_interactive_items(
+                [
+                    InteractiveWorkItem(
+                        item_id=item.id,
+                        run_agent_id=item.run_agent_id,
+                        question_id=item.question_id,
+                        attempt_count=item.attempt_count,
+                        trial_index=item.trial_index,
+                        task_ref=item.reference_answer,
+                        prompt_characters=len(item.prompt),
+                    )
+                    for item in interactive_items
+                ],
+                agent_id=work.agent_id,
+                version_id=work.version_id,
+                concurrency=work.concurrency,
+                config=work.config,
+                settings=settings,
+                writer=writer,
+                record_outcome=circuit_breaker.record,
+                request_limit=request_limit,
+                version_request_limit=version_request_limit,
+                simulator_request_limit=simulator_request_limit,
+            )
+        )
+    if phases:
+        await asyncio.gather(*phases)
+
+
+async def _execute_standard_items(
+    items: list[WorkItem],
+    work: AgentWork,
+    writer: ResultWriter,
+    circuit_breaker: AgentCircuitBreaker,
+    *,
     transport: httpx.AsyncBaseTransport | None,
     sleep: Sleep,
     request_limit: RequestLimit | None = None,
     version_request_limit: RequestLimit | None = None,
 ) -> None:
     item_queue: asyncio.Queue[WorkItem] = asyncio.Queue()
-    circuit_breaker = AgentCircuitBreaker()
-    for item in work.items:
+    for item in items:
         item_queue.put_nowait(item)
 
     async with httpx.AsyncClient(transport=transport, follow_redirects=False) as client:
@@ -225,7 +308,7 @@ async def execute_agent_work(
                 ),
                 name=f"agent-{work.version_id}-{index}",
             )
-            for index in range(min(work.concurrency, len(work.items)))
+            for index in range(min(work.concurrency, len(items)))
         ]
         if workers:
             await asyncio.gather(*workers)

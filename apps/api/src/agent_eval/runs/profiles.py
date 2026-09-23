@@ -16,6 +16,7 @@ from agent_eval.datasets.importer import (
     HELDOUT_V1_COHORT_KEY,
     LEGACY_COHORT_KEY,
     OFFICIAL_V4_COHORT_KEY,
+    TAU2_V1_COHORT_KEY,
 )
 from agent_eval.db.enums import RELEASED_ABILITIES, Ability, DatasetStatus, RunScope
 from agent_eval.db.models import DatasetVersion, Question, ScoreConfig
@@ -27,6 +28,13 @@ from agent_eval.scoring.configs import (
 )
 
 DEFAULT_PROFILE_KEY = "comprehensive"
+
+# Ranking metrics for weight-aggregated profiles; the agentic ability (tau2
+# interactive runs) is never part of weighted ranking aggregation.
+WEIGHTED_PUBLISH_METRICS = [
+    "overall",
+    *(ability.value for ability in BALANCED_V2_ABILITY_WEIGHTS),
+]
 BALANCED_V2_PROFILE_KEY = "balanced-v2"
 UNIFIED_V3_PROFILE_KEY = "unified-v3"
 UNIFIED_V3_EXPECTED_COUNTS = {
@@ -37,7 +45,8 @@ UNIFIED_V3_EXPECTED_COUNTS = {
     Ability.LONG_CONTEXT: 30,
 }
 UNIFIED_V3_SPECIALIST_PROFILE_KEYS = {
-    ability: f"{UNIFIED_V3_PROFILE_KEY}-{ability.value}" for ability in Ability
+    ability: f"{UNIFIED_V3_PROFILE_KEY}-{ability.value}"
+    for ability in UNIFIED_V3_EXPECTED_COUNTS
 }
 UNIFIED_V3_PROFILE_KEYS = frozenset(
     {UNIFIED_V3_PROFILE_KEY, *UNIFIED_V3_SPECIALIST_PROFILE_KEYS.values()}
@@ -54,6 +63,8 @@ HELDOUT_V1_EXPECTED = {
     "LiveBench-DataAnalysis": 20,
     "HLE-TextOnly": 40,
 }
+TAU2_RETAIL_PROFILE_KEY = "tau2-retail"
+TAU2_RETAIL_EXPECTED = {"Tau2-Retail": 5}
 
 # The first balanced-v2 release used these two names before the Original prefix
 # convention was applied consistently. Their source is still the frozen original cohort.
@@ -197,7 +208,7 @@ async def build_run_profiles(session: AsyncSession) -> list[RunProfile]:
                 scope=RunScope.COMPREHENSIVE,
                 target_ability=None,
                 datasets=balanced_datasets,
-                publishes_to=["overall", *(ability.value for ability in Ability)],
+                publishes_to=list(WEIGHTED_PUBLISH_METRICS),
                 ranking_eligible=True,
                 score_config=balanced_score,
             )
@@ -245,12 +256,12 @@ async def build_run_profiles(session: AsyncSession) -> list[RunProfile]:
                 scope=RunScope.COMPREHENSIVE,
                 target_ability=None,
                 datasets=unified_datasets,
-                publishes_to=["overall", *(ability.value for ability in Ability)],
+                publishes_to=list(WEIGHTED_PUBLISH_METRICS),
                 ranking_eligible=True,
                 score_config=balanced_score,
             )
         )
-        for ability in Ability:
+        for ability in UNIFIED_V3_EXPECTED_COUNTS:
             profiles.append(
                 _profile(
                     key=UNIFIED_V3_SPECIALIST_PROFILE_KEYS[ability],
@@ -314,6 +325,28 @@ async def build_run_profiles(session: AsyncSession) -> list[RunProfile]:
                 score_config=legacy_score,
             )
         )
+    tau2_datasets = sorted(
+        (
+            item
+            for (cohort_key, _), item in latest_by_benchmark.items()
+            if cohort_key == TAU2_V1_COHORT_KEY
+        ),
+        key=lambda item: (item.benchmark.name.casefold(), str(item.id)),
+    )
+    if is_complete_tau2_retail(tau2_datasets):
+        profiles.append(
+            _profile(
+                key=TAU2_RETAIL_PROFILE_KEY,
+                name="Tau2 Retail Interactive",
+                description="Five tau2-bench retail interactive tasks against HTTP agents.",
+                scope=RunScope.SMOKE,
+                target_ability=None,
+                datasets=tau2_datasets,
+                publishes_to=[],
+                ranking_eligible=False,
+                score_config=None,
+            )
+        )
     return profiles
 
 
@@ -326,8 +359,16 @@ def default_profile_key(profiles: list[RunProfile]) -> str:
 
 
 def available_run_profiles(profiles: list[RunProfile]) -> list[RunProfile]:
-    allowed = {"smoke", OFFICIAL_V4_PROFILE_KEY, HELDOUT_V1_PROFILE_KEY, *UNIFIED_V3_PROFILE_KEYS}
-    if any(profile.key in allowed and profile.key != "smoke" for profile in profiles):
+    allowed = {
+        "smoke",
+        OFFICIAL_V4_PROFILE_KEY,
+        HELDOUT_V1_PROFILE_KEY,
+        TAU2_RETAIL_PROFILE_KEY,
+        *UNIFIED_V3_PROFILE_KEYS,
+    }
+    # smoke and tau2-retail alone must not hide the legacy profile list.
+    standalone = {"smoke", TAU2_RETAIL_PROFILE_KEY}
+    if any(profile.key in allowed and profile.key not in standalone for profile in profiles):
         return [profile for profile in profiles if profile.key in allowed]
     return profiles
 
@@ -371,7 +412,7 @@ def is_complete_balanced_v2(
             difficulty_counts[(ability, difficulty)] == expected
             for difficulty, expected in BALANCED_V2_DIFFICULTY_QUOTA.items()
         )
-        for ability in Ability
+        for ability in BALANCED_V2_ABILITY_WEIGHTS
     )
 
 
@@ -467,6 +508,18 @@ def is_complete_heldout_v1(datasets: list[DatasetVersion]) -> bool:
         return False
     return all(
         by_name[name].question_count == count for name, count in HELDOUT_V1_EXPECTED.items()
+    )
+
+
+def is_complete_tau2_retail(datasets: list[DatasetVersion]) -> bool:
+    if not datasets or any(item.held_out for item in datasets):
+        return False
+    by_name = {item.benchmark.name: item for item in datasets}
+    if set(by_name) != set(TAU2_RETAIL_EXPECTED):
+        return False
+    return all(
+        by_name[name].question_count == count
+        for name, count in TAU2_RETAIL_EXPECTED.items()
     )
 
 

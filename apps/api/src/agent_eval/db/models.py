@@ -524,8 +524,8 @@ class EvaluationRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     judge_config_id: Mapped[UUID] = mapped_column(
         ForeignKey("judge_configs.id", ondelete="RESTRICT"), nullable=False
     )
-    score_config_id: Mapped[UUID] = mapped_column(
-        ForeignKey("score_configs.id", ondelete="RESTRICT"), nullable=False
+    score_config_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("score_configs.id", ondelete="RESTRICT")
     )
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -684,6 +684,7 @@ class ExecutionItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("artifact_index.id", ondelete="SET NULL")
     )
     error_type: Mapped[str | None] = mapped_column(String(80), index=True)
+    task_reward: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
 
     run_agent: Mapped[RunAgent] = relationship(back_populates="execution_items")
     question: Mapped[Question] = relationship(back_populates="execution_items")

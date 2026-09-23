@@ -365,7 +365,7 @@ async def test_unified_v3_publisher_emits_all_metrics_and_becomes_current(
             }
         assert {result.metric for result in results} == {
             "overall",
-            *(ability.value for ability in Ability),
+            *(ability.value for ability in Ability if ability is not Ability.AGENTIC),
         }
         assert {float(result.score) for result in results} == {80.0}
         assert snapshot is not None and snapshot.is_current is True

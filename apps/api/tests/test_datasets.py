@@ -342,7 +342,7 @@ async def test_balanced_v2_import_is_audited_isolated_and_profiled_atomically(
         assert profiles["balanced-v2"].question_count == 150
         assert set(profiles["balanced-v2"].publishes_to) == {
             "overall",
-            *(ability.value for ability in Ability),
+            *(ability.value for ability in Ability if ability is not Ability.AGENTIC),
         }
         assert profiles["comprehensive"].dataset_version_ids == ()
     finally:
@@ -388,7 +388,9 @@ async def test_unified_v3_composes_frozen_cohorts_without_duplicate_questions(
         assert balanced.question_count == 150
         assert unified.question_count == 175
         assert unified.benchmark_count == 13
-        assert unified.ability_weights == {ability: 20 for ability in Ability}
+        assert unified.ability_weights == {
+            ability: 20 for ability in Ability if ability is not Ability.AGENTIC
+        }
         assert unified.ranking_eligible is True
         assert set(unified.dataset_version_ids) == {
             *legacy.dataset_version_ids,
@@ -407,7 +409,9 @@ async def test_unified_v3_composes_frozen_cohorts_without_duplicate_questions(
             specialist = profiles[UNIFIED_V3_SPECIALIST_PROFILE_KEYS[ability]]
             assert specialist.question_count == expected_count
             assert specialist.target_ability == ability
-            assert specialist.ability_weights == {item: 20 for item in Ability}
+            assert specialist.ability_weights == {
+                    item: 20 for item in Ability if item is not Ability.AGENTIC
+                }
             assert all(
                 versions[version_id].benchmark.ability == ability
                 for version_id in specialist.dataset_version_ids

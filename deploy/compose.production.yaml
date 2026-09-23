@@ -35,6 +35,9 @@ services:
       AGENT_EVAL_OPERATOR_PASSWORD_HASH_FILE: /run/secrets/operator-password-hash
       AGENT_EVAL_ENCRYPTION_KEY_FILE: /run/secrets/encryption-key
       AGENT_EVAL_DEEPSEEK_API_KEY_FILE: /run/secrets/deepseek-api-key
+      # tau2-bench interactive evaluation data (tau2/domains/...), provisioned
+      # by the operator inside the data volume.
+      TAU2_DATA_DIR: /data/tau2
     volumes:
       - ${AGENT_EVAL_DATA_PATH:?Set AGENT_EVAL_DATA_PATH}:/data
       - ${AGENT_EVAL_SECRETS_PATH:?Set AGENT_EVAL_SECRETS_PATH}:/run/secrets:ro

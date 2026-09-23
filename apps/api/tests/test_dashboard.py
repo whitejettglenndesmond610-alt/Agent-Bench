@@ -147,6 +147,7 @@ async def test_dashboard_summary_is_authenticated_safe_and_available_to_both_rol
                     "data_reasoning": 0,
                     "instruction_following": 0,
                     "long_context": 0,
+                    "agentic": 0,
                 },
                 "ability_weights": {
                     "reasoning": 40,

@@ -154,7 +154,12 @@ def validate_demo_distribution(records: list[QuestionRecord]) -> None:
         )
 
     question_types = {record.type for record in records}
-    if question_types != set(QuestionType):
+    expected_types = {
+        QuestionType.MULTIPLE_CHOICE,
+        QuestionType.SHORT_ANSWER,
+        QuestionType.OPEN_ENDED,
+    }
+    if question_types != expected_types:
         raise DatasetValidationError("demo dataset must contain all three question types")
 
     bizfin_types = {record.type for record in records if record.benchmark == "BizFinBench"}

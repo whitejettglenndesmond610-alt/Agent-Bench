@@ -15,7 +15,7 @@ class EvaluationExperimentCreate(BaseModel):
     profile_key: str | None = Field(default=None, min_length=1, max_length=80)
     dataset_version_ids: list[UUID] | None = Field(default=None, min_length=1)
     judge_config_id: UUID
-    score_config_id: UUID
+    score_config_id: UUID | None = None
     force_retest: bool = False
 
     @field_validator("name")

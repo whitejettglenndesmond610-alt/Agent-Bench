@@ -71,6 +71,8 @@ class ScoreWork:
     valid_labels: list[str]
     requires_citations: bool
     failed: bool
+    task_reward: Decimal | None = None
+    reward_summary: str = ""
 
 
 @dataclass(frozen=True)
@@ -237,6 +239,7 @@ async def execute_answer_scoring(
             for item in work
             if item.failed
             or item.question_type == QuestionType.MULTIPLE_CHOICE
+            or item.question_type == QuestionType.INTERACTIVE
             or item.ability == Ability.INSTRUCTION_FOLLOWING
         ]
         for item in local_work:
@@ -343,7 +346,12 @@ async def load_score_work(
         if item.score is not None:
             continue
         failed = item.status == ExecutionStatus.FAILED
-        candidate = None if failed else await load_candidate_answer(artifact_store, item)
+        interactive = item.question.type == QuestionType.INTERACTIVE
+        candidate = (
+            None
+            if failed or interactive
+            else await load_candidate_answer(artifact_store, item)
+        )
         choices = item.question.choices_json or []
         labels = [str(choice["label"]) for choice in choices if "label" in choice]
         work.append(
@@ -357,6 +365,8 @@ async def load_score_work(
                 valid_labels=labels,
                 requires_citations=item.question.requires_citations,
                 failed=failed,
+                task_reward=item.task_reward if interactive else None,
+                reward_summary=(item.answer_preview or "") if interactive else "",
             )
         )
     return work, judge_runtime
@@ -387,6 +397,8 @@ def local_score(item: ScoreWork) -> ScoreResult:
             requires_citations=item.requires_citations,
             failed=True,
         )
+    if item.question_type == QuestionType.INTERACTIVE:
+        return interactive_score(item)
     if item.candidate_answer is None:
         raise RuntimeError("rule scoring candidate answer is missing")
     scored = (
@@ -402,6 +414,42 @@ def local_score(item: ScoreWork) -> ScoreResult:
         reason=scored.reason,
         requires_citations=item.requires_citations,
         failed=False,
+    )
+
+
+def interactive_score(item: ScoreWork) -> ScoreResult:
+    """Score a tau2 interactive item from its stored task reward (no judge/rules)."""
+    from agent_eval.worker.interactive_executor import (
+        SIMULATOR_MODEL,
+        TASK_SPLIT,
+        parse_task_ref,
+        tau2_version,
+    )
+
+    reward = item.task_reward if item.task_reward is not None else Decimal(0)
+    try:
+        domain, _task_id = parse_task_ref(item.reference_answer)
+    except Exception:
+        domain = "unknown"
+    return ScoreResult(
+        item_id=item.item_id,
+        answer_score=round(float(reward) * 100),
+        reason=item.reward_summary or "tau2 episode completed",
+        requires_citations=item.requires_citations,
+        failed=False,
+        judge_provider="tau2",
+        judge_model_requested=SIMULATOR_MODEL,
+        judge_model_returned=SIMULATOR_MODEL,
+        judge_prompt_version=f"tau2-{tau2_version()}",
+        judge_temperature=0.0,
+        judge_details={
+            "tau2": {
+                "tau2_version": tau2_version(),
+                "domain": domain,
+                "task_split": TASK_SPLIT,
+                "task_reward": float(reward),
+            }
+        },
     )
 
 

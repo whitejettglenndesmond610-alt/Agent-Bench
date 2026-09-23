@@ -116,8 +116,12 @@ async def _aggregate_and_publish(
     ):
         raise RuntimeError("evaluation run is not ready for aggregation")
 
-    score_config = await session.get(ScoreConfig, run.score_config_id)
-    if score_config is None:
+    score_config = (
+        await session.get(ScoreConfig, run.score_config_id)
+        if run.score_config_id is not None
+        else None
+    )
+    if run.score_config_id is not None and score_config is None:
         raise RuntimeError("score configuration is unavailable")
     judge_config = await session.get(JudgeConfig, run.judge_config_id)
     if judge_config is None:
@@ -194,6 +198,8 @@ async def _aggregate_and_publish(
     session.add(snapshot)
     await session.flush()
     if run.ranking_eligible:
+        if score_config is None:
+            raise RuntimeError("ranking-eligible runs require a score configuration")
         covered_abilities = {
             benchmark.ability
             for aggregate in valid_aggregates
@@ -293,7 +299,7 @@ def validate_publishable(run_agents: list[RunAgent]) -> None:
                     raise RuntimeError("citation is not fully scored")
 
 
-def aggregate_run_agent(run_agent: RunAgent, score_config: ScoreConfig) -> AgentAggregate:
+def aggregate_run_agent(run_agent: RunAgent, score_config: ScoreConfig | None) -> AgentAggregate:
     version = run_agent.agent_version
     items: list[AggregateItem] = []
     for item in run_agent.execution_items:
@@ -327,6 +333,17 @@ def aggregate_run_agent(run_agent: RunAgent, score_config: ScoreConfig) -> Agent
                 trial_index=item.trial_index,
             )
         )
+    if score_config is not None:
+        weights = ability_weights(score_config)
+    else:
+        # Runs without a score configuration (tau2 interactive profile) carry a
+        # single ability; weight it fully so the overall score is its mean.
+        covered = {item.ability for item in items}
+        if len(covered) != 1:
+            raise RuntimeError(
+                "runs without a score configuration must cover exactly one ability"
+            )
+        weights = {covered.pop(): 100}
     return aggregate_agent(
         run_agent_id=run_agent.id,
         agent_id=version.agent_id,
@@ -335,7 +352,7 @@ def aggregate_run_agent(run_agent: RunAgent, score_config: ScoreConfig) -> Agent
         provider=version.agent.provider,
         version=version.version,
         items=items,
-        ability_weights=ability_weights(score_config),
+        ability_weights=weights,
         validity_status=run_agent.validity_status,
         validity_reason=run_agent.validity_reason,
         configuration_failure_count=run_agent.configuration_failure_count,

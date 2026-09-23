@@ -27,7 +27,7 @@ class EvaluationRunCreate(BaseModel):
     profile_key: str | None = Field(default=None, min_length=1, max_length=80)
     dataset_version_ids: list[UUID] | None = Field(default=None, min_length=1)
     judge_config_id: UUID
-    score_config_id: UUID
+    score_config_id: UUID | None = None
     force_retest: bool = False
     trial_count: int | None = Field(default=None, ge=1, le=10)
 
@@ -56,7 +56,7 @@ class EvaluationRunBatchCreate(BaseModel):
     profile_key: str | None = Field(default=None, min_length=1, max_length=80)
     dataset_version_ids: list[UUID] | None = Field(default=None, min_length=1)
     judge_config_id: UUID
-    score_config_id: UUID
+    score_config_id: UUID | None = None
     force_retest: bool = False
     trial_count: int | None = Field(default=None, ge=1, le=10)
 
@@ -95,7 +95,7 @@ class EvaluationRunResponse(BaseModel):
     trial_count: int
     protocol_hash: str
     judge_config_id: UUID
-    score_config_id: UUID
+    score_config_id: UUID | None
     agent_version_ids: list[UUID]
     dataset_version_ids: list[UUID]
     question_count: int

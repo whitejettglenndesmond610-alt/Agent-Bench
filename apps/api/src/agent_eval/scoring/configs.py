@@ -14,7 +14,9 @@ LEGACY_ABILITY_WEIGHTS = {
     Ability.INSTRUCTION_FOLLOWING: 0,
     Ability.LONG_CONTEXT: 0,
 }
-BALANCED_V2_ABILITY_WEIGHTS = {ability: 20 for ability in Ability}
+# Only score-config-backed abilities carry weights; the agentic ability (tau2
+# interactive runs) is never part of weighted ranking aggregation.
+BALANCED_V2_ABILITY_WEIGHTS = {ability: 20 for ability in LEGACY_ABILITY_WEIGHTS}
 
 
 def ability_weights(score_config: ScoreConfig) -> dict[Ability, int]:

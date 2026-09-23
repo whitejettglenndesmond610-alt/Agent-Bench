@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from agent_eval.agents.prompt import build_question_prompt
+from agent_eval.db.enums import QuestionType
 from agent_eval.db.models import AgentVersion, Question
 
 
@@ -15,23 +16,28 @@ class ProfileCompatibility:
     warnings: tuple[str, ...]
 
 
+def question_prompt_length(question: Question) -> int:
+    if question.type == QuestionType.INTERACTIVE:
+        # Interactive (tau2) questions are rendered by the interactive executor;
+        # their prompt is the user-scenario instruction text.
+        return len(question.prompt)
+    return len(
+        build_question_prompt(
+            question_type=question.type,
+            prompt=question.prompt,
+            choices=question.choices_json,
+            requires_citations=question.requires_citations,
+            ability=question.dataset_version.benchmark.ability,
+        )
+    )
+
+
 def analyze_profile_compatibility(
     version: AgentVersion,
     profile_key: str,
     questions: list[Question],
 ) -> ProfileCompatibility:
-    prompt_lengths = [
-        len(
-            build_question_prompt(
-                question_type=question.type,
-                prompt=question.prompt,
-                choices=question.choices_json,
-                requires_citations=question.requires_citations,
-                ability=question.dataset_version.benchmark.ability,
-            )
-        )
-        for question in questions
-    ]
+    prompt_lengths = [question_prompt_length(question) for question in questions]
     maximum = max(prompt_lengths, default=0)
     oversized = (
         sum(length > version.max_prompt_characters for length in prompt_lengths)

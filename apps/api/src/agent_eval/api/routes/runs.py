@@ -433,7 +433,7 @@ async def create_evaluation_run(
 ) -> EvaluationRunResponse:
     try:
         profile = await resolve_profile(database, payload.profile_key, payload.dataset_version_ids)
-        if profile.score_config_id is None or payload.score_config_id != profile.score_config_id:
+        if payload.score_config_id != profile.score_config_id:
             raise RunConfigurationError(
                 "profile_score_config_mismatch", "评分配置必须与所选评测配置一致"
             )
@@ -475,7 +475,7 @@ async def create_evaluation_run_batch(
 ) -> EvaluationRunBatchResponse:
     try:
         profile = await resolve_profile(database, payload.profile_key, payload.dataset_version_ids)
-        if profile.score_config_id is None or payload.score_config_id != profile.score_config_id:
+        if payload.score_config_id != profile.score_config_id:
             raise RunConfigurationError(
                 "profile_score_config_mismatch", "评分配置必须与所选评测配置一致"
             )

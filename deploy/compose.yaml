@@ -85,6 +85,11 @@ services:
       AGENT_EVAL_CITATION_MAX_RESPONSE_BYTES: ${AGENT_EVAL_CITATION_MAX_RESPONSE_BYTES:-2097152}
       AGENT_EVAL_CITATION_MAX_TEXT_BYTES: ${AGENT_EVAL_CITATION_MAX_TEXT_BYTES:-204800}
       AGENT_EVAL_ENCRYPTION_KEY: ${AGENT_EVAL_ENCRYPTION_KEY:-}
+      # tau2-bench interactive evaluation: mount the tau2 data directory
+      # (containing tau2/domains/...) into the worker at this path.
+      TAU2_DATA_DIR: ${TAU2_DATA_DIR:-/data/tau2}
+      AGENT_EVAL_INTERACTIVE_CONCURRENCY: ${AGENT_EVAL_INTERACTIVE_CONCURRENCY:-4}
+      AGENT_EVAL_INTERACTIVE_TIMEOUT_SECONDS: ${AGENT_EVAL_INTERACTIVE_TIMEOUT_SECONDS:-900}
     volumes:
       - app_data:/data
     depends_on:

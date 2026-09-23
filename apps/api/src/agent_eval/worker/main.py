@@ -165,6 +165,7 @@ async def process_run(
                     owner_id=owner_id,
                     request_limit=limits.agent_requests,
                     version_request_limit=limits.agent_versions,
+                    simulator_request_limit=limits.judge_requests,
                 )
             elif phase == "answer_scoring":
                 phase_complete = await execute_answer_scoring(

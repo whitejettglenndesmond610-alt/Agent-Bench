@@ -136,7 +136,7 @@ def test_uncovered_dimensions_are_excluded_instead_of_scored_as_zero() -> None:
         provider="Provider",
         version=1,
         items=[item(uuid4(), "Instruction", Ability.INSTRUCTION_FOLLOWING, 80)],
-        ability_weights={ability: 20 for ability in Ability},
+        ability_weights={ability: 20 for ability in Ability if ability is not Ability.AGENTIC},
     )
 
     assert aggregate.overall_score == Decimal("80")

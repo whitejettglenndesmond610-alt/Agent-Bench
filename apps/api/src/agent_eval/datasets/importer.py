@@ -8,7 +8,7 @@ from agent_eval.datasets.audit import audit_question_records
 from agent_eval.datasets.balanced_builder import validate_balanced_v2_quality
 from agent_eval.datasets.schema import QuestionRecord, records_content_hash
 from agent_eval.db.base import utc_now
-from agent_eval.db.enums import RELEASED_ABILITIES, DatasetStatus, Language
+from agent_eval.db.enums import RELEASED_ABILITIES, Ability, DatasetStatus, Language
 from agent_eval.db.models import Benchmark, DatasetVersion, Question
 from agent_eval.scoring.configs import ensure_balanced_v2_score_config
 
@@ -16,6 +16,7 @@ LEGACY_COHORT_KEY = "legacy-v1"
 BALANCED_V2_COHORT_KEY = "balanced-v2"
 OFFICIAL_V4_COHORT_KEY = "official-v4"
 HELDOUT_V1_COHORT_KEY = "heldout-v1"
+TAU2_V1_COHORT_KEY = "tau2-v1"
 
 
 class DatasetImportError(ValueError):
@@ -45,7 +46,14 @@ async def import_question_records(
     unreleased = sorted(
         {record.ability.value for record in records if record.ability not in RELEASED_ABILITIES}
     )
-    if unreleased:
+    if cohort_key == TAU2_V1_COHORT_KEY:
+        # The tau2-v1 cohort is the controlled release channel for the agentic
+        # ability; interactive benchmarks never enter the released leaderboards.
+        if unreleased != [Ability.AGENTIC.value]:
+            raise DatasetImportError(
+                "tau2-v1 imports may only contain agentic interactive questions"
+            )
+    elif unreleased:
         if not allow_candidate:
             raise DatasetImportError(
                 "candidate abilities are audit-only outside the controlled balanced-v2 import: "
@@ -61,9 +69,14 @@ async def import_question_records(
             raise DatasetImportError("balanced-v2 import requires a complete passing audit")
         validate_balanced_v2_quality(records, report)
         await ensure_balanced_v2_score_config(session)
-    elif cohort_key not in {LEGACY_COHORT_KEY, OFFICIAL_V4_COHORT_KEY, HELDOUT_V1_COHORT_KEY}:
+    elif cohort_key not in {
+        LEGACY_COHORT_KEY,
+        OFFICIAL_V4_COHORT_KEY,
+        HELDOUT_V1_COHORT_KEY,
+        TAU2_V1_COHORT_KEY,
+    }:
         raise DatasetImportError(
-            "generic imports must use the legacy-v1, official-v4 or heldout-v1 cohort"
+            "generic imports must use the legacy-v1, official-v4, heldout-v1 or tau2-v1 cohort"
         )
     if held_out and cohort_key != HELDOUT_V1_COHORT_KEY:
         raise DatasetImportError("held-out imports must use the heldout-v1 cohort")

@@ -441,22 +441,35 @@ async def test_unified_v3_options_hide_archived_profiles_and_create_default_run(
         assert set(profiles) == {
             "smoke",
             "unified-v3",
-            *(f"unified-v3-{ability.value}" for ability in Ability),
+            *(
+                f"unified-v3-{ability.value}"
+                for ability in Ability
+                if ability is not Ability.AGENTIC
+            ),
         }
         assert options.json()["default_profile_key"] == "unified-v3"
         assert options.json()["question_count"] == 175
         assert options.json()["score_config_id"] == unified["score_config_id"]
         assert unified["question_count"] == 175
-        assert unified["ability_weights"] == {ability.value: 20 for ability in Ability}
+        assert unified["ability_weights"] == {
+            ability.value: 20
+            for ability in Ability
+            if ability is not Ability.AGENTIC
+        }
         assert {
             key for key in profiles if key.startswith("unified-v3")
         } == {
             "unified-v3",
-            *(f"unified-v3-{ability.value}" for ability in Ability),
+            *(
+                f"unified-v3-{ability.value}"
+                for ability in Ability
+                if ability is not Ability.AGENTIC
+            ),
         }
         assert {
             ability.value: profiles[f"unified-v3-{ability.value}"]["question_count"]
             for ability in Ability
+            if ability is not Ability.AGENTIC
         } == {
             "reasoning": 45,
             "retrieval": 35,

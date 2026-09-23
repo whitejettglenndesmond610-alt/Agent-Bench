@@ -94,8 +94,12 @@ def failed_outcome(error_type: str) -> InferenceOutcome:
 async def test_agent_circuit_breaker_limits_deterministic_failures() -> None:
     input_circuit = AgentCircuitBreaker()
     await input_circuit.record(failed_outcome("agent_input_limit"), 400)
-    long_item = WorkItem(uuid4(), uuid4(), uuid4(), 0, "x" * 400)
-    short_item = WorkItem(uuid4(), uuid4(), uuid4(), 0, "x" * 399)
+    long_item = WorkItem(
+        uuid4(), uuid4(), uuid4(), 0, "x" * 400, QuestionType.SHORT_ANSWER, "answer", 0
+    )
+    short_item = WorkItem(
+        uuid4(), uuid4(), uuid4(), 0, "x" * 399, QuestionType.SHORT_ANSWER, "answer", 0
+    )
     assert await input_circuit.skip_reason(long_item) == "agent_circuit_input_limit"
     assert await input_circuit.skip_reason(short_item) is None
 

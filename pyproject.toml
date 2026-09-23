@@ -33,6 +33,10 @@ dev = [
   "pytest-asyncio>=1.1,<2",
   "ruff>=0.12,<1",
 ]
+tau2 = [
+  "tau2 @ git+https://github.com/sierra-research/tau2-bench.git@v1.0.1",
+  "httpx[socks]",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["apps/api/src/agent_eval"]
@@ -62,5 +66,5 @@ strict = true
 packages = ["agent_eval"]
 
 [[tool.mypy.overrides]]
-module = ["aiosqlite.*", "asyncpg.*", "boto3.*", "botocore.*", "jsonpath_ng.*", "regex.*"]
+module = ["aiosqlite.*", "asyncpg.*", "boto3.*", "botocore.*", "jsonpath_ng.*", "regex.*", "tau2.*", "litellm.*"]
 ignore_missing_imports = true

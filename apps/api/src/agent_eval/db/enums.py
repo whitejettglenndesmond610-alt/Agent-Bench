@@ -49,6 +49,7 @@ class Ability(StrEnum):
     DATA_REASONING = "data_reasoning"
     INSTRUCTION_FOLLOWING = "instruction_following"
     LONG_CONTEXT = "long_context"
+    AGENTIC = "agentic"
 
 
 RELEASED_ABILITIES = frozenset({Ability.REASONING, Ability.RETRIEVAL, Ability.DATA_REASONING})
@@ -68,6 +69,7 @@ class QuestionType(StrEnum):
     MULTIPLE_CHOICE = "multiple_choice"
     SHORT_ANSWER = "short_answer"
     OPEN_ENDED = "open_ended"
+    INTERACTIVE = "interactive"
 
 
 class RunStatus(StrEnum):
@@ -201,6 +203,7 @@ class ArtifactKind(StrEnum):
     AGENT_RESPONSE = "agent_response"
     CITATION_CONTENT = "citation_content"
     JUDGE_RESPONSE = "judge_response"
+    TRAJECTORY = "trajectory"
 
 
 class SessionRole(StrEnum):

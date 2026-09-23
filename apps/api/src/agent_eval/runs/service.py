@@ -35,12 +35,14 @@ from agent_eval.runs.profiles import (
     BALANCED_V2_PROFILE_KEY,
     HELDOUT_V1_PROFILE_KEY,
     OFFICIAL_V4_PROFILE_KEY,
+    TAU2_RETAIL_PROFILE_KEY,
     UNIFIED_V3_PROFILE_KEY,
     UNIFIED_V3_PROFILE_KEYS,
     build_run_profiles,
     is_complete_balanced_v2,
     is_complete_heldout_v1,
     is_complete_official_v4,
+    is_complete_tau2_retail,
     is_complete_unified_v3,
 )
 from agent_eval.scoring.aggregation import AGGREGATION_VERSION
@@ -80,7 +82,7 @@ def run_protocol_hash(
     target_ability: Ability | None,
     dataset_versions: list[DatasetVersion],
     judge_config: JudgeConfig,
-    score_config: ScoreConfig,
+    score_config: ScoreConfig | None,
 ) -> str:
     protocol_epoch = _protocol_epoch(profile_key, dataset_versions)
     protocol: dict[str, Any] = {
@@ -99,15 +101,19 @@ def run_protocol_hash(
             "scope": run_scope.value,
             "target_ability": target_ability.value if target_ability is not None else None,
         },
-        "score": {
-            "citation_authenticity_weight": score_config.citation_authenticity_weight,
-            "citation_support_weight": score_config.citation_support_weight,
-            "data_weight": score_config.data_weight,
-            "reasoning_weight": score_config.reasoning_weight,
-            "retrieval_answer_weight": score_config.retrieval_answer_weight,
-            "retrieval_citation_weight": score_config.retrieval_citation_weight,
-            "retrieval_weight": score_config.retrieval_weight,
-        },
+        "score": (
+            {
+                "citation_authenticity_weight": score_config.citation_authenticity_weight,
+                "citation_support_weight": score_config.citation_support_weight,
+                "data_weight": score_config.data_weight,
+                "reasoning_weight": score_config.reasoning_weight,
+                "retrieval_answer_weight": score_config.retrieval_answer_weight,
+                "retrieval_citation_weight": score_config.retrieval_citation_weight,
+                "retrieval_weight": score_config.retrieval_weight,
+            }
+            if score_config is not None
+            else None
+        ),
     }
     if protocol_epoch is not None:
         protocol["protocol_epoch"] = protocol_epoch
@@ -116,10 +122,13 @@ def run_protocol_hash(
             dataset["cohort_key"] = next(
                 version.cohort_key for version in dataset_versions if version.id == version_id
             )
-        protocol["score"]["instruction_following_weight"] = (
-            score_config.instruction_following_weight
-        )
-        protocol["score"]["long_context_weight"] = score_config.long_context_weight
+        if score_config is not None:
+            protocol_score = protocol["score"]
+            assert isinstance(protocol_score, dict)
+            protocol_score["instruction_following_weight"] = (
+                score_config.instruction_following_weight
+            )
+            protocol_score["long_context_weight"] = score_config.long_context_weight
     serialized = json.dumps(protocol, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(serialized.encode()).hexdigest()
 
@@ -200,7 +209,7 @@ async def prepare_evaluation_run(
     agent_version_ids: list[UUID],
     dataset_version_ids: list[UUID],
     judge_config_id: UUID,
-    score_config_id: UUID,
+    score_config_id: UUID | None,
     profile_key: str = "comprehensive",
     run_scope: RunScope = RunScope.COMPREHENSIVE,
     target_ability: Ability | None = None,
@@ -277,6 +286,7 @@ async def prepare_evaluation_run(
     locked_profile = unified_profile or profile_key in {
         OFFICIAL_V4_PROFILE_KEY,
         HELDOUT_V1_PROFILE_KEY,
+        TAU2_RETAIL_PROFILE_KEY,
     }
     if locked_profile:
         profile = next(
@@ -292,7 +302,8 @@ async def prepare_evaluation_run(
             or set(profile.dataset_version_ids) != set(dataset_version_ids)
             or profile.scope != run_scope
             or profile.target_ability != target_ability
-            or not ranking_eligible
+            or (not ranking_eligible and profile_key != TAU2_RETAIL_PROFILE_KEY)
+            or (profile_key == TAU2_RETAIL_PROFILE_KEY and ranking_eligible)
         ):
             raise RunConfigurationError(
                 (
@@ -301,7 +312,11 @@ async def prepare_evaluation_run(
                     else (
                         "official_v4_incomplete"
                         if profile_key == OFFICIAL_V4_PROFILE_KEY
-                        else "heldout_v1_incomplete"
+                        else (
+                            "heldout_v1_incomplete"
+                            if profile_key == HELDOUT_V1_PROFILE_KEY
+                            else "tau2_retail_incomplete"
+                        )
                     )
                 ),
                 "必须使用完整且经过验证的精确评测配置",
@@ -320,18 +335,20 @@ async def prepare_evaluation_run(
     judge_config = await session.get(JudgeConfig, judge_config_id)
     if judge_config is None or not judge_config.enabled:
         raise RunConfigurationError("judge_unavailable", "裁判模型配置不存在或未启用")
-    score_config = await session.get(ScoreConfig, score_config_id)
-    if score_config is None:
-        raise RunConfigurationError("score_config_not_found", "评分配置不存在")
-    expected_weights = (
-        BALANCED_V2_ABILITY_WEIGHTS
-        if unified_profile or profile_key == BALANCED_V2_PROFILE_KEY
-        else LEGACY_ABILITY_WEIGHTS
-    )
-    if not has_ability_weights(score_config, expected_weights):
-        raise RunConfigurationError(
-            "profile_score_config_mismatch", "评分配置权重与所选评测配置不匹配"
+    score_config: ScoreConfig | None = None
+    if score_config_id is not None:
+        score_config = await session.get(ScoreConfig, score_config_id)
+        if score_config is None:
+            raise RunConfigurationError("score_config_not_found", "评分配置不存在")
+        expected_weights = (
+            BALANCED_V2_ABILITY_WEIGHTS
+            if unified_profile or profile_key == BALANCED_V2_PROFILE_KEY
+            else LEGACY_ABILITY_WEIGHTS
         )
+        if not has_ability_weights(score_config, expected_weights):
+            raise RunConfigurationError(
+                "profile_score_config_mismatch", "评分配置权重与所选评测配置不匹配"
+            )
 
     questions = list(
         await session.scalars(
@@ -373,6 +390,12 @@ async def prepare_evaluation_run(
         raise RunConfigurationError(
             "heldout_v1_incomplete", "heldout-v1 必须使用完整的 100 题 LiveBench+HLE 私有配置"
         )
+    if profile_key == TAU2_RETAIL_PROFILE_KEY and not is_complete_tau2_retail(
+        dataset_versions
+    ):
+        raise RunConfigurationError(
+            "tau2_retail_incomplete", "tau2-retail 必须使用完整的 5 题 Tau2-Retail 配置"
+        )
 
     for version in agent_versions:
         compatibility = analyze_profile_compatibility(version, profile_key, questions)
@@ -402,17 +425,17 @@ async def prepare_evaluation_run(
             and target_ability is not None
         ):
             result_metric = target_ability.value
-        result_protocol_hash = (
-            metric_protocol_hash(
+        result_protocol_hash = None
+        if result_metric is not None:
+            # ranking-eligible runs always carry a score configuration
+            assert score_config is not None
+            result_protocol_hash = metric_protocol_hash(
                 metric=result_metric,
                 dataset_versions=dataset_versions,
                 judge_config=judge_config,
                 score_config=score_config,
                 profile_key=profile_key,
             )
-            if result_metric is not None
-            else None
-        )
         await session.execute(
             select(AgentVersion.id)
             .where(AgentVersion.id.in_(agent_version_ids))
@@ -439,7 +462,7 @@ async def prepare_evaluation_run(
         trial_count=trial_count,
         protocol_hash=protocol_hash,
         judge_config_id=judge_config.id,
-        score_config_id=score_config.id,
+        score_config_id=score_config.id if score_config is not None else None,
     )
     session.add(run)
     await session.flush()
