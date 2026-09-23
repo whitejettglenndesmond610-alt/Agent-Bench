@@ -30,7 +30,20 @@ import {
   updateBadPatternRule,
   upsertQualityReview
 } from "./api";
-import { Button, FormField, Input, LoadingState, Select, Textarea } from "./components";
+import {
+  Button,
+  CountUp,
+  EmptyState,
+  FormField,
+  Input,
+  LoadingState,
+  PageHeader,
+  Select,
+  StatusPill,
+  StatusTone,
+  Table,
+  Textarea
+} from "./components";
 import {
   CALIBRATION_JUDGE_PASS_THRESHOLD,
   CALIBRATION_MIN_RELIABLE_SAMPLE,
@@ -39,6 +52,7 @@ import {
   metricDefinitionFor
 } from "./metrics";
 import { downloadText } from "./userProduct";
+import "./quality.css";
 
 const severityLabels: Record<BadPatternSeverity, string> = {
   critical: "严重",
@@ -47,10 +61,23 @@ const severityLabels: Record<BadPatternSeverity, string> = {
   low: "低危"
 };
 
+const severityTones: Record<BadPatternSeverity, StatusTone> = {
+  critical: "danger",
+  high: "warning",
+  medium: "info",
+  low: "neutral"
+};
+
 const statusLabels: Record<BadPatternFindingStatus, string> = {
   open: "待处理",
   confirmed: "已确认",
   dismissed: "已排除"
+};
+
+const statusTones: Record<BadPatternFindingStatus, StatusTone> = {
+  open: "warning",
+  confirmed: "danger",
+  dismissed: "neutral"
 };
 
 const verdictLabels: Record<QualityReviewVerdict, string> = {
@@ -64,6 +91,13 @@ const taskStatusLabels: Record<QualityTaskStatus, string> = {
   assigned: "已分配",
   in_review: "质检中",
   completed: "已完成"
+};
+
+const taskStatusTones: Record<QualityTaskStatus, StatusTone> = {
+  unassigned: "neutral",
+  assigned: "info",
+  in_review: "info",
+  completed: "success"
 };
 
 const priorityLabels: Record<QualityTaskPriority, string> = {
@@ -92,6 +126,10 @@ function formatDate(value: string | null) {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function kpiValue(value: number | undefined) {
+  return value === undefined ? "—" : <CountUp value={value} />;
 }
 
 export function QualityPage() {
@@ -214,13 +252,14 @@ export function QualityPage() {
 
   return (
     <main className="workspace quality-workspace">
-      <header className="quality-header">
-        <div>
-          <p className="eyebrow">BAD PATTERN QUALITY OPS</p>
-          <h1>从自动检测到人工质检，<br />把问题真正闭环。</h1>
-          <p>运行结果自动命中底线规则，结合完整 Agent 轨迹完成确认、标注和数据回流。</p>
-        </div>
-        <div className="quality-header-actions">
+      <PageHeader
+        title="从自动检测到人工质检，把问题真正闭环。"
+        meta={<>
+          <span>{dashboardQuery.data?.total ?? 0} 条命中</span>
+          <span>{summary?.open_findings ?? 0} 待处理</span>
+          <span>运行结果自动命中底线规则，结合完整 Agent 轨迹完成确认、标注和数据回流。</span>
+        </>}
+        actions={<>
           <Link className="button is-ghost" to="/quality/data">线上数据回流</Link>
           <Link className="button is-ghost" to="/runs">查看评测运行</Link>
           <Button type="button" className="is-ghost" disabled={exportMutation.isPending} onClick={() => exportMutation.mutate()}>
@@ -229,16 +268,16 @@ export function QualityPage() {
           <Button type="button" onClick={() => setShowRuleForm((current) => !current)}>
             {showRuleForm ? "收起规则表单" : "新增检测规则"}
           </Button>
-        </div>
-      </header>
+        </>}
+      />
 
-      <section className="quality-kpis" aria-label="质量指标">
-        <article><span>待处理命中</span><strong>{summary?.open_findings ?? "—"}</strong><small>进入人工质检队列</small></article>
-        <article className="is-critical"><span>严重待处理</span><strong>{summary?.critical_open_findings ?? "—"}</strong><small>需要优先处置</small></article>
-        <article><span>已确认问题</span><strong>{summary?.confirmed_findings ?? "—"}</strong><small>可进入训练或修复集</small></article>
-        <article><span>已质检样本</span><strong>{summary?.reviewed_items ?? "—"}</strong><small>带人工结论的执行项</small></article>
-        <article><span>待分配任务</span><strong>{summary?.unassigned_tasks ?? "—"}</strong><small>尚无质检责任人</small></article>
-        <article><span>处理中任务</span><strong>{summary?.active_tasks ?? "—"}</strong><small>已分配或质检中</small></article>
+      <section className="quality-kpis stagger-in" aria-label="质量指标">
+        <article className="kpi-card"><span>待处理命中</span><strong>{kpiValue(summary?.open_findings)}</strong><small>进入人工质检队列</small></article>
+        <article className="kpi-card is-critical"><span>严重待处理</span><strong>{kpiValue(summary?.critical_open_findings)}</strong><small>需要优先处置</small></article>
+        <article className="kpi-card"><span>已确认问题</span><strong>{kpiValue(summary?.confirmed_findings)}</strong><small>可进入训练或修复集</small></article>
+        <article className="kpi-card"><span>已质检样本</span><strong>{kpiValue(summary?.reviewed_items)}</strong><small>带人工结论的执行项</small></article>
+        <article className="kpi-card"><span>待分配任务</span><strong>{kpiValue(summary?.unassigned_tasks)}</strong><small>尚无质检责任人</small></article>
+        <article className="kpi-card"><span>处理中任务</span><strong>{kpiValue(summary?.active_tasks)}</strong><small>已分配或质检中</small></article>
       </section>
 
       {showRuleForm && <RuleCreatePanel onCreated={async () => {
@@ -294,91 +333,119 @@ export function QualityPage() {
         {batchError && <small>{batchError.message}</small>}
       </section>
 
-      <section className="quality-layout">
-        <aside className="quality-queue" aria-label="Bad Pattern 质检队列">
-          <header><span>REVIEW QUEUE</span><strong>质检队列</strong></header>
-          {dashboardQuery.isPending ? <LoadingState label="正在读取质检队列" compact /> :
-            dashboardQuery.error ? <div className="quality-state is-error">{dashboardQuery.error.message}</div> :
-              dashboardQuery.data?.findings.length ? dashboardQuery.data.findings.map((finding) => (
-                <div key={finding.id} className={`quality-finding-row ${selectedFindingIds.has(finding.id) ? "is-selected" : ""}`}>
-                  <label className="quality-select-finding"><input type="checkbox" aria-label={`选择 ${finding.rule_name}`} checked={selectedFindingIds.has(finding.id)} onChange={() => toggleFindingSelection(finding.id)} /><span /></label>
-                  <Link to={`/quality/${finding.id}`} className={`quality-finding-card ${finding.id === findingId ? "is-active" : ""}`}>
-                  <div>
-                    <span className={`quality-severity is-${finding.severity}`}>{severityLabels[finding.severity]}</span>
-                    <span className={`quality-status is-${finding.status}`}>{statusLabels[finding.status]}</span>
-                    {finding.task && <span className={`quality-task-status is-${finding.task.status}`}>{taskStatusLabels[finding.task.status]}</span>}
-                    <time>{formatDate(finding.created_at)}</time>
-                  </div>
-                  <strong>{finding.rule_name}</strong>
-                  <p>{finding.snippet}</p>
-                  <footer><span>{finding.agent_name} · v{finding.agent_version}</span><b>{finding.question_external_id}</b></footer>
-                  </Link>
-                </div>
-              )) : <div className="quality-state"><strong>当前筛选下没有命中</strong><span>新评测运行完成回答后会自动进入规则扫描。</span></div>}
-        </aside>
-
-        <article className="quality-detail">
-          {!findingId ? <div className="quality-detail-empty"><span>TRACE REVIEW</span><h2>选择一条命中开始质检</h2><p>这里会聚合请求、回答、评分、引用、自动检测和人工结论。</p></div> :
-            detailQuery.isPending ? <LoadingState label="正在加载完整 Agent 轨迹" /> :
-              detailQuery.error || !detail ? <div className="quality-state is-error">{detailQuery.error?.message ?? "命中详情读取失败"}</div> : <>
-                <header className="quality-detail-header">
-                  <div>
-                    <div><span className={`quality-severity is-${detail.severity}`}>{severityLabels[detail.severity]}</span><span className={`quality-status is-${detail.status}`}>{statusLabels[detail.status]}</span>{detail.task && <span className={`quality-task-status is-${detail.task.status}`}>{taskStatusLabels[detail.task.status]} · {priorityLabels[detail.task.priority]}优先级{detail.task.assignee_display_name ? ` · ${detail.task.assignee_display_name}` : ""}</span>}</div>
-                    <h2>{detail.rule_name}</h2>
-                    <p>{detail.agent_name} v{detail.agent_version} · {detail.benchmark_name} · {detail.question_external_id}</p>
-                  </div>
-                  <div>
-                    {detail.task?.status !== "completed" && <Button type="button" className="is-ghost" disabled={claimTaskMutation.isPending} onClick={() => claimTaskMutation.mutate()}>{claimTaskMutation.isPending ? "认领中" : "认领任务"}</Button>}
-                    <Button type="button" className="is-ghost" disabled={rescanMutation.isPending} onClick={() => rescanMutation.mutate()}>{rescanMutation.isPending ? "检测中" : "重新检测"}</Button>
-                    <Link className="button is-ghost" to={`/runs/${detail.run_id}/evidence/${detail.execution_item_id}`}>完整证据</Link>
-                  </div>
-                </header>
-
-                <section className="quality-evidence-grid">
-                  <article><span>PROMPT</span><p>{detail.prompt ?? "held-out 私有题，原文已遮蔽"}</p></article>
-                  <article><span>REFERENCE</span><p>{detail.reference_answer ?? (detail.held_out ? "held-out 私有题，参考答案已遮蔽" : "未提供标准答案")}</p></article>
-                  <article className="is-answer"><span>AGENT ANSWER</span><p>{detail.answer ?? detail.answer_preview ?? "没有可读取的回答"}</p></article>
-                  <article className="is-hit"><span>DETECTOR HIT · {detail.match_count} MATCHES</span><p>{detail.snippet}</p></article>
-                </section>
-
-                <section className="quality-trace">
-                  <header><span>AGENT TRAJECTORY</span><strong>执行轨迹</strong><small>{detail.final_score === null ? "未评分" : `最终得分 ${detail.final_score.toFixed(2)}`}</small></header>
-                  <ol>{detail.trace.map((event, index) => <li key={`${event.kind}-${index}`} className={`is-${event.kind}`}>
-                    <i aria-hidden="true" />
-                    <div><span>{event.kind.replace("_", " ")} · {formatDate(event.occurred_at)}</span><strong>{event.title}</strong>{event.detail && <p>{event.detail}</p>}</div>
-                    <b>{event.latency_ms === null ? event.status : `${event.latency_ms} ms`}</b>
-                  </li>)}</ol>
-                </section>
-
-                <section className="quality-review-panel">
-                  <header><div><span>HUMAN REVIEW</span><strong>人工质检与回流标注</strong></div>{detail.quality_review && <small>{detail.quality_review.reviewer_display_name} · {formatDate(detail.quality_review.reviewed_at)}</small>}</header>
-                  <div className="quality-review-fields">
-                    <FormField label="标签" htmlFor="quality-tags" hint="使用英文逗号分隔，最多 12 个">
-                      <Input id="quality-tags" value={reviewTags} onChange={(event) => setReviewTags(event.target.value)} placeholder="prompt-injection, safety, regression" />
-                    </FormField>
-                    <FormField label="质检说明" htmlFor="quality-note">
-                      <Textarea id="quality-note" rows={4} value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder="记录判断依据、修复建议或回流说明" />
-                    </FormField>
-                  </div>
-                  {mutationError && <p className="quality-mutation-error">{mutationError.message}</p>}
-                  <footer>
-                    <div>{(["pass", "fail", "needs_followup"] as QualityReviewVerdict[]).map((verdict) => <Button key={verdict} type="button" className={detail.quality_review?.verdict === verdict ? "is-selected" : "is-ghost"} disabled={qualityReviewMutation.isPending} onClick={() => qualityReviewMutation.mutate(verdict)}>{verdictLabels[verdict]}</Button>)}</div>
-                    <div><Button type="button" className="is-ghost" disabled={findingMutation.isPending} onClick={() => findingMutation.mutate("dismissed")}>排除误报</Button><Button type="button" disabled={findingMutation.isPending} onClick={() => findingMutation.mutate("confirmed")}>确认 Bad Pattern</Button></div>
-                  </footer>
-                </section>
-              </>}
-        </article>
+      <section className="quality-queue" aria-label="Bad Pattern 质检队列">
+        <header><h2>质检队列</h2><small>{dashboardQuery.data?.total ?? 0} 条命中</small></header>
+        {dashboardQuery.isPending ? <LoadingState label="正在读取质检队列" compact /> :
+          dashboardQuery.error ? <div className="quality-state is-error">{dashboardQuery.error.message}</div> :
+            dashboardQuery.data?.findings.length ?
+              <Table className="quality-table">
+                <thead>
+                  <tr>
+                    <th aria-label="批量选择" />
+                    <th>命中规则</th>
+                    <th>严重度</th>
+                    <th>状态</th>
+                    <th data-numeric>匹配</th>
+                    <th>样本 / Agent</th>
+                    <th>时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dashboardQuery.data.findings.map((finding) => (
+                    <tr key={finding.id} className={`${selectedFindingIds.has(finding.id) ? "is-selected" : ""} ${finding.id === findingId ? "is-active" : ""}`.trim()}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          aria-label={`选择 ${finding.rule_name}`}
+                          checked={selectedFindingIds.has(finding.id)}
+                          onChange={() => toggleFindingSelection(finding.id)}
+                        />
+                      </td>
+                      <td><strong>{finding.rule_name}</strong><small>{finding.snippet}</small></td>
+                      <td><StatusPill tone={severityTones[finding.severity]}>{severityLabels[finding.severity]}</StatusPill></td>
+                      <td>
+                        <span className="quality-cell-pills">
+                          <StatusPill tone={statusTones[finding.status]}>{statusLabels[finding.status]}</StatusPill>
+                          {finding.task && <StatusPill tone={taskStatusTones[finding.task.status]}>{taskStatusLabels[finding.task.status]}</StatusPill>}
+                        </span>
+                      </td>
+                      <td data-numeric>{finding.match_count}</td>
+                      <td><span className="quality-cell-meta">{finding.agent_name} · v{finding.agent_version}</span><small>{finding.question_external_id}</small></td>
+                      <td><time>{formatDate(finding.created_at)}</time></td>
+                      <td><Link className="button is-ghost quality-row-action" to={`/quality/${finding.id}`}>质检</Link></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table> :
+              <EmptyState title="当前筛选下没有命中" description="新评测运行完成回答后会自动进入规则扫描。" />}
       </section>
+
+      <article className="quality-detail">
+        {!findingId ? <EmptyState className="quality-detail-empty" title="选择一条命中开始质检" description="这里会聚合请求、回答、评分、引用、自动检测和人工结论。" /> :
+          detailQuery.isPending ? <LoadingState label="正在加载完整 Agent 轨迹" /> :
+            detailQuery.error || !detail ? <div className="quality-state is-error">{detailQuery.error?.message ?? "命中详情读取失败"}</div> : <>
+              <header className="quality-detail-header">
+                <div>
+                  <div className="quality-detail-pills">
+                    <StatusPill tone={severityTones[detail.severity]}>{severityLabels[detail.severity]}</StatusPill>
+                    <StatusPill tone={statusTones[detail.status]}>{statusLabels[detail.status]}</StatusPill>
+                    {detail.task && <StatusPill tone={taskStatusTones[detail.task.status]}>{taskStatusLabels[detail.task.status]} · {priorityLabels[detail.task.priority]}优先级{detail.task.assignee_display_name ? ` · ${detail.task.assignee_display_name}` : ""}</StatusPill>}
+                  </div>
+                  <h2>{detail.rule_name}</h2>
+                  <p>{detail.agent_name} v{detail.agent_version} · {detail.benchmark_name} · {detail.question_external_id}</p>
+                </div>
+                <div>
+                  {detail.task?.status !== "completed" && <Button type="button" className="is-ghost" disabled={claimTaskMutation.isPending} onClick={() => claimTaskMutation.mutate()}>{claimTaskMutation.isPending ? "认领中" : "认领任务"}</Button>}
+                  <Button type="button" className="is-ghost" disabled={rescanMutation.isPending} onClick={() => rescanMutation.mutate()}>{rescanMutation.isPending ? "检测中" : "重新检测"}</Button>
+                  <Link className="button is-ghost" to={`/runs/${detail.run_id}/evidence/${detail.execution_item_id}`}>完整证据</Link>
+                </div>
+              </header>
+
+              <section className="quality-evidence-grid">
+                <article><span>PROMPT</span><p>{detail.prompt ?? "held-out 私有题，原文已遮蔽"}</p></article>
+                <article><span>REFERENCE</span><p>{detail.reference_answer ?? (detail.held_out ? "held-out 私有题，参考答案已遮蔽" : "未提供标准答案")}</p></article>
+                <article className="is-answer"><span>AGENT ANSWER</span><p>{detail.answer ?? detail.answer_preview ?? "没有可读取的回答"}</p></article>
+                <article className="is-hit"><span>DETECTOR HIT · {detail.match_count} MATCHES</span><p>{detail.snippet}</p></article>
+              </section>
+
+              <section className="quality-trace">
+                <header><strong>执行轨迹</strong><small>{detail.final_score === null ? "未评分" : `最终得分 ${detail.final_score.toFixed(2)}`}</small></header>
+                <ol>{detail.trace.map((event, index) => <li key={`${event.kind}-${index}`} className={`is-${event.kind}`}>
+                  <i aria-hidden="true" />
+                  <div><span>{event.kind.replace("_", " ")} · {formatDate(event.occurred_at)}</span><strong>{event.title}</strong>{event.detail && <p>{event.detail}</p>}</div>
+                  <b>{event.latency_ms === null ? event.status : `${event.latency_ms} ms`}</b>
+                </li>)}</ol>
+              </section>
+
+              <section className="quality-review-panel">
+                <header><strong>人工质检与回流标注</strong>{detail.quality_review && <small>{detail.quality_review.reviewer_display_name} · {formatDate(detail.quality_review.reviewed_at)}</small>}</header>
+                <div className="quality-review-fields">
+                  <FormField label="标签" htmlFor="quality-tags" hint="使用英文逗号分隔，最多 12 个">
+                    <Input id="quality-tags" value={reviewTags} onChange={(event) => setReviewTags(event.target.value)} placeholder="prompt-injection, safety, regression" />
+                  </FormField>
+                  <FormField label="质检说明" htmlFor="quality-note">
+                    <Textarea id="quality-note" rows={4} value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder="记录判断依据、修复建议或回流说明" />
+                  </FormField>
+                </div>
+                {mutationError && <p className="quality-mutation-error">{mutationError.message}</p>}
+                <footer>
+                  <div>{(["pass", "fail", "needs_followup"] as QualityReviewVerdict[]).map((verdict) => <Button key={verdict} type="button" className={detail.quality_review?.verdict === verdict ? "is-selected" : "is-ghost"} disabled={qualityReviewMutation.isPending} onClick={() => qualityReviewMutation.mutate(verdict)}>{verdictLabels[verdict]}</Button>)}</div>
+                  <div><Button type="button" className="is-ghost" disabled={findingMutation.isPending} onClick={() => findingMutation.mutate("dismissed")}>排除误报</Button><Button type="button" disabled={findingMutation.isPending} onClick={() => findingMutation.mutate("confirmed")}>确认 Bad Pattern</Button></div>
+                </footer>
+              </section>
+            </>}
+      </article>
 
       <CalibrationPanel />
 
       <FailureClusterPanel />
 
       <section className="quality-rules">
-        <header><div><span>DETECTION RULES</span><h2>底线检测规则</h2></div><small>规则变更随下一次运行生效，可对历史执行项手动重新检测。</small></header>
+        <header><h2>底线检测规则</h2><small>规则变更随下一次运行生效，可对历史执行项手动重新检测。</small></header>
         {rulesQuery.isPending ? <LoadingState label="正在读取检测规则" compact /> : rulesQuery.error ? <div className="quality-state is-error">{rulesQuery.error.message}</div> :
           <div className="quality-rule-list">{rulesQuery.data?.map((rule) => <article key={rule.id} className={rule.enabled ? "" : "is-disabled"}>
-            <div><span className={`quality-severity is-${rule.severity}`}>{severityLabels[rule.severity]}</span><code>{rule.key}</code></div>
+            <div><StatusPill tone={severityTones[rule.severity]}>{severityLabels[rule.severity]}</StatusPill><code>{rule.key}</code></div>
             <strong>{rule.name}</strong><p>{rule.description ?? rule.pattern}</p>
             <dl><div><dt>分类</dt><dd>{rule.category}</dd></div><div><dt>命中</dt><dd>{rule.finding_count}</dd></div><div><dt>待处理</dt><dd>{rule.open_count}</dd></div><div><dt>版本</dt><dd>v{rule.version}</dd></div></dl>
             <Button type="button" className="is-ghost" disabled={toggleRuleMutation.isPending} onClick={() => toggleRuleMutation.mutate({ id: rule.id, enabled: !rule.enabled })}>{rule.enabled ? "暂停规则" : "启用规则"}</Button>
@@ -420,7 +487,7 @@ function CalibrationPanel() {
   return (
     <section className="quality-calibration" aria-label="裁判校准">
       <header>
-        <div><span>JUDGE CALIBRATION</span><h2>裁判校准</h2></div>
+        <h2>裁判校准</h2>
         <small>随机抽取已评分样本，人工核对裁判判定是否准确，用 Cohen's Kappa 衡量裁判与人工的一致性。</small>
       </header>
       {reportQuery.isPending ? <LoadingState label="正在读取校准报告" compact /> :
@@ -453,9 +520,9 @@ function CalibrationPanel() {
               return (
                 <article key={task.id}>
                   <header>
-                    <span className={`quality-calibration-verdict ${passed ? "is-pass" : "is-fail"}`}>
+                    <StatusPill tone={passed ? "success" : "danger"}>
                       {passed ? "裁判判定通过" : "裁判判定未通过"} · {task.judge_score.toFixed(0)} 分
-                    </span>
+                    </StatusPill>
                     <strong>{task.question_external_id}</strong>
                     <time>{formatDate(task.created_at)}</time>
                   </header>
@@ -471,7 +538,7 @@ function CalibrationPanel() {
                   </footer>
                 </article>
               );
-            }) : <div className="quality-state"><strong>暂无待标注的校准任务</strong><span>点击「抽取样本」从最近的评测运行中随机抽取已评分样本。</span></div>}
+            }) : <EmptyState title="暂无待标注的校准任务" description="点击「抽取样本」从最近的评测运行中随机抽取已评分样本。" />}
       </div>
     </section>
   );
@@ -486,18 +553,18 @@ function FailureClusterPanel() {
   return (
     <section className="quality-clusters" aria-label="失败聚类">
       <header>
-        <div><span>FAILURE CLUSTERING</span><h2>失败聚类</h2></div>
+        <h2>失败聚类</h2>
         <small>评测运行完成后，自动对失败与低分（&lt;60）回答做两阶段 LLM 聚类，归并成命名问题组辅助人工质检。</small>
       </header>
       {clustersQuery.isPending ? <LoadingState label="正在读取失败聚类" compact /> :
         clustersQuery.error ? <div className="quality-state is-error">{clustersQuery.error.message}</div> :
           clustersQuery.data?.length ?
-            <div className="quality-cluster-list">
+            <div className="quality-cluster-list stagger-in">
               {clustersQuery.data.map((cluster) => (
                 <article key={cluster.id}>
                   <header>
                     <strong>{cluster.name}</strong>
-                    <span className="quality-cluster-count">{cluster.sample_count} 个样本</span>
+                    <StatusPill tone="info">{cluster.sample_count} 个样本</StatusPill>
                     <time>{formatDate(cluster.created_at)}</time>
                   </header>
                   <p>{cluster.description ?? "未提供簇描述"}</p>
@@ -516,10 +583,10 @@ function FailureClusterPanel() {
                 </article>
               ))}
             </div> :
-            <div className="quality-state">
-              <strong>暂无失败聚类</strong>
-              <span>评测运行完成且失败/低分回答达到 5 条时会自动聚类，也可通过 maintenance 的 cluster-failures 命令手动补跑。</span>
-            </div>}
+            <EmptyState
+              title="暂无失败聚类"
+              description="评测运行完成且失败/低分回答达到 5 条时会自动聚类，也可通过 maintenance 的 cluster-failures 命令手动补跑。"
+            />}
     </section>
   );
 }
@@ -542,7 +609,7 @@ function RuleCreatePanel({ onCreated }: { onCreated: () => Promise<void> }) {
   }
 
   return <form className="quality-rule-form" onSubmit={submit}>
-    <header><div><span>NEW DETECTION RULE</span><strong>新增底线检测规则</strong></div><small>规则使用不区分大小写的正则表达式，单次回答最多记录 20 次匹配。</small></header>
+    <header><strong>新增底线检测规则</strong><small>规则使用不区分大小写的正则表达式，单次回答最多记录 20 次匹配。</small></header>
     <div>
       <FormField label="规则 Key" htmlFor="rule-key" required><Input id="rule-key" required pattern="[a-z0-9][a-z0-9-]*" value={key} onChange={(event) => setKey(event.target.value)} placeholder="unsafe-action-guidance" /></FormField>
       <FormField label="规则名称" htmlFor="rule-name" required><Input id="rule-name" required value={name} onChange={(event) => setName(event.target.value)} placeholder="不安全操作指导" /></FormField>

@@ -8,11 +8,23 @@ import {
   fetchRunEvidence,
   fetchRunEvidenceDetail,
   RunEvidenceArtifactMetadata,
-  RunEvidenceCitation
+  RunEvidenceCitation,
+  RunEvidenceListItem
 } from "./api";
-import { Button, Input, LoadingState, Select, Table } from "./components";
+import {
+  Button,
+  EmptyState,
+  Input,
+  LoadingState,
+  PageHeader,
+  Select,
+  StatusPill,
+  StatusTone
+} from "./components";
 import { TrajectoryView } from "./TrajectoryView";
 import { metricByKey, metricDefinitionFor } from "./metrics";
+
+import "./run-evidence.css";
 
 const PAGE_SIZE = 25;
 
@@ -23,6 +35,15 @@ const evidenceStatusLabels: Record<ExecutionStatus, string> = {
   failed: "执行失败",
   scored: "已评分",
   canceled: "已取消"
+};
+
+const evidenceStatusTones: Record<ExecutionStatus, StatusTone> = {
+  pending: "warning",
+  in_progress: "info",
+  answered: "warning",
+  failed: "danger",
+  scored: "success",
+  canceled: "neutral"
 };
 
 const candidateStatusLabels = {
@@ -91,6 +112,25 @@ function CitationCard({ citation }: { citation: RunEvidenceCitation }) {
   );
 }
 
+function EvidenceItemRow({ item, runId, active, search }: { item: RunEvidenceListItem; runId: string; active: boolean; search: string }) {
+  return (
+    <Link
+      className={`evidence-item-row${active ? " is-active" : ""}`}
+      to={`/runs/${runId}/evidence/${item.execution_item_id}${search ? `?${search}` : ""}`}
+    >
+      <span className="evidence-item-top">
+        <strong>{item.question_external_id}</strong>
+        <StatusPill tone={evidenceStatusTones[item.status]}>{evidenceStatusLabels[item.status]}</StatusPill>
+      </span>
+      <span className="evidence-item-bottom">
+        <small>{item.agent_name} · {metricDefinitionFor(item.ability)?.shortLabel ?? item.ability} · {item.language.toUpperCase()}</small>
+        <b className="evidence-item-score">{item.score ? item.score.final_score.toFixed(2) : "—"}</b>
+      </span>
+      {item.error_type && <small className="evidence-error-type">{item.error_type}</small>}
+    </Link>
+  );
+}
+
 function EvidenceDetail({ runId, executionItemId }: { runId: string; executionItemId: string }) {
   const detailQuery = useQuery({
     queryKey: ["run-evidence-detail", runId, executionItemId],
@@ -98,27 +138,34 @@ function EvidenceDetail({ runId, executionItemId }: { runId: string; executionIt
   });
 
   if (detailQuery.isPending) {
-    return <main className="workspace"><LoadingState label="正在读取题目证据" /></main>;
+    return <LoadingState compact label="正在读取题目证据" />;
   }
   if (detailQuery.error || !detailQuery.data) {
-    return <main className="workspace"><div className="table-state is-error">{detailQuery.error?.message ?? "题目证据不存在"}</div></main>;
+    return <div className="table-state is-error">{detailQuery.error?.message ?? "题目证据不存在"}</div>;
   }
 
   const item = detailQuery.data;
   return (
-    <main className="workspace run-evidence-workspace">
-      <Link className="back-link" to={`/runs/${runId}/evidence`}>← 返回运行证据</Link>
+    <div className="evidence-detail stagger-in">
       <header className="evidence-detail-header">
-        <div><p className="eyebrow">EXECUTION EVIDENCE / {item.execution_item_id.slice(0, 8).toUpperCase()}</p><h1>{item.question_external_id}</h1><p>{item.benchmark_name} · {metricDefinitionFor(item.ability)?.label ?? item.ability} · {item.language.toUpperCase()}</p></div>
-        <span className={`evidence-status is-${item.status}`}><i />{evidenceStatusLabels[item.status]}</span>
+        <div>
+          <h2>{item.question_external_id}</h2>
+          <p>{item.benchmark_name} · {metricDefinitionFor(item.ability)?.label ?? item.ability} · {item.language.toUpperCase()} · 创建于 {formatDate(item.created_at)}</p>
+        </div>
+        <StatusPill tone={evidenceStatusTones[item.status]}>{evidenceStatusLabels[item.status]}</StatusPill>
       </header>
 
-      <section className="evidence-detail-meta">
-        <div><span>Agent</span><strong>{item.agent_name}</strong><small>{item.provider} · V{item.version}</small></div>
-        <div><span>最终分</span><strong>{item.score ? item.score.final_score.toFixed(2) : "—"}</strong><small>{item.score ? `答案 ${item.score.answer_score.toFixed(2)} · 引用 ${item.score.citation_score?.toFixed(2) ?? "—"}` : "尚无评分"}</small></div>
-        <div><span>尝试 / 延迟</span><strong>{item.attempt_count}</strong><small>{item.latency_ms == null ? "延迟不可用" : `${item.latency_ms} ms`}</small></div>
-        <div><span>回答留存</span><strong>{candidateStatusLabels[item.candidate_answer_status]}</strong><small>{item.response_artifact?.retained ? "Artifact 已标记保留" : "遵循 Artifact 到期策略"}</small></div>
-      </section>
+      <dl className="evidence-score-grid">
+        <div><dt>最终分</dt><dd className="is-hero">{item.score ? item.score.final_score.toFixed(2) : "—"}</dd></div>
+        <div><dt>答案分</dt><dd>{item.score ? item.score.answer_score.toFixed(2) : "—"}</dd></div>
+        <div><dt>引用分</dt><dd>{item.score?.citation_score?.toFixed(2) ?? "—"}</dd></div>
+        <div><dt>尝试次数</dt><dd>{item.attempt_count}</dd></div>
+        <div><dt>延迟</dt><dd>{item.latency_ms == null ? "—" : `${item.latency_ms} ms`}</dd></div>
+        <div><dt>回答留存</dt><dd>{candidateStatusLabels[item.candidate_answer_status]}</dd></div>
+      </dl>
+      <p className="evidence-agent-line">
+        {item.agent_name} · {item.provider} V{item.version} · {item.response_artifact?.retained ? "Artifact 已标记保留" : "遵循 Artifact 到期策略"}
+      </p>
 
       <section className="evidence-content-grid">
         <article className="evidence-question-panel">
@@ -146,28 +193,27 @@ function EvidenceDetail({ runId, executionItemId }: { runId: string; executionIt
       {item.trajectory && <TrajectoryView trajectory={item.trajectory} />}
 
       <section className="evidence-judge-panel">
-        <header><div><p className="eyebrow">JUDGE EVIDENCE</p><h2>评分与裁判理由</h2></div>{item.score && <strong>{item.score.final_score.toFixed(2)}</strong>}</header>
+        <header><h2>评分与裁判理由</h2>{item.score && <strong>{item.score.final_score.toFixed(2)}</strong>}</header>
         {item.score ? (
           <>
-            <dl><div><dt>答案分</dt><dd>{item.score.answer_score.toFixed(2)}</dd></div><div><dt>引用分</dt><dd>{item.score.citation_score?.toFixed(2) ?? "—"}</dd></div><div><dt>最终分</dt><dd>{item.score.final_score.toFixed(2)}</dd></div></dl>
             <blockquote>{item.score.judge_reason || "裁判未提供文字理由。"}</blockquote>
             <ArtifactMetadata artifact={item.score.judge_artifact} label="裁判响应留存" />
           </>
-        ) : <p className="dashboard-empty-copy">当前执行项尚未完成评分，分数与理由不可用。</p>}
+        ) : <p className="evidence-empty-copy">当前执行项尚未完成评分，分数与理由不可用。</p>}
       </section>
 
       <section className="evidence-attempt-panel">
-        <header><p className="eyebrow">ATTEMPT TIMELINE</p><h2>请求尝试</h2></header>
-        {item.attempts.length ? <ol>{item.attempts.map((attempt) => <li className={`is-${attempt.status}`} key={attempt.attempt_id}><i /><div><strong>尝试 {attempt.attempt_no} · {attempt.status}</strong><span>{formatDate(attempt.started_at)} → {formatDate(attempt.finished_at)}</span>{attempt.error_type && <small>{attempt.error_type}</small>}</div><dl><div><dt>HTTP</dt><dd>{attempt.status_code ?? "—"}</dd></div><div><dt>延迟</dt><dd>{attempt.latency_ms == null ? "—" : `${attempt.latency_ms} ms`}</dd></div><div><dt>Token</dt><dd>{attempt.total_tokens ?? "—"}</dd></div></dl></li>)}</ol> : <p className="dashboard-empty-copy">尚无请求尝试记录。</p>}
+        <header><h2>请求尝试</h2></header>
+        {item.attempts.length ? <ol>{item.attempts.map((attempt) => <li className={`is-${attempt.status}`} key={attempt.attempt_id}><i /><div><strong>尝试 {attempt.attempt_no} · {attempt.status}</strong><span>{formatDate(attempt.started_at)} → {formatDate(attempt.finished_at)}</span>{attempt.error_type && <small>{attempt.error_type}</small>}</div><dl><div><dt>HTTP</dt><dd>{attempt.status_code ?? "—"}</dd></div><div><dt>延迟</dt><dd>{attempt.latency_ms == null ? "—" : `${attempt.latency_ms} ms`}</dd></div><div><dt>Token</dt><dd>{attempt.total_tokens ?? "—"}</dd></div></dl></li>)}</ol> : <p className="evidence-empty-copy">尚无请求尝试记录。</p>}
       </section>
 
-      {item.citations.length > 0 && <section className="evidence-citation-panel"><header><p className="eyebrow">CITATION EVIDENCE</p><h2>引用验证</h2></header><div>{item.citations.map((citation) => <CitationCard citation={citation} key={citation.citation_id} />)}</div></section>}
-      <section className="evidence-retention-panel"><header><p className="eyebrow">SAFE RETENTION METADATA</p><h2>Artifact 留存</h2></header><p>此处仅显示不可执行的留存元数据，不直接加载或渲染 Artifact 内容。</p><ArtifactMetadata artifact={item.response_artifact} label="Agent 响应留存" /></section>
-    </main>
+      {item.citations.length > 0 && <section className="evidence-citation-panel"><header><h2>引用验证</h2></header><div>{item.citations.map((citation) => <CitationCard citation={citation} key={citation.citation_id} />)}</div></section>}
+      <section className="evidence-retention-panel"><header><h2>Artifact 留存</h2></header><p>此处仅显示不可执行的留存元数据，不直接加载或渲染 Artifact 内容。</p><ArtifactMetadata artifact={item.response_artifact} label="Agent 响应留存" /></section>
+    </div>
   );
 }
 
-function EvidenceList({ runId }: { runId: string }) {
+function EvidenceRail({ runId, selectedItemId }: { runId: string; selectedItemId?: string }) {
   const [parameters, setParameters] = useSearchParams();
   const offset = Math.max(0, Number(parameters.get("offset") ?? 0) || 0);
   const status = parameters.get("status") as ExecutionStatus | null;
@@ -208,13 +254,11 @@ function EvidenceList({ runId }: { runId: string }) {
   const evidence = evidenceQuery.data;
   const pageStart = evidence && evidence.total ? evidence.offset + 1 : 0;
   const pageEnd = evidence ? Math.min(evidence.offset + evidence.items.length, evidence.total) : 0;
+  const search = parameters.toString();
 
   return (
-    <main className="workspace run-evidence-workspace">
-      <Link className="back-link" to={`/runs/${runId}`}>← 返回运行详情</Link>
-      <header className="section-header evidence-list-header"><div><p className="eyebrow">RUN EVIDENCE</p><h1>运行证据</h1><p>逐题检查 Agent 回答、评分、失败原因、引用验证与安全留存元数据。</p></div><code>RUN {runId.slice(0, 12).toUpperCase()}</code></header>
-
-      <form className="evidence-filter-bar" key={parameters.toString()} onSubmit={applyFilters}>
+    <aside className="evidence-rail">
+      <form className="evidence-filter-bar" key={search} onSubmit={applyFilters}>
         <label><span>状态</span><Select name="status" defaultValue={status ?? ""}><option value="">全部状态</option>{Object.entries(evidenceStatusLabels).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</Select></label>
         <label><span>能力</span><Select name="ability" defaultValue={ability ?? ""}><option value="">全部能力</option>{Object.entries(metricByKey).filter(([key]) => key !== "overall").map(([key, metric]) => <option value={key} key={key}>{metric.shortLabel}</option>)}</Select></label>
         <label><span>语言</span><Select name="language" defaultValue={language ?? ""}><option value="">全部语言</option><option value="zh">中文</option><option value="en">英文</option></Select></label>
@@ -222,19 +266,26 @@ function EvidenceList({ runId }: { runId: string }) {
         <label><span>最低分</span><Input name="min_score" type="number" min="0" max="100" step="0.01" defaultValue={minScore ?? ""} /></label>
         <label><span>最高分</span><Input name="max_score" type="number" min="0" max="100" step="0.01" defaultValue={maxScore ?? ""} /></label>
         {runAgentId && <input type="hidden" name="run_agent_id" value={runAgentId} />}
-        <Button type="submit">应用筛选</Button>
-        <Link className="button is-ghost" to={`/runs/${runId}/evidence`}>清除</Link>
+        <Button type="submit" size="sm">应用筛选</Button>
+        <Link className="button button--ghost button--sm" to={`/runs/${runId}/evidence`}>清除</Link>
       </form>
       {runAgentId && <div className="evidence-active-filter">已限定单个 Agent 运行记录 <code>{runAgentId}</code></div>}
       {invalidRange && <div className="result-banner is-error" role="alert">最低分不能高于最高分。</div>}
 
-      {evidenceQuery.isPending ? <LoadingState label="正在读取运行证据" /> : evidenceQuery.error ? <div className="table-state is-error">{evidenceQuery.error.message}</div> : !evidence?.items.length ? <section className="empty-state"><span>NO EVIDENCE</span><h2>没有匹配的证据项</h2><p>调整筛选条件，或等待运行产生执行记录。</p></section> : (
+      {evidenceQuery.isPending ? <LoadingState compact label="正在读取运行证据" /> : evidenceQuery.error ? <div className="table-state is-error">{evidenceQuery.error.message}</div> : !evidence?.items.length ? <EmptyState title="没有匹配的证据项" description="调整筛选条件，或等待运行产生执行记录。" /> : (
         <>
           <div className="evidence-list-summary"><span>共 {evidence.total} 项</span><strong>{pageStart}–{pageEnd}</strong></div>
-          <Table className="evidence-table">
-            <thead><tr><th>题目 / Agent</th><th>能力 / 语言</th><th>状态</th><th>分数</th><th>尝试 / 延迟</th><th><span className="sr-only">查看</span></th></tr></thead>
-            <tbody>{evidence.items.map((item) => <tr key={item.execution_item_id}><td><strong>{item.question_external_id}</strong><small>{item.agent_name} · {item.provider} V{item.version}</small>{item.answer_preview && <p>{item.answer_preview}</p>}</td><td><span>{metricDefinitionFor(item.ability)?.shortLabel ?? item.ability}</span><small>{item.language.toUpperCase()} · {item.benchmark_name}</small></td><td><span className={`evidence-status is-${item.status}`}><i />{evidenceStatusLabels[item.status]}</span>{item.error_type && <small className="evidence-error-type">{item.error_type}</small>}</td><td className="evidence-score">{item.score ? item.score.final_score.toFixed(2) : "—"}</td><td><span>{item.attempt_count} 次</span><small>{item.latency_ms == null ? "延迟 —" : `${item.latency_ms} ms`}</small></td><td><Link className="row-link" to={`/runs/${runId}/evidence/${item.execution_item_id}`}>查看证据 →</Link></td></tr>)}</tbody>
-          </Table>
+          <nav className="evidence-item-list" aria-label="证据题目列表">
+            {evidence.items.map((item) => (
+              <EvidenceItemRow
+                item={item}
+                runId={runId}
+                active={item.execution_item_id === selectedItemId}
+                search={search}
+                key={item.execution_item_id}
+              />
+            ))}
+          </nav>
           <nav className="evidence-pagination" aria-label="证据分页">
             <button type="button" disabled={offset === 0} onClick={() => { const next = new URLSearchParams(parameters); next.set("offset", String(Math.max(0, offset - PAGE_SIZE))); setParameters(next); }}>上一页</button>
             <span>{pageStart}–{pageEnd} / {evidence.total}</span>
@@ -242,13 +293,32 @@ function EvidenceList({ runId }: { runId: string }) {
           </nav>
         </>
       )}
-    </main>
+    </aside>
   );
 }
 
 export function RunEvidencePage() {
   const { runId = "", executionItemId } = useParams();
-  return executionItemId
-    ? <EvidenceDetail runId={runId} executionItemId={executionItemId} />
-    : <EvidenceList runId={runId} />;
+  return (
+    <main className="workspace run-evidence-workspace">
+      <PageHeader
+        title="运行证据"
+        meta={<code className="evidence-run-chip">RUN {runId.slice(0, 12).toUpperCase()}</code>}
+        actions={<Link className="button button--ghost button--sm" to={`/runs/${runId}`}>← 返回运行详情</Link>}
+      />
+      <div className="evidence-split stagger-in">
+        <EvidenceRail runId={runId} selectedItemId={executionItemId} />
+        <section className="evidence-detail-pane">
+          {executionItemId ? (
+            <EvidenceDetail runId={runId} executionItemId={executionItemId} />
+          ) : (
+            <EmptyState
+              title="选择题目查看证据"
+              description="从左侧列表选择一条执行记录，逐题检查 Agent 回答、评分、失败原因、引用验证与安全留存元数据。"
+            />
+          )}
+        </section>
+      </div>
+    </main>
+  );
 }

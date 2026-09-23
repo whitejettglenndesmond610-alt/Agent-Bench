@@ -14,9 +14,10 @@ import {
   fetchPublishedEvaluationCases,
   publishDatasetRelease
 } from "./api";
-import { LoadingState } from "./components";
+import { LoadingState, PageHeader, StatusPill, StatusTone } from "./components";
 import { randomId } from "./randomId";
 import { abilityMetrics } from "./metrics";
+import "./dataset-releases.css";
 
 const releasesKey = (userId: string) => ["dataset-releases", userId] as const;
 const releaseKey = (userId: string, releaseId: string) =>
@@ -28,6 +29,12 @@ const statusLabels: Record<DatasetRelease["status"], string> = {
   draft: "待批准",
   approved: "已批准",
   published: "已发布"
+};
+
+const statusTones: Record<DatasetRelease["status"], StatusTone> = {
+  draft: "warning",
+  approved: "info",
+  published: "success"
 };
 
 function formatTime(value: string | null): string {
@@ -58,7 +65,7 @@ function ReleaseHistory({ releases, activeId }: { releases: DatasetRelease[]; ac
           <li className={release.id === activeId ? "is-active" : ""} key={release.id}>
             <Link to={`/dataset-releases/${release.id}`}>
               <strong>{release.name}</strong>
-              <span className={`release-status is-${release.status}`}>{statusLabels[release.status]}</span>
+              <StatusPill tone={statusTones[release.status]}>{statusLabels[release.status]}</StatusPill>
               <small>{release.cases.length} CASES · REV {release.revision}</small>
               <time dateTime={release.updated_at}>{formatTime(release.updated_at)}</time>
             </Link>
@@ -192,7 +199,7 @@ function ReleaseDetail({
     <article className="dataset-release-detail">
       <header>
         <div><span>RELEASE {release.id.slice(0, 8).toUpperCase()}</span><h2>{release.name}</h2><p>{release.description || "无补充说明"}</p></div>
-        <b className={`release-status is-${release.status}`}>{statusLabels[release.status]}</b>
+        <StatusPill tone={statusTones[release.status]}>{statusLabels[release.status]}</StatusPill>
       </header>
       {error && <div className="result-banner is-error" role="alert">{error.message}</div>}
       <dl className="release-ledger">
@@ -293,11 +300,17 @@ export function DatasetReleasesPage({ userId, canPublish }: { userId: string; ca
   }
 
   return (
-    <main className="workspace dataset-releases-page">
-      <header className="dataset-releases-header">
-        <div><p className="eyebrow">CONTROLLED DATASET PUBLICATION</p><h1>正式数据集发布</h1><p>将已发布精选案例组成可追溯的数据集版本，并在明确批准前后保持评测链路隔离。</p></div>
-        <Link className="back-link" to="/evaluation-cases">← 精选评测案例</Link>
-      </header>
+    <main className="workspace dataset-releases-page stagger-in">
+      <PageHeader
+        title="正式数据集发布"
+        meta={
+          <>
+            <span className="dataset-releases-eyebrow">CONTROLLED DATASET PUBLICATION</span>
+            <span>将已发布精选案例组成可追溯的数据集版本，并在明确批准前后保持评测链路隔离。</span>
+          </>
+        }
+        actions={<Link className="back-link" to="/evaluation-cases">← 精选评测案例</Link>}
+      />
       {pageError && <div className="result-banner is-error" role="alert">{pageError}</div>}
       {releasesQuery.error && <div className="result-banner is-error" role="alert">发布历史读取失败：{releasesQuery.error.message}</div>}
       <div className="dataset-releases-layout">

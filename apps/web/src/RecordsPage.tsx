@@ -16,8 +16,9 @@ import {
   WorkspaceConversation,
   WorkspaceConversationList
 } from "./api";
-import { Button, Input, Modal } from "./components";
+import { Button, EmptyState, Input, Modal, PageHeader } from "./components";
 import { randomId } from "./randomId";
+import "./records.css";
 import {
   comparisonMarkdown,
   conversationMarkdown,
@@ -206,7 +207,11 @@ export function RecordsPage({ userId }: { userId: string }) {
 
   return (
     <main className="workspace records-page">
-      <header className="section-header"><div><p className="eyebrow">PERSONAL ACTIVITY</p><h1>我的记录</h1><p>统一查找、继续、整理和导出你的单 Agent 会话与多 Agent 对比。</p></div><div className="record-header-actions"><Link className="button" to="/workspace">新建对话</Link><Link className="button is-ghost" to="/compare">新建对比</Link></div></header>
+      <PageHeader
+        title="我的记录"
+        meta={<p>统一查找、继续、整理和导出你的单 Agent 会话与多 Agent 对比。</p>}
+        actions={<><Link className="button" to="/workspace">新建对话</Link><Link className="button is-ghost" to="/compare">新建对比</Link></>}
+      />
       <section className="record-filters" aria-label="记录筛选">
         <label><span>搜索</span><input type="search" aria-label="搜索记录" value={search} placeholder="标题或 Agent" onChange={(event) => setSearch(event.target.value)} /></label>
         <label><span>类型</span><select aria-label="筛选记录类型" value={type} onChange={(event) => setType(event.target.value)}><option value="all">全部类型</option><option value="conversation">在线对话</option><option value="comparison">多 Agent 对比</option></select></label>
@@ -217,7 +222,7 @@ export function RecordsPage({ userId }: { userId: string }) {
       {pending ? <div className="table-state">正在整理个人记录...</div> : loadError ? <div className="table-state is-error" role="alert">{loadError.message}</div> : records.length ? <div className="records-sections">
         {activeRecords.length > 0 && <section><header><h2>进行中与近期记录</h2><span>{activeRecords.length}</span></header><div>{activeRecords.map(renderRecord)}</div></section>}
         {archivedRecords.length > 0 && <section className="is-archived"><header><h2>已归档</h2><span>{archivedRecords.length}</span></header><div>{archivedRecords.map(renderRecord)}</div></section>}
-      </div> : <section className="empty-state"><span>NO RECORD</span><h2>{search || type !== "all" || status !== "all" ? "没有符合条件的记录" : "还没有个人记录"}</h2><p>开始一次对话或多 Agent 对比，结果会持续保存在这里。</p></section>}
+      </div> : <EmptyState title={search || type !== "all" || status !== "all" ? "没有符合条件的记录" : "还没有个人记录"} description="开始一次对话或多 Agent 对比，结果会持续保存在这里。" />}
 
       {dialog?.action === "rename" && <Modal title="重命名记录" description="标题会在导航和导出文件中使用。" eyebrow="RENAME RECORD" onClose={() => setDialog(null)}><form className="modal-form" onSubmit={submitRename}><label className="form-field"><span>新标题</span><Input aria-label="记录标题" maxLength={200} value={title} autoFocus onChange={(event) => setTitle(event.target.value)} /></label>{actionError && <div className="result-banner is-error" role="alert">{actionError}</div>}<div className="modal-actions"><Button type="button" className="is-ghost" onClick={() => setDialog(null)}>取消</Button><Button type="submit" disabled={updateMutation.isPending || !title.trim()}>{updateMutation.isPending ? "保存中" : "保存标题"}</Button></div></form></Modal>}
       {dialog?.action === "archive" && <Modal title={dialog.record.item.archived_at ? "恢复记录" : "归档记录"} description={dialog.record.item.archived_at ? "恢复后记录会回到活跃区域。" : "归档会把记录移至已归档区域，但不会删除问题、回答或运行数据。"} eyebrow="RECORD STATUS" onClose={() => setDialog(null)}><div className="modal-form"><p>确认{dialog.record.item.archived_at ? "恢复" : "归档"} <strong>{dialog.record.item.title}</strong>？</p>{actionError && <div className="result-banner is-error" role="alert">{actionError}</div>}<div className="modal-actions"><Button className="is-ghost" onClick={() => setDialog(null)}>取消</Button><Button disabled={updateMutation.isPending} onClick={() => updateMutation.mutate({ record: dialog.record, archived: !dialog.record.item.archived_at })}>{updateMutation.isPending ? "更新中" : "确认"}</Button></div></div></Modal>}

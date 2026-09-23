@@ -19,8 +19,9 @@ import {
   promoteAgentVersion,
   testAgentConnection
 } from "./api";
-import { Button, FormField, Input, LoadingState, Modal, Select, Table, Textarea } from "./components";
+import { Button, FormField, Input, LoadingState, Modal, PageHeader, Select, StatusPill, Table, Textarea } from "./components";
 import { leaderboardMetrics, profileKeyForMetric } from "./metrics";
+import "./agents.css";
 
 interface BasicForm {
   name: string;
@@ -445,10 +446,11 @@ export function AgentsPage() {
 
   return (
     <main className="workspace agents-workspace">
-      <header className="section-header">
-        <div><p className="eyebrow">AGENT CENTER</p><h1>Agent 中心</h1><p>管理外部 Agent API、验证响应映射，并以不可变版本追踪配置与评测状态。</p></div>
-        <Button type="button" onClick={() => openConfiguration(null)}>+ 接入 Agent</Button>
-      </header>
+      <PageHeader
+        title="Agent 中心"
+        meta={<span>管理外部 Agent API、验证响应映射，并以不可变版本追踪配置与评测状态。</span>}
+        actions={<Button type="button" onClick={() => openConfiguration(null)}>+ 接入 Agent</Button>}
+      />
 
       {notice && <div className="result-banner is-success" role="status">{notice}</div>}
 
@@ -472,7 +474,7 @@ export function AgentsPage() {
             const constraints = evaluation
               ? [evaluation.max_prompt_characters ? `≤ ${evaluation.max_prompt_characters} 字符` : "Prompt 不限", evaluation.supports_citations ? "支持引用" : "无引用"]
               : [];
-            return <tr key={agent.id}><td><a className="agent-name-link" href={`/agents/${agent.id}`}>{agent.name}</a><small>{agent.provider} · {agent.description || "暂无说明"}</small></td><td><span className={`registry-status ${agent.status === "enabled" ? "is-enabled" : ""}`}><i />{agent.status === "enabled" ? "启用" : "停用"}</span><small className="agent-version-copy">{evaluation ? `V${evaluation.version} · ${constraints.join(" · ")}` : `更新于 ${formatDate(agent.updated_at)}`}</small></td>{evaluationColumns.map((column) => <td className="evaluation-metric" key={column.key}><EvaluationCell agent={agent} evaluation={evaluation} metric={evaluation?.[column.key]} profileMetric={column.metricKey} metricLabel={column.label} /></td>)}<td><div className="agent-row-actions"><a href={`/agents/${agent.id}`}>查看详情</a><Button type="button" className="is-quiet" onClick={() => openConfiguration(agent)}>配置新版本</Button></div></td></tr>;
+            return <tr key={agent.id}><td><a className="agent-name-link" href={`/agents/${agent.id}`}>{agent.name}</a><small>{agent.provider} · {agent.description || "暂无说明"}</small></td><td><StatusPill tone={agent.status === "enabled" ? "success" : "neutral"}>{agent.status === "enabled" ? "启用" : "停用"}</StatusPill><small className="agent-version-copy">{evaluation ? `V${evaluation.version} · ${constraints.join(" · ")}` : `更新于 ${formatDate(agent.updated_at)}`}</small></td>{evaluationColumns.map((column) => <td className="evaluation-metric" key={column.key}><EvaluationCell agent={agent} evaluation={evaluation} metric={evaluation?.[column.key]} profileMetric={column.metricKey} metricLabel={column.label} /></td>)}<td><div className="agent-row-actions"><a href={`/agents/${agent.id}`}>查看详情</a><Button type="button" className="is-quiet" onClick={() => openConfiguration(agent)}>配置新版本</Button></div></td></tr>;
           })}</tbody>
         </Table>
       )}

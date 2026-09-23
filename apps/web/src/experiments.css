@@ -1,0 +1,276 @@
+/* ExperimentsPage — Phase 3 dense data-tool restyle.
+   Loaded after styles.css / product-system.css (lazy route chunk), so equal
+   specificity overrides win. Colors come from design tokens only. All rules
+   are scoped to the page root classes so this file is fully self-contained. */
+
+.experiments-workspace, .experiment-detail-workspace { --content-max: 1450px; padding-top: 8px; padding-bottom: 120px; }
+
+/* Eyebrow label inside PageHeader meta */
+.experiments-eyebrow { color: var(--accent); font: 700 9px var(--font-mono); letter-spacing: .12em; white-space: nowrap; }
+
+/* Back link (detail page) */
+.experiment-detail-workspace .back-link {
+  display: inline-block;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font: 10px var(--font-mono);
+  letter-spacing: .04em;
+  text-decoration: none;
+  transition: color var(--dur-fast) ease;
+}
+.experiment-detail-workspace .back-link:hover { color: var(--accent); }
+
+/* Scoped .button overrides — styles.css still carries a legacy light-theme
+   .button (indigo gradient, 42px, hover translateY) after the tokenized one. */
+.experiments-workspace .button, .experiment-detail-workspace .button {
+  min-height: var(--control-h);
+  padding: 6px 14px;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: none;
+  transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+.experiments-workspace .button:hover, .experiment-detail-workspace .button:hover {
+  color: var(--accent-ink);
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  box-shadow: none;
+  transform: none;
+}
+.experiments-workspace .button:active, .experiment-detail-workspace .button:active { box-shadow: none; transform: none; }
+
+/* Status badge — tokenized pill, is-* hooks map to semantic palette */
+.experiment-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 22px;
+  padding: 2px 10px;
+  color: var(--muted);
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font: 600 11px var(--font-mono);
+  white-space: nowrap;
+}
+.experiment-status i { width: 6px; height: 6px; background: currentColor; border-radius: 50%; }
+.experiment-status.is-queued, .experiment-status.is-running, .experiment-status.is-scoring {
+  color: var(--cyan);
+  background: var(--cyan-soft);
+  border-color: transparent;
+}
+.experiment-status.is-completed, .experiment-status.is-published {
+  color: var(--green);
+  background: var(--green-soft);
+  border-color: transparent;
+}
+.experiment-status.is-system_failed, .experiment-status.is-canceled {
+  color: var(--rose);
+  background: var(--rose-soft);
+  border-color: transparent;
+}
+.experiment-status.is-running i { animation: experiment-status-pulse 1.4s ease-in-out infinite; }
+@keyframes experiment-status-pulse { 50% { opacity: .35; } }
+
+/* Summary strip — dense KPI band */
+.experiment-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 2.2fr);
+  margin: 0 0 12px;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+.experiment-summary-strip > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 14px;
+  border-right: 1px solid var(--line);
+}
+.experiment-summary-strip span { color: var(--muted); font-size: 10px; font-weight: 600; letter-spacing: .04em; white-space: nowrap; }
+.experiment-summary-strip strong { color: var(--ink); font: 650 18px/1.1 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.experiment-summary-strip p { align-self: center; margin: 0; padding: 12px 14px; color: var(--muted); font-size: 10px; line-height: 1.6; text-align: right; }
+
+/* Experiment list — dense cards */
+.experiment-list-stack { display: grid; gap: 10px; }
+.experiment-list-stack > article {
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  transition: border-color var(--dur-fast) ease;
+}
+.experiment-list-stack > article:hover { border-color: var(--line-strong); }
+.experiment-list-stack article > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 12px 14px 10px; }
+.experiment-list-stack article > header > div { display: grid; gap: 3px; min-width: 0; }
+.experiment-list-stack article > header > div > span { color: var(--muted); font: 700 8px var(--font-mono); letter-spacing: .1em; }
+.experiment-list-stack h2 { margin: 0; font-size: 13px; font-weight: 650; letter-spacing: -.01em; }
+.experiment-list-stack h2 a { color: var(--ink); text-decoration: none; transition: color var(--dur-fast) ease; }
+.experiment-list-stack h2 a:hover { color: var(--accent); }
+.experiment-list-stack article > header small { color: var(--muted); font-size: 10px; }
+.experiment-list-progress { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 0 14px 12px; }
+.experiment-list-progress > div, .experiment-member-bar { height: 5px; overflow: hidden; background: var(--surface-raised); border-radius: 999px; }
+.experiment-list-progress i, .experiment-member-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--cyan));
+  border-radius: inherit;
+  transition: width var(--dur-med) var(--ease-out-expo);
+}
+.experiment-list-progress strong { color: var(--ink); font: 600 11px var(--font-mono); font-variant-numeric: tabular-nums; }
+.experiment-list-stack article > dl { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); margin: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.experiment-list-stack article > dl div { display: grid; gap: 3px; min-width: 0; padding: 8px 12px; border-right: 1px solid var(--line); }
+.experiment-list-stack article > dl div:last-child { border-right: 0; }
+.experiment-list-stack dt { color: var(--muted); font-size: 9px; }
+.experiment-list-stack dd { overflow: hidden; margin: 0; color: var(--ink); font: 11px var(--font-mono); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.experiment-list-stack article > footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 9px 14px; }
+.experiment-list-stack footer code { overflow: hidden; color: var(--cyan); font: 10px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.experiment-list-stack footer a { flex: 0 0 auto; color: var(--accent); font-size: 11px; font-weight: 600; text-decoration: none; }
+.experiment-list-stack footer a:hover { color: var(--accent-strong); text-decoration: underline; }
+
+/* Empty state — keep existing markup, enforce dark tokens over legacy rules */
+.experiments-workspace .empty-state { color: var(--muted); background: var(--surface); border: 1px dashed var(--line-strong); border-radius: var(--radius-md); }
+.experiments-workspace .empty-state > span { color: var(--muted); font: 700 8px var(--font-mono); letter-spacing: .12em; }
+.experiments-workspace .empty-state > h2 { margin: 0; color: var(--ink); font-size: 13px; font-weight: 650; }
+.experiments-workspace .empty-state > p { max-width: 420px; margin: 0; font-size: 11px; line-height: 1.6; }
+.experiments-workspace .empty-state > .button { margin-top: 8px; }
+
+/* Detail — overall progress panel */
+.experiment-detail-header { margin-bottom: 16px; }
+.experiment-overall-progress {
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+.experiment-overall-progress > header { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
+.experiment-overall-progress > header > div { display: grid; gap: 4px; }
+.experiment-overall-progress > header span { color: var(--muted); font: 700 9px var(--font-mono); letter-spacing: .1em; }
+.experiment-overall-progress > header strong { color: var(--ink); font: 650 26px/1.1 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.experiment-overall-progress > header p { margin: 0; color: var(--muted); font-size: 11px; }
+.experiment-overall-progress > div { height: 6px; margin: 12px 0; overflow: hidden; background: var(--surface-raised); border-radius: 999px; }
+.experiment-overall-progress > div i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--cyan));
+  border-radius: inherit;
+  transition: width var(--dur-med) var(--ease-out-expo);
+}
+.experiment-overall-progress > dl { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 0; border-top: 1px solid var(--line); }
+.experiment-overall-progress > dl div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; padding: 9px 12px 0 0; }
+.experiment-overall-progress dt { color: var(--muted); font-size: 9px; white-space: nowrap; }
+.experiment-overall-progress dd { overflow: hidden; margin: 0; color: var(--ink); font: 600 11px var(--font-mono); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Detail — member grid */
+.experiment-member-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.experiment-member-grid > article {
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  transition: border-color var(--dur-fast) ease;
+}
+.experiment-member-grid > article:hover { border-color: var(--line-strong); }
+.experiment-member-grid article > header { display: flex; align-items: center; gap: 10px; }
+.experiment-member-grid article > header > span { color: var(--muted); font: 600 12px var(--font-mono); font-variant-numeric: tabular-nums; }
+.experiment-member-grid article > header div { display: grid; gap: 2px; min-width: 0; }
+.experiment-member-grid article > header strong { overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.experiment-member-grid article > header small { color: var(--muted); font-size: 10px; }
+.experiment-member-grid article > header b { margin-left: auto; color: var(--muted); font: 600 10px var(--font-mono); white-space: nowrap; }
+.experiment-member-score { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 14px 0 8px; }
+.experiment-member-score strong { color: var(--ink); font: 650 24px/1.1 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.experiment-member-score span { color: var(--muted); font-size: 10px; }
+.experiment-member-grid article > dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 10px 0 0; border-top: 1px solid var(--line); }
+.experiment-member-grid article > dl div { display: grid; gap: 3px; min-width: 0; padding: 7px 8px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.experiment-member-grid article > dl div:nth-child(3n) { border-right: 0; }
+.experiment-member-grid article > dl div:nth-last-child(-n+3) { border-bottom: 0; }
+.experiment-member-grid dt { color: var(--muted); font-size: 9px; }
+.experiment-member-grid dd { overflow: hidden; margin: 0; color: var(--ink); font: 10px var(--font-mono); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.experiment-member-grid article > footer { display: flex; gap: 14px; padding-top: 10px; }
+.experiment-member-grid footer a { color: var(--accent); font-size: 10px; font-weight: 600; text-decoration: none; }
+.experiment-member-grid footer a:hover { color: var(--accent-strong); text-decoration: underline; }
+
+/* Detail — score matrix section (on top of .table-frame) */
+.experiment-score-section { margin-top: 12px; }
+.experiment-score-section > header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
+.experiment-score-section > header .eyebrow { margin-bottom: 4px; }
+.experiment-score-section > header h2 { margin: 0; color: var(--ink); font-size: 13px; font-weight: 650; letter-spacing: -.01em; }
+.experiment-score-section > header > small { color: var(--muted); font-size: 10px; }
+.experiment-score-table { box-shadow: none; }
+.experiment-score-table table { min-width: 1000px; }
+.experiment-score-table th { color: var(--muted); background: var(--surface); border-color: var(--line-strong); }
+.experiment-score-table th small { display: block; margin-top: 3px; color: var(--muted); font: 500 8px var(--font-mono); letter-spacing: 0; text-transform: none; }
+.experiment-score-table td { color: var(--ink); border-color: var(--line); }
+.experiment-score-table td:first-child { min-width: 180px; }
+.experiment-score-table td:first-child strong { margin-bottom: 2px; font-size: 12px; font-weight: 650; }
+.experiment-score-table td:first-child small { color: var(--muted); font-size: 10px; }
+.experiment-score-table td:not(:first-child) { min-width: 115px; text-align: center; }
+.experiment-score-table td:last-child { text-align: center; }
+.experiment-score-table tbody tr:hover { background: var(--surface-raised); }
+.experiment-score-cell { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 6px; }
+.experiment-score-cell strong { color: var(--ink); font: 650 13px var(--font-mono); font-variant-numeric: tabular-nums; }
+.experiment-score-cell span { color: var(--muted); font: 10px var(--font-mono); font-variant-numeric: tabular-nums; }
+.experiment-score-cell i { grid-column: 1 / -1; display: block; height: 3px; max-width: 100%; border-radius: 999px; opacity: .85; }
+.experiment-missing-score { color: var(--muted); font: 10px var(--font-mono); }
+
+/* Protocol footnote */
+.experiment-protocol-note {
+  display: grid;
+  grid-template-columns: auto minmax(200px, 1fr);
+  gap: 6px 14px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: var(--accent-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.experiment-protocol-note span { color: var(--accent); font: 700 9px var(--font-mono); letter-spacing: .1em; }
+.experiment-protocol-note code { overflow: hidden; align-self: center; color: var(--cyan); font: 10px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.experiment-protocol-note p { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 10px; line-height: 1.6; }
+
+@media (max-width: 900px) {
+  .experiment-summary-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .experiment-summary-strip p { grid-column: 1 / -1; border-top: 1px solid var(--line); text-align: left; }
+  .experiment-list-stack article > dl { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .experiment-list-stack article > dl div:nth-child(3n) { border-right: 0; }
+  .experiment-list-stack article > dl div:nth-child(n+4) { border-top: 1px solid var(--line); }
+  .experiment-member-grid { grid-template-columns: 1fr; }
+  .experiment-overall-progress > dl { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .experiment-overall-progress > dl div { padding-bottom: 8px; }
+}
+
+@media (max-width: 620px) {
+  .experiment-summary-strip { grid-template-columns: 1fr; }
+  .experiment-summary-strip > div { border-right: 0; border-bottom: 1px solid var(--line); }
+  .experiment-summary-strip > div:nth-of-type(3) { border-bottom: 0; }
+  .experiment-list-stack article > header { display: grid; }
+  .experiment-list-stack article > dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .experiment-list-stack article > dl div, .experiment-list-stack article > dl div:nth-child(3n) { border-right: 1px solid var(--line); border-top: 1px solid var(--line); }
+  .experiment-list-stack article > dl div:nth-child(-n+2) { border-top: 0; }
+  .experiment-list-stack article > dl div:nth-child(2n) { border-right: 0; }
+  .experiment-list-stack article > footer { align-items: flex-start; }
+  .experiment-overall-progress > header { display: grid; gap: 8px; }
+  .experiment-overall-progress > dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .experiment-member-grid article > dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .experiment-member-grid article > dl div, .experiment-member-grid article > dl div:nth-child(3n) { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .experiment-member-grid article > dl div:nth-child(2n) { border-right: 0; }
+  .experiment-member-grid article > dl div:nth-last-child(-n+3) { border-bottom: 1px solid var(--line); }
+  .experiment-member-grid article > dl div:nth-last-child(-n+2) { border-bottom: 0; }
+  .experiment-member-grid article > footer { flex-wrap: wrap; }
+  .experiment-score-section > header { display: grid; gap: 4px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .experiment-status.is-running i { animation: none; }
+  .experiment-list-stack > article, .experiment-member-grid > article { transition: none; }
+  .experiment-list-progress i, .experiment-member-bar i, .experiment-overall-progress > div i { transition: none; }
+}

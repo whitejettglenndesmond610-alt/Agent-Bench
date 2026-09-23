@@ -33,10 +33,11 @@ import {
   WorkspaceTurn
 } from "./api";
 import { AgentPicker } from "./AgentPicker";
-import { LoadingState } from "./components";
+import { Button, EmptyState, Kbd, LoadingState, StatusPill } from "./components";
 import { Citations, MarkdownContent } from "./markdown";
 import { randomId } from "./randomId";
 import { useAttemptStreams } from "./useAttemptStreams";
+import "./workspace.css";
 import {
   AttemptAnnotationControls,
   ClipboardButton,
@@ -319,6 +320,7 @@ function TurnLedger({
             <div><i /><span>AGENT RESPONSE / STREAMING</span></div>
           </header>
           <MarkdownContent content={streamingText} />
+          <span className="stream-cursor" aria-hidden="true" />
         </section>
       )}
 
@@ -1043,8 +1045,9 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
            <div className="instrument-status">
              <Link className="instrument-mode-link" to="/compare">并行对比</Link>
              {conversation && <div className="conversation-export-actions"><button type="button" onClick={() => downloadMarkdown(conversation.title, conversationMarkdown(conversation))}>MD</button><button type="button" onClick={() => downloadJson(conversation.title, conversation)}>JSON</button></div>}
-             <i className={activeAttempt ? "is-active" : ""} />
-            <span>{activeAttempt ? attemptLabel(activeAttempt) : "CHANNEL READY"}</span>
+            <StatusPill tone={activeAttempt ? "warning" : "success"}>
+              {activeAttempt ? attemptLabel(activeAttempt) : "CHANNEL READY"}
+            </StatusPill>
           </div>
         </header>
 
@@ -1095,11 +1098,11 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
             </section>
           )}
           {conversation && conversation.turns.length === 0 && (
-            <section className="workspace-conversation-empty">
-              <span>LEDGER EMPTY / REV {String(conversation.revision).padStart(3, "0")}</span>
-              <h2>会话已建立，等待第一条消息。</h2>
-              <p>Agent 版本已锁定为 {conversation.agent.name}{conversation.agent.visibility === "private" ? " · 私人 API" : ""}{conversation.agent.model ? ` · ${conversation.agent.model}` : ""} V{conversation.agent.version}。</p>
-            </section>
+            <EmptyState
+              className="workspace-conversation-empty"
+              title="会话已建立，等待第一条消息。"
+              description={`LEDGER EMPTY / REV ${String(conversation.revision).padStart(3, "0")} · Agent 版本已锁定为 ${conversation.agent.name}${conversation.agent.visibility === "private" ? " · 私人 API" : ""}${conversation.agent.model ? ` · ${conversation.agent.model}` : ""} V${conversation.agent.version}。`}
+            />
           )}
           {conversation?.turns.map((turn, index) => (
             <TurnLedger
@@ -1166,8 +1169,10 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
               onChange={(event) => { draftTouchedRef.current = true; setDraft(event.target.value); }}
               onKeyDown={handleComposerKeyDown}
             />
-            <button
+            <Button
               type="submit"
+              size="sm"
+              className="composer-send"
               disabled={
                 !draft.trim()
                 || conversationMutationPending
@@ -1182,10 +1187,10 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
                 ? "发送中"
                 : activeAttempt ? "生成中" : "发送"}
               <span aria-hidden="true">↗</span>
-            </button>
+            </Button>
           </div>
           <footer>
-            <span>ENTER 发送 · SHIFT+ENTER 换行</span>
+            <span className="composer-shortcuts"><Kbd>Enter</Kbd> 发送 · <Kbd>Shift</Kbd> + <Kbd>Enter</Kbd> 换行</span>
             <span aria-live="polite">
               本轮 {draft.length} 字{maximumCharacters == null ? "" : ` · Agent 上限 ${maximumCharacters}`} · 完整上下文由服务器校验
             </span>

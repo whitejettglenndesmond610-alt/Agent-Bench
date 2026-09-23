@@ -1,0 +1,157 @@
+/* RecordsPage — Phase 3 dense data-tool restyle.
+   Loaded after styles.css / product-system.css (lazy route chunk), so equal
+   specificity overrides win. Colors come from design tokens only. */
+
+.records-page { --content-max: 1400px; padding-top: 8px; padding-bottom: 120px; }
+.records-page .page-header-meta p { margin: 0; }
+
+/* Single-row filter toolbar (32px controls) */
+.records-page .record-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+}
+.records-page .record-filters label { display: inline-flex; align-items: center; gap: 8px; min-width: 0; padding: 0; }
+.records-page .record-filters label:first-child { flex: 1; min-width: 200px; }
+.records-page .record-filters label > span { flex: 0 0 auto; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.records-page .record-filters input, .records-page .record-filters select {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-h);
+  padding: 4px 10px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  outline: 0;
+  font-size: 12px;
+}
+.records-page .record-filters select { width: auto; min-width: 130px; color-scheme: dark; }
+.records-page .record-filters input:focus, .records-page .record-filters select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.records-page .record-filters input::placeholder { color: var(--muted); }
+.records-page .record-filters > strong {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin-left: auto;
+  color: var(--accent);
+  background: transparent;
+  border-radius: 0;
+  font: 650 12px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Record groups */
+.records-page .records-sections { display: grid; gap: 20px; }
+.records-page .records-sections > section > header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.records-page .records-sections > section > header h2 { margin: 0; color: var(--ink); font-size: 13px; font-weight: 650; }
+.records-page .records-sections > section > header span {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font: 700 10px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.records-page .records-sections > section > div { display: grid; gap: 8px; }
+.records-page .records-sections .is-archived .record-card { opacity: .72; }
+
+/* Dense record card row */
+.records-page .record-card {
+  display: grid;
+  grid-template-columns: 96px minmax(220px, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+  transition: border-color var(--dur-fast) ease;
+}
+.records-page .record-card:hover { border-color: var(--line-strong); }
+.records-page .record-type-mark { display: grid; gap: 2px; padding-right: 14px; border-right: 1px solid var(--line); }
+.records-page .record-type-mark span { color: var(--accent); font: 700 9px var(--font-mono); letter-spacing: .1em; }
+.records-page .record-type-mark b { color: var(--muted); font-size: 10px; font-weight: 500; }
+.records-page .record-main { display: grid; gap: 2px; min-width: 0; }
+.records-page .record-main > a { overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 650; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+.records-page .record-main > a:hover { color: var(--accent); }
+.records-page .record-main p, .records-page .record-main small { overflow: hidden; margin: 0; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Row action buttons (28px ghost chips) */
+.records-page .record-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.records-page .record-actions a, .records-page .record-actions button {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h-sm);
+  padding: 3px 10px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 550;
+  text-decoration: none;
+  transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease, background var(--dur-fast) ease;
+}
+.records-page .record-actions a:hover, .records-page .record-actions button:hover { color: var(--ink); background: var(--surface-raised); border-color: var(--muted); }
+.records-page .record-actions > a:first-child { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.records-page .record-actions > a:first-child:hover { color: var(--accent-strong); background: var(--accent-soft); border-color: var(--accent); }
+.records-page .record-actions button:disabled { cursor: wait; opacity: .5; }
+
+/* Empty state (EmptyState component on top of product-system .empty-state) */
+.records-page .empty-state { margin: 12px 0; }
+
+/* Scoped .button refinement — mirrors leaderboard.css; covers header action links. */
+.records-page .button {
+  min-height: var(--control-h);
+  padding: 6px 14px;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: none;
+  transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+.records-page .button:hover { color: var(--accent-ink); background: var(--accent-strong); border-color: var(--accent-strong); box-shadow: none; transform: none; }
+.records-page .button:active { box-shadow: none; transform: none; }
+.records-page .button.is-ghost { color: var(--muted); background: transparent; border-color: var(--line-strong); box-shadow: none; }
+.records-page .button.is-ghost:hover { color: var(--ink); background: var(--surface-raised); border-color: var(--muted); }
+
+@media (max-width: 1200px) {
+  .records-page .record-card { grid-template-columns: 88px minmax(200px, 1fr); }
+  .records-page .record-actions { grid-column: 1 / -1; justify-content: flex-start; padding-top: 10px; border-top: 1px solid var(--line); }
+}
+@media (max-width: 900px) {
+  .records-page .record-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .records-page .record-filters label:first-child { grid-column: 1 / -1; }
+  .records-page .record-filters > strong { margin-left: 0; }
+}
+@media (max-width: 620px) {
+  .records-page .record-filters { grid-template-columns: 1fr; }
+  .records-page .record-filters label:first-child { grid-column: auto; }
+  .records-page .record-card { grid-template-columns: 1fr; gap: 10px; }
+  .records-page .record-type-mark { padding: 0 0 8px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .records-page .record-actions { grid-column: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .records-page .record-card, .records-page .record-actions a, .records-page .record-actions button, .records-page .button { transition: none; }
+}

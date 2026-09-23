@@ -1,0 +1,191 @@
+/* LeaderboardHistoryPage + LeaderboardSnapshotPage — Phase 3 dense data-tool restyle.
+   Loaded after styles.css / product-system.css (lazy route chunk), so equal
+   specificity overrides win. Fully self-contained: takes over the legacy
+   leaderboard-timeline / snapshot-protocol / snapshot-ranking-table /
+   snapshot-trend-panel rules removed from styles.css. Tokens only. */
+
+.leaderboard-history-page, .leaderboard-snapshot-page { padding-top: 8px; padding-bottom: 120px; }
+
+/* Back link — compact mono breadcrumb */
+.leaderboard-history-page .back-link, .leaderboard-snapshot-page .back-link {
+  margin-bottom: 12px;
+  color: var(--muted);
+  font: 600 10px var(--font-mono);
+  letter-spacing: .06em;
+  transition: color var(--dur-fast) ease;
+}
+.leaderboard-history-page .back-link:hover, .leaderboard-snapshot-page .back-link:hover { color: var(--ink); }
+
+/* Publication timeline — accent nodes over a thin connector line */
+.leaderboard-timeline { max-width: 1040px; margin: 0; padding: 0; list-style: none; }
+.leaderboard-timeline > li { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 14px; }
+.leaderboard-timeline > li > div {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 6px;
+  padding-top: 15px;
+}
+.leaderboard-timeline > li > div::after {
+  position: absolute;
+  z-index: 0;
+  top: 30px;
+  bottom: -14px;
+  width: 1px;
+  content: "";
+  background: var(--line-strong);
+}
+.leaderboard-timeline > li:last-child > div::after { display: none; }
+.leaderboard-timeline > li > div i {
+  position: relative;
+  z-index: 1;
+  width: 11px;
+  height: 11px;
+  background: var(--accent);
+  border: 3px solid var(--accent-soft);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.leaderboard-timeline > li > div span { color: var(--muted); font: 700 8px var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: .08em; }
+.leaderboard-timeline article {
+  margin-bottom: 12px;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--dur-fast) ease;
+}
+.leaderboard-timeline article:hover { border-color: var(--line-strong); }
+.leaderboard-timeline article > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 48px;
+  padding: 10px 16px;
+}
+.leaderboard-timeline article > header > div { display: grid; gap: 3px; min-width: 0; }
+.leaderboard-timeline h2 { margin: 0; font-size: 13px; font-weight: 650; letter-spacing: -.01em; }
+.leaderboard-timeline h2 a { color: var(--ink); text-decoration: none; }
+.leaderboard-timeline h2 a:hover { color: var(--accent); }
+.leaderboard-timeline time { color: var(--muted); font: 10px var(--font-mono); font-variant-numeric: tabular-nums; }
+.leaderboard-timeline article > header .status-pill { flex: 0 0 auto; }
+.leaderboard-timeline article > footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: var(--row-h);
+  padding: 5px 16px;
+  color: var(--muted);
+  background: var(--surface-raised);
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+}
+.leaderboard-timeline footer code { color: var(--cyan); font: 9px var(--font-mono); letter-spacing: .04em; }
+.leaderboard-timeline footer a { margin-left: auto; color: var(--accent); font-size: 11px; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.leaderboard-timeline footer a:hover { color: var(--accent-strong); text-decoration: underline; }
+
+/* Snapshot protocol fingerprint strip */
+.snapshot-protocol {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 14px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm), inset 2px 0 0 var(--cyan);
+}
+.snapshot-protocol span { color: var(--muted); font: 700 9px var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
+.snapshot-protocol code { color: var(--cyan); font: 10px var(--font-mono); overflow-wrap: anywhere; }
+.snapshot-protocol small { grid-column: 1 / -1; color: var(--muted); font-size: 10px; }
+
+/* Dense snapshot ranking table (on top of .table-frame) */
+.snapshot-ranking-table table { min-width: 1120px; }
+.snapshot-ranking-table td:first-child { min-width: 200px; }
+.snapshot-ranking-table td:first-child strong { margin-bottom: 2px; font-size: 12px; }
+.snapshot-ranking-table td:first-child small { max-width: 260px; font-size: 10px; }
+.snapshot-ranking-table td:first-child a { color: var(--ink); text-decoration: none; }
+.snapshot-ranking-table td:first-child a:hover { color: var(--accent); }
+.snapshot-ranking-table td:not(:first-child):not(:last-child) {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.snapshot-ranking-table td:last-child .row-link + .row-link { margin-left: 12px; }
+
+/* Header export actions — smaller scoped .button refinement */
+.snapshot-actions { display: flex; align-items: center; gap: 8px; }
+.snapshot-actions .button { min-height: var(--control-h-sm); padding: 4px 12px; font-size: 11px; }
+
+/* Score trend panel — dark tokenized base */
+.snapshot-trend-panel {
+  margin-top: 14px;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  animation: product-state-in .3s var(--ease-product) both;
+}
+.snapshot-trend-panel > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.snapshot-trend-panel > header .eyebrow { margin-bottom: 6px; }
+.snapshot-trend-panel > header h2 { margin: 0; color: var(--ink); font-size: 14px; font-weight: 650; letter-spacing: -.01em; }
+.snapshot-trend-panel > header p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
+.snapshot-trend-panel > header button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: var(--control-h-sm);
+  height: var(--control-h-sm);
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease, background var(--dur-fast) ease;
+}
+.snapshot-trend-panel > header button:hover { color: var(--ink); border-color: var(--line-strong); background: var(--surface-raised); }
+.snapshot-trend-panel > .loading-state { margin: 14px 16px 16px; min-height: 200px; }
+.snapshot-trend-panel > .table-state, .snapshot-trend-panel > .user-section-state { margin: 14px 16px 16px; }
+.leaderboard-snapshot-page .user-section-state {
+  min-height: 120px;
+  padding: 28px 20px;
+  color: var(--muted);
+  background: var(--surface-raised);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+}
+.snapshot-trend-chart { width: 100%; height: 300px; padding: 8px 10px 4px; box-sizing: border-box; }
+
+@media (max-width: 620px) {
+  .leaderboard-timeline > li { grid-template-columns: 28px minmax(0, 1fr); gap: 10px; }
+  .leaderboard-timeline article > footer { flex-wrap: wrap; gap: 6px 14px; }
+  .leaderboard-timeline footer a { margin-left: 0; }
+  .snapshot-actions { display: grid; width: 100%; }
+  .snapshot-protocol { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .snapshot-trend-panel { animation: none; }
+  .leaderboard-timeline article,
+  .leaderboard-history-page .back-link,
+  .leaderboard-snapshot-page .back-link,
+  .snapshot-trend-panel > header button { transition: none; }
+}

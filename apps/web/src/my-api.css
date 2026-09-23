@@ -1,0 +1,130 @@
+/* MyApiPage — Phase 3 dense data-tool styles.
+   Fully self-contained: the legacy my-api block was removed from styles.css,
+   so every layout + visual rule this page needs lives here (scoped to
+   .my-api-page). Shared primitives (.page-header, .empty-state, .result-banner,
+   .status-pill, .modal-form, .form-grid, .control) come from styles.css /
+   product-system.css. Colors use design tokens only. */
+
+.my-api-page { --content-max: 1380px; padding-top: 8px; padding-bottom: 120px; }
+
+/* Page-local button reset: the legacy light `.button` block in styles.css
+   (indigo gradient, white ghost) ships later in the shared sheet, so colors
+   must be re-asserted here, not just density. */
+.my-api-page .button {
+  min-height: var(--control-h);
+  padding: 5px 12px;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: none;
+  transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+.my-api-page .button:hover:not(:disabled) { color: var(--accent-ink); background: var(--accent-strong); border-color: var(--accent-strong); box-shadow: none; transform: none; }
+.my-api-page .button:active { box-shadow: none; transform: none; }
+.my-api-page .button.is-ghost { color: var(--muted); background: transparent; border-color: var(--line-strong); }
+.my-api-page .button.is-ghost:hover:not(:disabled) { color: var(--ink); background: var(--surface-raised); border-color: var(--muted); }
+.my-api-page .button.is-danger { color: var(--danger-ink); background: var(--danger-bg); border-color: var(--danger-line); }
+.my-api-page .button.is-danger:hover:not(:disabled) { color: var(--danger-ink); background: var(--rose); border-color: var(--rose); }
+
+/* Eyebrow tag inside PageHeader meta. */
+.my-api-header-tag { color: var(--accent); font: 700 9px var(--font-mono); letter-spacing: .12em; white-space: nowrap; }
+
+/* Security notice — tokenized amber warning bar. */
+.my-api-security {
+  display: grid;
+  grid-template-columns: minmax(150px, .32fr) minmax(0, 1.68fr);
+  gap: 10px 22px;
+  margin-bottom: 14px;
+  padding: 13px 16px;
+  background: var(--amber-soft);
+  border: 1px solid color-mix(in srgb, var(--amber) 40%, var(--line));
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+.my-api-security strong { color: var(--amber); font-size: 12px; font-weight: 650; }
+.my-api-security ul { display: grid; gap: 5px; margin: 0; padding-left: 16px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.my-api-security li::marker { color: var(--amber); }
+
+/* Banners + states inside this page (legacy light colors still live in
+   styles.css; re-assert tokenized dark variants here). */
+.my-api-page .result-banner { margin-bottom: 12px; box-shadow: var(--shadow-sm); }
+.my-api-page .result-banner.is-success { color: var(--green); background: var(--green-soft); border: 1px solid color-mix(in srgb, var(--green) 40%, var(--line)); }
+.my-api-page .result-banner.is-error { color: var(--danger-ink); background: var(--danger-bg); border: 1px solid var(--danger-line); }
+.my-api-page .table-state { background: var(--surface); border-radius: var(--radius-md); }
+.my-api-page .table-state.is-error { color: var(--danger-ink); }
+
+/* Empty state density. */
+.my-api-page .empty-state { min-height: 220px; }
+.my-api-page .empty-state > span { color: var(--muted); font: 700 9px var(--font-mono); letter-spacing: .12em; }
+.my-api-page .empty-state h2 { margin: 6px 0 0; color: var(--ink); font-size: 15px; font-weight: 650; }
+.my-api-page .empty-state p { max-width: 420px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+
+/* Card grid. */
+.my-api-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.my-api-card {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+}
+.my-api-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-md); }
+.my-api-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 14px 16px 10px; }
+.my-api-card > header div { display: grid; gap: 4px; min-width: 0; }
+.my-api-card > header span { color: var(--cyan); font: 700 8px var(--font-mono); letter-spacing: .09em; text-transform: uppercase; }
+.my-api-card h2 { margin: 0; overflow-wrap: anywhere; color: var(--ink); font-size: 14px; font-weight: 650; letter-spacing: -.01em; }
+.my-api-card .status-pill { flex: 0 0 auto; min-height: 20px; padding: 1px 8px; font-size: 9px; }
+.my-api-card > p { min-height: 34px; margin: 0; padding: 0 16px 12px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.my-api-card dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; border-block: 1px solid var(--line); }
+.my-api-card dl div { display: grid; gap: 3px; align-content: start; min-width: 0; padding: 9px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.my-api-card dl div:nth-child(3n) { border-right: 0; }
+.my-api-card dl div:nth-last-child(-n+3) { border-bottom: 0; }
+.my-api-card dt { color: var(--muted); font: 700 8px var(--font-mono); letter-spacing: .06em; }
+.my-api-card dd { overflow: hidden; margin: 0; color: var(--ink); font: 500 11px var(--font-mono); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.my-api-card > footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 11px 12px; }
+.my-api-card > footer .button { min-height: var(--control-h-sm); padding: 4px 10px; font-size: 11px; }
+.my-api-use-links { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
+.my-api-use-links small { flex-basis: 100%; color: var(--muted); font-size: 10px; }
+.my-api-use-links a {
+  padding: 4px 9px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 650;
+  text-decoration: none;
+  transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+.my-api-use-links a:hover { color: var(--accent-strong); background: color-mix(in srgb, var(--accent) 20%, transparent); border-color: var(--accent); }
+
+/* Modal form bits (rendered inside .my-api-page). */
+.my-api-form .form-grid.two-column .form-field:last-child { grid-column: 1 / -1; }
+.my-api-form .result-banner, .my-api-delete-confirm .result-banner { margin: 14px 0 0; }
+.my-api-delete-confirm > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.my-api-delete-confirm > p strong { color: var(--ink); }
+
+@media (max-width: 900px) {
+  .my-api-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 620px) {
+  .my-api-security { grid-template-columns: 1fr; padding: 14px; }
+  .my-api-card dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .my-api-card dl div, .my-api-card dl div:nth-child(3n) { border-right: 1px solid var(--line); }
+  .my-api-card dl div:nth-child(2n) { border-right: 0; }
+  .my-api-card dl div:nth-last-child(-n+3) { border-bottom: 1px solid var(--line); }
+  .my-api-card dl div:nth-last-child(-n+2) { border-bottom: 0; }
+  .my-api-use-links { width: 100%; margin-left: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .my-api-card, .my-api-page .button, .my-api-use-links a { transition: none; }
+}

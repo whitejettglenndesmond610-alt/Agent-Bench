@@ -3,8 +3,9 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { fetchWorkspaceExperienceTask, fetchWorkspaceExperienceTasks, WorkspaceExperienceCategory } from "./api";
-import { LoadingState } from "./components";
+import { EmptyState, LoadingState, PageHeader } from "./components";
 import { userQueryKeys } from "./userProduct";
+import "./experience.css";
 
 const categoryLabels: Record<WorkspaceExperienceCategory, string> = {
   analysis: "分析决策",
@@ -37,7 +38,7 @@ export function ExperiencePage({ userId }: { userId: string }) {
 
   return (
     <main className="workspace experience-page">
-      <header className="section-header"><div><p className="eyebrow">PRACTICE, NOT RANKING</p><h1>体验任务</h1><p>用六类典型工作情境了解 Agent 的回答风格和协作方式。</p></div></header>
+      <PageHeader title="体验任务" meta={<p>用六类典型工作情境了解 Agent 的回答风格和协作方式。</p>} />
       <aside className="experience-policy"><strong>体验结果不影响正式排行榜</strong><span>这里的任务只用于练习与产品体验，不会进入正式评测；页面不提供参考答案、Judge 提示词、评分或裁判数据。</span></aside>
       {taskSlug ? detailQuery.isPending ? <LoadingState label="正在读取体验任务" /> : detailQuery.error || !task ? <div className="table-state is-error" role="alert">{detailQuery.error?.message ?? "体验任务不存在"}</div> : (
         <article className="experience-detail">
@@ -62,7 +63,7 @@ export function ExperiencePage({ userId }: { userId: string }) {
             <dl><div><dt>推荐</dt><dd>{item.recommended_mode === "chat" ? "单 Agent" : "多 Agent"}</dd></div><div><dt>范围</dt><dd>{item.min_agents === item.max_agents ? item.min_agents : `${item.min_agents}-${item.max_agents}`} 个</dd></div></dl>
             <footer><Link to={`/workspace?task=${item.slug}`}>单 Agent 开始</Link><Link to={`/compare?task=${item.slug}`}>多 Agent 对比</Link><Link to={`/experience/${item.slug}`}>查看任务</Link></footer>
           </article>
-        ))}</section> : <section className="empty-state"><span>NO MATCH</span><h2>没有符合条件的体验任务</h2><p>调整类别、难度或推荐模式筛选。</p></section>}
+        ))}</section> : <EmptyState title="没有符合条件的体验任务" description="调整类别、难度或推荐模式筛选。" />}
       </>}
     </main>
   );

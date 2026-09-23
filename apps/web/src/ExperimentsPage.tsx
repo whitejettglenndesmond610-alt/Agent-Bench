@@ -8,8 +8,9 @@ import {
   fetchEvaluationExperiments,
   RunStatus
 } from "./api";
-import { LoadingState, Table } from "./components";
+import { LoadingState, PageHeader, Table } from "./components";
 import { leaderboardMetrics } from "./metrics";
+import "./experiments.css";
 
 const terminalStatuses = new Set<RunStatus>([
   "completed",
@@ -59,11 +60,17 @@ function ExperimentList() {
   const complete = experiments.filter((item) => item.status === "completed" || item.status === "published").length;
 
   return (
-    <main className="workspace experiments-workspace">
-      <header className="section-header">
-        <div><p className="eyebrow">MULTI-AGENT EVALUATION</p><h1>评测实验</h1><p>将多个 Agent 的独立运行固化为一个可追踪实验，在相同协议下比较进度、成绩与运行质量。</p></div>
-        <Link className="button" to="/runs?launch=1">+ 发起多 Agent 实验</Link>
-      </header>
+    <main className="workspace experiments-workspace stagger-in">
+      <PageHeader
+        title="评测实验"
+        meta={
+          <>
+            <span className="experiments-eyebrow">MULTI-AGENT EVALUATION</span>
+            <span>将多个 Agent 的独立运行固化为一个可追踪实验，在相同协议下比较进度、成绩与运行质量。</span>
+          </>
+        }
+        actions={<Link className="button" to="/runs?launch=1">+ 发起多 Agent 实验</Link>}
+      />
       <section className="experiment-summary-strip">
         <div><span>实验总数</span><strong>{experiments.length}</strong></div>
         <div><span>进行中</span><strong>{active}</strong></div>
@@ -113,10 +120,17 @@ function ExperimentDetail({ experimentId }: { experimentId: string }) {
   return (
     <main className="workspace experiment-detail-workspace">
       <Link className="back-link" to="/experiments">← 返回评测实验</Link>
-      <header className="experiment-detail-header">
-        <div><p className="eyebrow">EXPERIMENT / {experiment.id.slice(0, 8).toUpperCase()}</p><h1>{experiment.name}</h1><p>{profileLabel(experiment)} · {experiment.profile_key} · {experiment.member_count} 个 Agent</p></div>
-        <span className={`experiment-status is-${experiment.status}`}><i />{statusLabels[experiment.status]}</span>
-      </header>
+      <PageHeader
+        className="experiment-detail-header"
+        title={experiment.name}
+        meta={
+          <>
+            <span className="experiments-eyebrow">EXPERIMENT / {experiment.id.slice(0, 8).toUpperCase()}</span>
+            <span>{profileLabel(experiment)} · {experiment.profile_key} · {experiment.member_count} 个 Agent</span>
+          </>
+        }
+        actions={<span className={`experiment-status is-${experiment.status}`}><i />{statusLabels[experiment.status]}</span>}
+      />
 
       <section className="experiment-overall-progress">
         <header><div><span>AGGREGATE PROGRESS</span><strong>{experiment.progress_percent.toFixed(2)}%</strong></div><p>{experiment.processed} / {experiment.total} 执行项已处理</p></header>

@@ -21,7 +21,7 @@ import {
   WorkspaceComparisonItem
 } from "./api";
 import { AgentPicker } from "./AgentPicker";
-import { Button, Input, LoadingState, Modal } from "./components";
+import { Button, Input, LoadingState, Modal, PageHeader, StatusPill, StatusTone } from "./components";
 import { randomId } from "./randomId";
 import { Citations, MarkdownContent } from "./markdown";
 import { useAttemptStreams } from "./useAttemptStreams";
@@ -33,6 +33,7 @@ import {
   downloadMarkdown,
   userQueryKeys
 } from "./userProduct";
+import "./workspace-compare.css";
 
 const workspaceComparisonsKey = (userId: string) => ["workspace", userId, "comparisons"] as const;
 const workspaceComparisonKey = (userId: string, comparisonId: string) =>
@@ -50,6 +51,14 @@ const attemptLabels: Record<WorkspaceAttempt["status"], string> = {
   succeeded: "已完成",
   failed: "失败",
   canceled: "已取消"
+};
+
+const attemptTones: Record<WorkspaceAttempt["status"], StatusTone> = {
+  queued: "neutral",
+  running: "info",
+  succeeded: "success",
+  failed: "danger",
+  canceled: "warning"
 };
 
 const comparisonLabels: Record<WorkspaceComparison["status"], string> = {
@@ -170,7 +179,7 @@ function AnswerCard({
       <header>
         <span>{String(item.position).padStart(2, "0")}</span>
         <div><strong>{item.agent.name}{item.agent.visibility === "private" && <b className="private-api-badge">私人 API</b>}</strong><small>{item.agent.provider}{item.agent.model ? ` / ${item.agent.model}` : ""} / V{item.agent.version}</small></div>
-        <b>{attemptLabels[attempt.status]}</b>
+        <StatusPill tone={attemptTones[attempt.status]}>{attemptLabels[attempt.status]}</StatusPill>
       </header>
       {attempt.status === "succeeded" && attempt.assistant_message ? (
         <>
@@ -472,14 +481,11 @@ export function WorkspaceComparePage({ userId, canDraft }: { userId: string; can
 
   return (
     <main className="workspace workspace-compare-page">
-      <header className="workspace-compare-header">
-        <div>
-          <p className="eyebrow">DURABLE MULTI-AGENT WORKSPACE</p>
-          <h1>{comparison ? comparison.title : "并行对比"}</h1>
-          <p>同一提示词进入独立 Agent 链路，回答与运行指标持续写入服务端。</p>
-        </div>
-        <Link className="back-link" to="/workspace">← 单 Agent 对话</Link>
-      </header>
+      <PageHeader
+        title={comparison ? comparison.title : "并行对比"}
+        meta={<span>同一提示词进入独立 Agent 链路，回答与运行指标持续写入服务端。</span>}
+        actions={<Link className="back-link" to="/workspace">← 单 Agent 对话</Link>}
+      />
 
       {actionError && <div className="result-banner is-error" role="alert">{actionError}</div>}
       <div className="workspace-compare-layout">

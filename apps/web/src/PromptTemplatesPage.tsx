@@ -11,8 +11,9 @@ import {
   WorkspacePromptTemplate,
   WorkspacePromptTemplateList
 } from "./api";
-import { Button, FormField, Input, Modal, Textarea } from "./components";
+import { Button, FormField, Input, Modal, PageHeader, Textarea } from "./components";
 import { ClipboardButton, formatUserDate, userQueryKeys } from "./userProduct";
+import "./prompt-templates.css";
 
 type TemplateDialog = { mode: "create" } | { mode: "edit" | "delete"; template: WorkspacePromptTemplate };
 
@@ -107,7 +108,11 @@ export function PromptTemplatesPage({ userId }: { userId: string }) {
 
   return (
     <main className="workspace templates-page">
-      <header className="section-header"><div><p className="eyebrow">PERSONAL PROMPT LIBRARY</p><h1>Prompt 模板</h1><p>保存和复用纯文本提示词。模板不会执行插值、脚本或任何可执行逻辑。</p></div><Button onClick={openCreate}>+ 新建模板</Button></header>
+      <PageHeader
+        title="Prompt 模板"
+        meta={<p>保存和复用纯文本提示词。模板不会执行插值、脚本或任何可执行逻辑。</p>}
+        actions={<Button onClick={openCreate}>+ 新建模板</Button>}
+      />
       <section className="templates-tools"><label><span className="sr-only">搜索模板</span><input type="search" aria-label="搜索模板" value={search} placeholder="搜索名称或内容" onChange={(event) => setSearch(event.target.value)} /></label><span>{templates.length} 个模板</span></section>
       {templatesQuery.isPending ? <div className="table-state">正在读取模板...</div> : templatesQuery.error ? <div className="table-state is-error" role="alert">{templatesQuery.error.message}</div> : templates.length ? (
         <section className="template-card-grid">{templates.map((template) => (

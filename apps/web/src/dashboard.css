@@ -1,0 +1,239 @@
+/*
+ * DashboardPage — Phase 2 dense data-tool skin.
+ * Self-contained: styles.css no longer carries any dashboard layout rules, so
+ * every layout/reset the page needs is defined here. Shared primitives
+ * (.page-header, .kpi-card, .progress, .empty-state, .status-pill, .stagger-in)
+ * come from product-system.css / styles.css. All colors use design tokens.
+ */
+
+.dashboard-workspace { padding-top: 24px; }
+
+/* Scoped repair: styles.css still ships a legacy light-theme .button block
+ * (indigo gradient, 42px, translateY hover) later in the cascade. Restore the
+ * token-based button look for this page. */
+.dashboard-workspace .button {
+  min-height: var(--control-h);
+  padding: 6px 14px;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  font-weight: 650;
+  text-decoration: none;
+}
+.dashboard-workspace .button:hover { background: var(--accent-strong); border-color: var(--accent-strong); box-shadow: none; transform: none; }
+.dashboard-workspace .button:active { box-shadow: none; transform: none; }
+.dashboard-workspace .button:disabled { box-shadow: none; transform: none; }
+.dashboard-workspace .button.is-ghost { color: var(--muted); background: transparent; border-color: var(--line-strong); box-shadow: none; }
+.dashboard-workspace .button.is-ghost:hover { color: var(--ink); background: var(--surface-raised); border-color: var(--muted); }
+
+/* KPI grid — five .kpi-card cells (card chrome comes from product-system.css). */
+.dashboard-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.dashboard-kpi-grid .kpi-card.is-ready > strong { color: var(--green); }
+.dashboard-kpi-grid .kpi-card.is-blocked > strong { color: var(--amber); }
+.kpi-spark-chart { width: 100%; height: 100%; }
+
+/* Two-column panel grids. */
+.dashboard-profile-grid { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; gap: 12px; }
+.dashboard-activity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+
+/* Dense token-based panels. */
+.dashboard-profile-card, .dashboard-ability-card, .dashboard-recent-runs, .dashboard-agent-readiness {
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.dashboard-profile-card > header,
+.dashboard-ability-card > header,
+.dashboard-recent-runs > header,
+.dashboard-agent-readiness > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.dashboard-profile-card > header h2,
+.dashboard-ability-card > header h2,
+.dashboard-recent-runs > header h2,
+.dashboard-agent-readiness > header h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -.01em;
+}
+.dashboard-profile-card > header p,
+.dashboard-ability-card > header p,
+.dashboard-recent-runs > header p,
+.dashboard-agent-readiness > header p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.dashboard-recent-runs > header a,
+.dashboard-agent-readiness > header a {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.dashboard-profile-card > header > .status-pill { flex: 0 0 auto; }
+
+/* Profile card body. */
+.dashboard-profile-volume { display: flex; align-items: baseline; gap: 10px; margin: 14px 0 12px; }
+.dashboard-profile-volume strong {
+  color: var(--ink);
+  font: 650 40px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.03em;
+}
+.dashboard-profile-volume span { color: var(--muted); font: 700 8px var(--font-mono); letter-spacing: .12em; }
+
+.dashboard-language-counts {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin: 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.dashboard-language-counts div { display: grid; gap: 4px; min-width: 0; padding: 10px 12px; border-right: 1px solid var(--line); }
+.dashboard-language-counts div:last-child { border-right: 0; }
+.dashboard-language-counts dt { color: var(--muted); font-size: 9px; }
+.dashboard-language-counts dd { margin: 0; color: var(--ink); font: 650 13px var(--font-mono); font-variant-numeric: tabular-nums; }
+.dashboard-profile-card > footer { margin-top: 12px; color: var(--muted); font-size: 10px; }
+
+/* Ability rows — compact token-based meter track. */
+.dashboard-ability-card > div { display: grid; }
+.dashboard-ability-row {
+  display: grid;
+  grid-template-columns: 88px minmax(60px, 1fr) 50px 36px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+.dashboard-ability-row:first-child { border-top: 0; }
+.dashboard-ability-row > span { color: var(--ink); font-size: 11px; }
+.dashboard-ability-row > div { height: 5px; overflow: hidden; background: var(--surface-raised); border-radius: 999px; }
+.dashboard-ability-row > div i { display: block; height: 100%; border-radius: inherit; }
+.dashboard-ability-row strong { color: var(--ink); font: 650 10px var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+.dashboard-ability-row small { color: var(--muted); font: 600 9px var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+
+/* Dense list resets shared by both activity panels. */
+.dashboard-recent-runs ol, .dashboard-agent-readiness ol { margin: 0; padding: 0; list-style: none; }
+.dashboard-recent-runs li > a, .dashboard-agent-readiness li > a {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  text-decoration: none;
+}
+.dashboard-recent-runs li > a:hover strong, .dashboard-agent-readiness li > a:hover strong { color: var(--accent); }
+.dashboard-recent-runs li strong, .dashboard-agent-readiness li strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dashboard-recent-runs li small, .dashboard-agent-readiness li small { color: var(--muted); font-size: 10px; }
+
+/* Recent runs — 32–40px rows with an inline progress column. */
+.dashboard-recent-runs li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px auto 40px;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  padding: 5px 0;
+  border-top: 1px solid var(--line);
+}
+.dashboard-recent-runs li:first-child { border-top: 0; }
+.dashboard-recent-runs li > b { color: var(--muted); font: 650 10px var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+
+/* Agent readiness — compact rows with StatusPill badges. */
+.dashboard-agent-readiness li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  padding: 5px 0;
+  border-top: 1px solid var(--line);
+}
+.dashboard-agent-readiness li:first-child { border-top: 0; }
+
+/* Empty + inline error states. */
+.empty-state.dashboard-empty-copy { margin: 12px 0 0; }
+.dashboard-inline-error {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  color: var(--danger-ink);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-line);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+/* CTA strip — thin-border toolbar. */
+.dashboard-cta-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin-top: 12px;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+.dashboard-cta-strip a {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-right: 1px solid var(--line);
+  text-decoration: none;
+  transition: background var(--dur-fast) ease;
+}
+.dashboard-cta-strip a:last-child { border-right: 0; }
+.dashboard-cta-strip a:hover { background: var(--surface-raised); }
+.dashboard-cta-strip span { flex: 0 0 auto; color: var(--accent); font: 700 9px var(--font-mono); }
+.dashboard-cta-strip strong { color: var(--ink); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.dashboard-cta-strip small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 1180px) {
+  .dashboard-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .dashboard-cta-strip { grid-template-columns: repeat(2, 1fr); }
+  .dashboard-cta-strip a:nth-child(2) { border-right: 0; }
+  .dashboard-cta-strip a:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+}
+
+@media (max-width: 900px) {
+  .dashboard-profile-grid, .dashboard-activity-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 760px) {
+  .dashboard-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard-recent-runs li { grid-template-columns: minmax(0, 1fr) auto; }
+  .dashboard-recent-runs li > .progress, .dashboard-recent-runs li > b { display: none; }
+  .dashboard-ability-row { grid-template-columns: 80px minmax(50px, 1fr) 46px; }
+  .dashboard-ability-row small { display: none; }
+  .dashboard-cta-strip { grid-template-columns: 1fr; }
+  .dashboard-cta-strip a, .dashboard-cta-strip a:nth-child(2) { border-right: 0; border-bottom: 1px solid var(--line); }
+  .dashboard-cta-strip a:last-child { border-bottom: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-cta-strip a, .dashboard-workspace .button { transition: none; }
+}

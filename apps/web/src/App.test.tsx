@@ -84,7 +84,8 @@ test("shows real evaluation readiness and prioritized operator navigation", asyn
   renderApp();
 
   expect(await screen.findByText("统一综合评测")).toBeInTheDocument();
-  expect(screen.getAllByText("210").length).toBeGreaterThanOrEqual(2);
+  // KPI 数字由 CountUp 动画驱动，等待其滚动到终值。
+  await waitFor(() => expect(screen.getAllByText("210").length).toBeGreaterThanOrEqual(2), { timeout: 3000 });
   expect(screen.getByText("judge-current", { exact: false })).toBeInTheDocument();
   expect(screen.queryByText("服务在线")).not.toBeInTheDocument();
   expect(screen.queryByText("SYSTEM READY")).not.toBeInTheDocument();

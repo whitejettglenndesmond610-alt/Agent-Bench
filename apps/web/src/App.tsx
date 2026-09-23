@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation, useParams } from "react-router-dom";
 
 import { fetchSession, login, logout, SessionInfo, SessionRole, userLogin } from "./api";
-import { LoadingState } from "./components";
+import { CommandItem, CommandPalette } from "./CommandPalette";
+import { Kbd, LoadingState } from "./components";
+import { Theme, useTheme } from "./theme";
 
 const AgentDetailPage = lazy(() =>
   import("./AgentDetailPage").then((module) => ({ default: module.AgentDetailPage }))
@@ -166,7 +168,17 @@ const shellSections = [
   { prefix: "/leaderboard", label: "排行榜", code: "LEADERBOARD" }
 ] as const;
 
-function ShellTopbar({ session }: { session: SessionInfo }) {
+function ShellTopbar({
+  session,
+  theme,
+  onToggleTheme,
+  onOpenPalette
+}: {
+  session: SessionInfo;
+  theme: Theme;
+  onToggleTheme: () => void;
+  onOpenPalette: () => void;
+}) {
   const location = useLocation();
   const section = shellSections.find((item) => location.pathname.startsWith(item.prefix))
     ?? { label: "评测总览", code: "OVERVIEW" };
@@ -182,7 +194,27 @@ function ShellTopbar({ session }: { session: SessionInfo }) {
         <small>{section.code}</small>
       </div>
       <div className="shell-topbar-meta">
-        <div className="shell-environment"><span>Agent 评测</span><small>{session.role === "operator" ? "OPERATOR" : "USER"}</small></div>
+        <div className="shell-environment"><i aria-hidden="true" /><span>Agent 评测</span><small>{session.role === "operator" ? "OPERATOR" : "USER"}</small></div>
+        <button type="button" className="shell-command-hint" onClick={onOpenPalette} aria-label="打开命令面板">
+          <span>快速跳转</span>
+          <Kbd>⌘K</Kbd>
+        </button>
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={onToggleTheme}
+          aria-label="切换主题"
+          aria-pressed={theme === "light"}
+          title={theme === "dark" ? "切换到浅色主题" : "切换到深色主题"}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            {theme === "dark" ? (
+              <><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>
+            ) : (
+              <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />
+            )}
+          </svg>
+        </button>
         <div className="shell-account">
           <span aria-hidden="true">{avatarLabel}</span>
           <div><strong>{session.role === "operator" ? "评测管理台" : "用户工作区"}</strong><small>{session.is_shared ?? true ? "SHARED SESSION" : "NAMED SESSION"}</small></div>
@@ -194,6 +226,8 @@ function ShellTopbar({ session }: { session: SessionInfo }) {
 
 function AuthenticatedApp({ session }: { session: SessionInfo }) {
   const queryClient = useQueryClient();
+  const { theme, toggleTheme } = useTheme();
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSuccess: async () => {
@@ -207,11 +241,41 @@ function AuthenticatedApp({ session }: { session: SessionInfo }) {
   const workspaceFallback = <main className="workspace"><LoadingState label="正在加载 Agent 在线运行" /></main>;
   const pageFallback = <main className="workspace"><LoadingState label="正在加载页面" /></main>;
 
+  const paletteItems = useMemo<CommandItem[]>(() => {
+    const fromSections = (prefixes: string[]): CommandItem[] =>
+      shellSections
+        .filter((item) => prefixes.includes(item.prefix))
+        .map((item) => ({ to: item.prefix, label: item.label, code: item.code }));
+    const items: CommandItem[] = [];
+    if (operator) {
+      items.push(
+        { to: "/", label: "评测总览", code: "OVERVIEW", keywords: "dashboard" },
+        ...fromSections(["/agents", "/experiments", "/runs", "/quality", "/evaluation-cases", "/dataset-releases"])
+      );
+    }
+    if (workspaceEnabled) {
+      items.push(...fromSections(["/home", "/plaza", "/my-api", "/workspace", "/compare", "/records", "/templates", "/experience"]));
+    }
+    items.push(...fromSections(["/leaderboard"]));
+    return items;
+  }, [operator, workspaceEnabled]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   return (
     <div className="app-shell">
       <AppNavigation session={session} loggingOut={logoutMutation.isPending} onLogout={() => logoutMutation.mutate()} />
       <div className="shell-content">
-        <ShellTopbar session={session} />
+        <ShellTopbar session={session} theme={theme} onToggleTheme={toggleTheme} onOpenPalette={() => setPaletteOpen(true)} />
         <div className="shell-route"><Suspense fallback={pageFallback}><Routes>
         <Route path="/" element={operator ? <DashboardPage /> : <Navigate to={workspaceEnabled ? "/home" : "/leaderboard"} replace />} />
         <Route path="/agents" element={operator ? <AgentsPage /> : <Navigate to="/" replace />} />
@@ -250,6 +314,7 @@ function AuthenticatedApp({ session }: { session: SessionInfo }) {
         <Route path="*" element={<NotFoundPage operator={operator} />} />
         </Routes></Suspense></div>
       </div>
+      <CommandPalette open={paletteOpen} items={paletteItems} onClose={() => setPaletteOpen(false)} />
     </div>
   );
 }

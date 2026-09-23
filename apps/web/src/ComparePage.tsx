@@ -8,10 +8,11 @@ import {
   GlobalOverviewAgent
 } from "./api";
 import { abilityRadarOption, chartPalette } from "./chartOptions";
-import { LoadingState } from "./components";
+import { Button, LoadingState, PageHeader } from "./components";
 import { EChart } from "./EChart";
 import { abilityMetrics, formatScoreWithCi, leaderboardMetrics, metricByKey } from "./metrics";
 import { downloadJson, downloadMarkdown } from "./userProduct";
+import "./compare.css";
 
 const colors = chartPalette;
 
@@ -89,9 +90,28 @@ export function ComparePage() {
   ].join("\n")).join("\n\n")}\n`;
 
   return (
-    <main className="workspace compare-workspace">
-      <Link className="back-link" to="/leaderboard">← 返回能力总览</Link>
-      <header className="section-header compare-header"><div><p className="eyebrow">GLOBAL PROTOCOL COMPARISON</p><h1>Agent 横向对比</h1><p>各维度采用当前兼容协议下的最新正式成绩，缺失能力不按 0 分处理。</p><div className="official-compare-actions"><button type="button" onClick={() => downloadMarkdown("Agent-正式成绩对比", markdown)}>导出 Markdown</button><button type="button" onClick={() => downloadJson("Agent-正式成绩对比", overview)}>导出 JSON</button></div></div><aside><span>GLOBAL RESULT</span><strong>{agents.length} 个 Agent</strong><small>{overview.protocols.filter((protocol) => protocol.protocol_hash).length} 项有效协议</small></aside></header>
+    <main className="workspace compare-workspace stagger-in">
+      <PageHeader
+        className="compare-header"
+        title="Agent 横向对比"
+        meta={
+          <>
+            <span className="compare-header-eyebrow">GLOBAL PROTOCOL COMPARISON</span>
+            <span className="compare-header-result"><i aria-hidden="true" />GLOBAL RESULT<strong>{agents.length} 个 Agent</strong></span>
+            <span>{overview.protocols.filter((protocol) => protocol.protocol_hash).length} 项有效协议</span>
+            <span className="compare-header-desc">各维度采用当前兼容协议下的最新正式成绩，缺失能力不按 0 分处理。</span>
+          </>
+        }
+        actions={
+          <>
+            <Link className="compare-back-link" to="/leaderboard">← 返回能力总览</Link>
+            <div className="official-compare-actions">
+              <Button variant="ghost" size="sm" type="button" onClick={() => downloadMarkdown("Agent-正式成绩对比", markdown)}>导出 Markdown</Button>
+              <Button variant="ghost" size="sm" type="button" onClick={() => downloadJson("Agent-正式成绩对比", overview)}>导出 JSON</Button>
+            </div>
+          </>
+        }
+      />
 
       <section className="compare-agent-strip" style={gridStyle}><div className="compare-axis-label"><span>对比对象</span><small>颜色与雷达图一致</small></div>{agents.map((agent, index) => <article key={agent.agent_id} style={{ "--agent-color": colors[index] } as CSSProperties}><i /><div><Link to={`/plaza/${agent.agent_id}`}><strong>{agent.agent_name}</strong></Link><small>{agent.provider} · V{agent.version}</small></div><b>{agent.metrics.overall.rank === null ? "—" : `#${String(agent.metrics.overall.rank).padStart(2, "0")}`}</b></article>)}</section>
 

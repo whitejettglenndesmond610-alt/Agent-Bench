@@ -134,10 +134,7 @@ export function TrajectoryView({ trajectory }: { trajectory: RunTrajectory }) {
   return (
     <section className="trajectory-panel">
       <header className="trajectory-header">
-        <div>
-          <p className="eyebrow">INTERACTIVE REPLAY</p>
-          <h2>交互轨迹回放</h2>
-        </div>
+        <h2>交互轨迹回放</h2>
         {reward !== undefined && reward !== null && (
           <strong className={reward >= 1 ? "is-success" : ""}>{reward.toFixed(2)}</strong>
         )}

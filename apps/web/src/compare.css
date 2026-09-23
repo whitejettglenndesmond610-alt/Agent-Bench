@@ -1,0 +1,103 @@
+/* ComparePage (/leaderboard/compare) — Phase 3 dense data-tool restyle.
+   Fully self-contained: loaded after styles.css / product-system.css in the
+   lazy route chunk, so these rules must carry the whole page (layout, density,
+   responsive) on their own. Colors come from design tokens only. */
+
+.compare-workspace { --content-max: 1440px; padding-top: 8px; padding-bottom: 64px; }
+
+/* PageHeader refinements (toolbar header replaces the old hero header) */
+.compare-workspace .compare-header { flex-wrap: wrap; row-gap: 6px; margin-bottom: 14px; }
+.compare-workspace .compare-header .page-header-meta { flex-wrap: wrap; row-gap: 4px; }
+.compare-header-eyebrow { color: var(--accent); font: 700 9px var(--font-mono); letter-spacing: .12em; white-space: nowrap; }
+.compare-header-result { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.compare-header-result i { width: 6px; height: 6px; background: var(--green); border-radius: 50%; box-shadow: 0 0 8px var(--green-soft); }
+.compare-header-result strong { color: var(--ink); font-weight: 600; }
+.compare-header-desc { flex-basis: 100%; color: var(--muted); font-size: 10px; }
+.compare-back-link { color: var(--muted); font: 600 11px var(--font-mono); text-decoration: none; white-space: nowrap; transition: color var(--dur-fast) ease; }
+.compare-back-link:hover { color: var(--accent); }
+.compare-workspace .official-compare-actions { display: flex; gap: 8px; margin: 0; }
+.compare-workspace .official-compare-actions .button { white-space: nowrap; }
+
+/* Agent strip: color key aligned with the radar chart */
+.compare-workspace .compare-agent-strip { display: grid; max-width: 100%; overflow-x: auto; margin: 0 0 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); }
+.compare-workspace .compare-axis-label, .compare-workspace .compare-agent-strip article { min-width: 0; padding: 10px 14px; border-right: 1px solid var(--line); }
+.compare-workspace .compare-agent-strip > :last-child { border-right: 0; }
+.compare-workspace .compare-axis-label { display: grid; align-content: center; gap: 3px; color: var(--muted); }
+.compare-workspace .compare-axis-label span { font-size: 10px; font-weight: 600; }
+.compare-workspace .compare-axis-label small { font: 700 8px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; opacity: .8; }
+.compare-workspace .compare-agent-strip article { position: relative; display: grid; grid-template-columns: 4px minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.compare-workspace .compare-agent-strip article > i { width: 4px; height: 30px; background: var(--agent-color); border-radius: 2px; }
+.compare-workspace .compare-agent-strip article > div { display: grid; gap: 2px; min-width: 0; }
+.compare-workspace .compare-agent-strip article a { text-decoration: none; }
+.compare-workspace .compare-agent-strip article strong { overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; transition: color var(--dur-fast) ease; }
+.compare-workspace .compare-agent-strip article a:hover strong { color: var(--accent); }
+.compare-workspace .compare-agent-strip article small { color: var(--muted); font: 9px var(--font-mono); }
+.compare-workspace .compare-agent-strip article b { color: var(--muted); font: 600 13px var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* Primary grid: radar + total-score cards */
+.compare-workspace .compare-primary-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(260px, .55fr); gap: 12px; margin: 0 0 12px; }
+.compare-workspace .radar-panel, .compare-workspace .compare-scorecards { min-height: 0; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
+.compare-workspace .radar-panel > header, .compare-workspace .benchmark-comparison > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.compare-workspace .eyebrow { margin: 0 0 3px; color: var(--accent); font: 700 8px var(--font-mono); letter-spacing: .12em; }
+.compare-workspace .radar-panel h2, .compare-workspace .compare-scorecards h2, .compare-workspace .benchmark-comparison h2 { margin: 0; max-width: none; color: var(--ink); font-size: 13px; font-weight: 650; letter-spacing: -.01em; }
+.compare-workspace .radar-panel > header span, .compare-workspace .benchmark-comparison > header > small { color: var(--muted); font: 9px var(--font-mono); letter-spacing: .04em; white-space: nowrap; }
+.compare-workspace .ability-radar { width: 100%; height: 340px; }
+.compare-workspace .compare-radar-empty { display: grid; place-items: center; min-height: 340px; padding: 24px; color: var(--muted); font-size: 11px; line-height: 1.7; text-align: center; }
+
+/* Total-score cards: dense rows, mono tabular numerals */
+.compare-workspace .compare-scorecards { display: grid; }
+.compare-workspace .compare-scorecards > header { padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.compare-workspace .compare-scorecards > div { position: relative; display: grid; grid-template-columns: 4px minmax(0, 1fr); align-content: center; gap: 2px 10px; min-height: 62px; padding: 10px 14px; border-bottom: 1px solid var(--line); transition: background var(--dur-fast) ease; }
+.compare-workspace .compare-scorecards > div:hover { background: var(--surface-raised); }
+.compare-workspace .compare-scorecards > div:last-child { border-bottom: 0; }
+.compare-workspace .compare-scorecards > div > span { grid-row: 1 / 4; width: 4px; height: 100%; min-height: 38px; border-radius: 2px; }
+.compare-workspace .compare-scorecards > div > strong { color: var(--ink); font: 650 16px var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.compare-workspace .compare-scorecards > div > p { margin: 0; overflow: hidden; color: var(--ink); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.compare-workspace .compare-scorecards > div > small { color: var(--muted); font-size: 9px; }
+
+/* Comparison matrix: dense grid table with sticky label column */
+.compare-workspace .comparison-matrix { max-width: 100%; overflow: auto; margin: 0 0 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
+.compare-workspace .comparison-matrix > header, .compare-workspace .comparison-matrix > div { display: grid; }
+.compare-workspace .comparison-matrix > header { min-height: var(--row-h); color: var(--muted); background: var(--surface-raised); border-bottom: 1px solid var(--line-strong); }
+.compare-workspace .comparison-matrix > header > *, .compare-workspace .comparison-matrix > div > * { display: flex; align-items: center; min-width: 0; padding: 6px 12px; border-right: 1px solid var(--line); }
+.compare-workspace .comparison-matrix > header > :last-child, .compare-workspace .comparison-matrix > div > :last-child { border-right: 0; }
+.compare-workspace .comparison-matrix > header span { font: 700 8px var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
+.compare-workspace .comparison-matrix > header strong { overflow: hidden; color: var(--ink); font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.compare-workspace .comparison-matrix > div { min-height: var(--row-h); border-bottom: 1px solid var(--line); transition: background var(--dur-fast) ease; }
+.compare-workspace .comparison-matrix > div:last-child { border-bottom: 0; }
+.compare-workspace .comparison-matrix > div > span { display: grid; align-content: center; gap: 1px; color: var(--ink); font-size: 11px; }
+.compare-workspace .comparison-matrix > div > span small { color: var(--muted); font: 700 7px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+.compare-workspace .comparison-matrix > div > b { color: var(--ink); font: 500 11px var(--font-mono); font-variant-numeric: tabular-nums; }
+.compare-workspace .comparison-matrix > div:hover { background: var(--surface-raised); }
+.compare-workspace .comparison-matrix > header > :first-child, .compare-workspace .comparison-matrix > div > :first-child { position: sticky; z-index: 2; left: 0; background: var(--surface); box-shadow: 1px 0 0 var(--line); }
+.compare-workspace .comparison-matrix > div:hover > :first-child { background: var(--surface-raised); }
+.compare-workspace .comparison-matrix > header > :first-child { z-index: 3; background: var(--surface-raised); }
+
+/* Benchmark detail: section wrapper around a compact matrix */
+.compare-workspace .benchmark-comparison { margin: 0 0 12px; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
+.compare-workspace .benchmark-comparison .comparison-matrix { margin: 0; border: 0; border-radius: 0; box-shadow: none; }
+.compare-workspace .comparison-matrix.compact > div { min-height: var(--row-h); }
+.compare-workspace .comparison-empty-row { display: block !important; min-height: 56px; padding: 18px 14px !important; color: var(--muted); font-size: 10px; }
+
+/* Footnote (leaderboard.css is not loaded on this route, so style it here) */
+.compare-workspace .leaderboard-footnote { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: 0; padding: 10px 12px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.compare-workspace .leaderboard-footnote span { flex: 0 0 auto; font: 700 9px var(--font-mono); letter-spacing: .1em; }
+.compare-workspace .leaderboard-footnote p { margin: 0; font-size: 10px; line-height: 1.6; }
+
+@media (max-width: 900px) {
+  .compare-workspace .compare-primary-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 620px) {
+  .compare-workspace { width: 100%; }
+  .compare-workspace .compare-header { gap: 10px; }
+  .compare-workspace .compare-header .page-header-actions { margin-left: 0; }
+  .compare-workspace .compare-scorecards > div { min-height: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .compare-workspace .compare-back-link,
+  .compare-workspace .compare-agent-strip article strong,
+  .compare-workspace .compare-scorecards > div,
+  .compare-workspace .comparison-matrix > div { transition: none; }
+}

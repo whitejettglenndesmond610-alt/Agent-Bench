@@ -1,0 +1,245 @@
+/* DatasetReleasesPage — Phase 3 dense data-tool restyle.
+   Loaded after styles.css / product-system.css (lazy route chunk), so equal
+   specificity overrides win. Fully self-contained: layout, density and
+   responsive behavior for every page-scoped class live here. Colors come
+   from design tokens only. */
+
+.dataset-releases-page { padding-top: 8px; padding-bottom: 80px; }
+
+/* PageHeader meta */
+.dataset-releases-page .dataset-releases-eyebrow { color: var(--accent); font: 700 9px var(--font-mono); letter-spacing: .12em; white-space: nowrap; }
+.dataset-releases-page .page-header-actions .back-link { margin: 0; white-space: nowrap; }
+
+/* Two-column workspace: history rail + detail/builder */
+.dataset-releases-page .dataset-releases-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); align-items: start; gap: 14px; }
+
+/* Release history rail — dense list */
+.dataset-releases-page .dataset-release-history {
+  position: sticky;
+  top: 14px;
+  max-height: calc(100vh - 28px);
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.dataset-releases-page .dataset-release-history > header {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: grid;
+  gap: 5px;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(9px);
+}
+.dataset-releases-page .dataset-release-history > header span { color: var(--muted); font: 700 8px var(--font-mono); letter-spacing: .12em; }
+.dataset-releases-page .dataset-release-history > header strong { color: var(--ink); font-size: 12px; }
+.dataset-releases-page .dataset-release-history > header a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--control-h-sm);
+  margin-top: 4px;
+  padding: 3px 10px;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 650;
+  text-decoration: none;
+  transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease;
+}
+.dataset-releases-page .dataset-release-history > header a:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+.dataset-releases-page .dataset-release-history > p { margin: 0; padding: 16px 14px; color: var(--muted); font-size: 11px; }
+.dataset-releases-page .dataset-release-history ol { margin: 0; padding: 0; list-style: none; }
+.dataset-releases-page .dataset-release-history li { border-bottom: 1px solid var(--line); }
+.dataset-releases-page .dataset-release-history li:last-child { border-bottom: 0; }
+.dataset-releases-page .dataset-release-history li.is-active { background: var(--surface-raised); box-shadow: inset 2px 0 0 var(--cyan); }
+.dataset-releases-page .dataset-release-history li a { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 8px; padding: 10px 12px; color: inherit; text-decoration: none; transition: background var(--dur-fast) ease; }
+.dataset-releases-page .dataset-release-history li a:hover { background: var(--surface-raised); }
+.dataset-releases-page .dataset-release-history li strong { overflow: hidden; min-width: 0; color: var(--ink); font-size: 11px; font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
+.dataset-releases-page .dataset-release-history li .status-pill { min-height: 18px; padding: 1px 7px; font-size: 9px; }
+.dataset-releases-page .dataset-release-history li small, .dataset-releases-page .dataset-release-history li time { grid-column: 1 / -1; color: var(--muted); font: 9px var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* Release builder form */
+.dataset-releases-page .dataset-release-builder {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--cyan);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+.dataset-releases-page .dataset-release-builder > header, .dataset-releases-page .dataset-release-detail > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.dataset-releases-page .dataset-release-builder > header div, .dataset-releases-page .dataset-release-detail > header > div { display: grid; gap: 4px; min-width: 0; }
+.dataset-releases-page .dataset-release-builder > header span, .dataset-releases-page .dataset-release-detail > header span,
+.dataset-releases-page .release-manifest > header span, .dataset-releases-page .release-approval-gate span,
+.dataset-releases-page .release-publication-gate span, .dataset-releases-page .released-version-board > header span { color: var(--muted); font: 700 8px var(--font-mono); letter-spacing: .12em; }
+.dataset-releases-page .dataset-release-builder h2, .dataset-releases-page .dataset-release-detail h2 { margin: 0; color: var(--ink); font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+.dataset-releases-page .dataset-release-builder > header b { color: var(--accent); font: 700 10px var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dataset-releases-page .release-builder-fields { display: grid; grid-template-columns: minmax(220px, .6fr) minmax(0, 1.4fr); gap: 12px; }
+.dataset-releases-page .release-builder-fields label { display: grid; gap: 6px; color: var(--muted); font-size: 11px; }
+.dataset-releases-page .release-builder-fields input, .dataset-releases-page .release-builder-fields textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  resize: vertical;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  outline: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+}
+.dataset-releases-page .release-builder-fields :is(input, textarea):focus { border-color: var(--cyan); box-shadow: inset 2px 0 0 var(--cyan); }
+.dataset-releases-page .dataset-release-builder fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.dataset-releases-page .dataset-release-builder legend { display: flex; justify-content: space-between; width: 100%; margin-bottom: 10px; color: var(--ink); font-size: 12px; font-weight: 550; }
+.dataset-releases-page .dataset-release-builder legend span { color: var(--muted); font: 700 8px var(--font-mono); letter-spacing: .08em; }
+.dataset-releases-page .dataset-release-builder fieldset > p { margin: 0; padding: 14px; color: var(--muted); background: var(--surface); border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); font-size: 11px; }
+.dataset-releases-page .dataset-release-builder fieldset > p.is-error { color: var(--rose); border-color: var(--danger-line); }
+.dataset-releases-page .release-case-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: 460px; overflow-y: auto; }
+.dataset-releases-page .release-case-grid label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) ease, background var(--dur-fast) ease;
+}
+.dataset-releases-page .release-case-grid label:hover { border-color: var(--line-strong); }
+.dataset-releases-page .release-case-grid label.is-selected { background: var(--cyan-soft); border-color: color-mix(in srgb, var(--cyan) 55%, var(--line)); box-shadow: inset 2px 0 0 var(--cyan); }
+.dataset-releases-page .release-case-grid input { accent-color: var(--cyan); }
+.dataset-releases-page .release-case-grid label > span { display: grid; gap: 3px; min-width: 0; }
+.dataset-releases-page .release-case-grid strong { overflow: hidden; color: var(--ink); font-size: 11px; font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
+.dataset-releases-page .release-case-grid small { color: var(--muted); font: 9px var(--font-mono); }
+.dataset-releases-page .release-case-grid label > b { color: var(--cyan); font: 600 10px var(--font-mono); font-variant-numeric: tabular-nums; }
+.dataset-releases-page .release-isolation-note {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 16px;
+  padding: 12px 14px;
+  background: var(--amber-soft);
+  border: 1px solid color-mix(in srgb, var(--amber) 35%, var(--line));
+  border-radius: var(--radius-sm);
+}
+.dataset-releases-page .release-isolation-note strong { color: var(--amber); font-size: 11px; }
+.dataset-releases-page .release-isolation-note p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.dataset-releases-page .dataset-release-builder > .button { justify-self: end; }
+.dataset-releases-page .release-named-operator-note { color: var(--amber); font-size: 11px; }
+
+/* Release detail */
+.dataset-releases-page .dataset-release-detail { display: grid; gap: 12px; min-width: 0; }
+.dataset-releases-page .dataset-release-detail > header {
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--cyan);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+.dataset-releases-page .dataset-release-detail > header p { margin: 0; color: var(--muted); font-size: 11px; }
+.dataset-releases-page .release-ledger { display: grid; grid-template-columns: repeat(4, 1fr); margin: 0; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.dataset-releases-page .release-ledger div { display: grid; gap: 4px; min-width: 0; padding: 11px 14px; border-right: 1px solid var(--line); }
+.dataset-releases-page .release-ledger div:last-child { border-right: 0; }
+.dataset-releases-page .release-ledger dt { color: var(--muted); font: 700 8px var(--font-mono); letter-spacing: .08em; }
+.dataset-releases-page .release-ledger dd { margin: 0; color: var(--ink); font: 12px var(--font-mono); font-variant-numeric: tabular-nums; }
+.dataset-releases-page .release-manifest { overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
+.dataset-releases-page .release-manifest > header { display: grid; gap: 4px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.dataset-releases-page .release-manifest > header strong { color: var(--ink); font-size: 12px; }
+.dataset-releases-page .release-manifest ol { margin: 0; padding: 0; list-style: none; }
+.dataset-releases-page .release-manifest li { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 48px; padding: 9px 14px; border-bottom: 1px solid var(--line); }
+.dataset-releases-page .release-manifest li:last-child { border-bottom: 0; }
+.dataset-releases-page .release-manifest li > span { color: var(--muted); font: 12px var(--font-mono); font-variant-numeric: tabular-nums; }
+.dataset-releases-page .release-manifest li div { display: grid; gap: 3px; min-width: 0; }
+.dataset-releases-page .release-manifest li strong { overflow: hidden; color: var(--ink); font-size: 11px; font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
+.dataset-releases-page .release-manifest li small { color: var(--muted); font: 9px var(--font-mono); }
+.dataset-releases-page .release-manifest li code { color: var(--cyan); font: 9px var(--font-mono); }
+.dataset-releases-page .release-manifest > footer { padding: 10px 14px; overflow-wrap: anywhere; color: var(--muted); border-top: 1px solid var(--line); font: 9px/1.6 var(--font-mono); }
+.dataset-releases-page .release-manifest > footer code { color: var(--cyan); }
+
+/* Approval / publication gates */
+.dataset-releases-page .release-approval-gate, .dataset-releases-page .release-publication-gate {
+  display: grid;
+  grid-template-columns: minmax(210px, .8fr) minmax(300px, 1.2fr) auto;
+  align-items: center;
+  gap: 20px;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+.dataset-releases-page .release-approval-gate > div, .dataset-releases-page .release-publication-gate > div { display: grid; gap: 5px; min-width: 0; }
+.dataset-releases-page .release-approval-gate h3, .dataset-releases-page .release-publication-gate h3,
+.dataset-releases-page .released-version-board h3 { margin: 0; color: var(--ink); font-size: 13px; font-weight: 650; }
+.dataset-releases-page .release-approval-gate p, .dataset-releases-page .release-publication-gate p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.dataset-releases-page .release-approval-gate label, .dataset-releases-page .release-publication-gate label { display: flex; align-items: flex-start; gap: 8px; color: var(--ink); font-size: 11px; line-height: 1.5; }
+.dataset-releases-page .release-approval-gate input, .dataset-releases-page .release-publication-gate input { margin-top: 2px; accent-color: var(--accent); }
+.dataset-releases-page .release-approval-gate small, .dataset-releases-page .release-publication-gate small { color: var(--amber); font-size: 10px; }
+.dataset-releases-page .release-publication-gate { grid-template-columns: minmax(180px, .6fr) minmax(220px, .8fr) minmax(280px, 1fr) auto; border-left-color: var(--rose); }
+.dataset-releases-page .release-publication-gate > strong { color: var(--rose); font-size: 11px; font-weight: 550; line-height: 1.6; }
+
+/* Published frozen dataset versions board */
+.dataset-releases-page .released-version-board { overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-top: 2px solid var(--green); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
+.dataset-releases-page .released-version-board > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.dataset-releases-page .released-version-board > header div { display: grid; gap: 4px; }
+.dataset-releases-page .released-version-board > header b { color: var(--green); font: 700 9px var(--font-mono); letter-spacing: .1em; }
+.dataset-releases-page .released-version-board > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 12px; }
+.dataset-releases-page .released-version-board article { display: grid; gap: 8px; min-width: 0; padding: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.dataset-releases-page .released-version-board article > strong { overflow: hidden; color: var(--ink); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.dataset-releases-page .released-version-board article > span { color: var(--muted); font: 9px var(--font-mono); }
+.dataset-releases-page .released-version-board article dl { display: grid; grid-template-columns: 1fr 1fr; margin: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.dataset-releases-page .released-version-board article dl div { display: grid; gap: 3px; padding: 8px 10px; border-right: 1px solid var(--line); }
+.dataset-releases-page .released-version-board article dl div:last-child { border: 0; }
+.dataset-releases-page .released-version-board article dt { color: var(--muted); font: 700 8px var(--font-mono); letter-spacing: .06em; }
+.dataset-releases-page .released-version-board article dd { margin: 0; color: var(--green); font: 10px var(--font-mono); font-variant-numeric: tabular-nums; }
+.dataset-releases-page .released-version-board article code { overflow: hidden; color: var(--muted); font: 9px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.dataset-releases-page .released-version-board > footer { padding: 10px 14px; color: var(--green); background: var(--green-soft); border-top: 1px solid color-mix(in srgb, var(--green) 35%, var(--line)); font-size: 10px; }
+
+@media (max-width: 1350px) {
+  .dataset-releases-page .release-publication-gate { grid-template-columns: minmax(190px, .7fr) minmax(280px, 1.3fr); }
+  .dataset-releases-page .release-publication-gate > .button { justify-self: start; }
+}
+
+@media (max-width: 900px) {
+  .dataset-releases-page .dataset-releases-layout { grid-template-columns: 1fr; }
+  .dataset-releases-page .dataset-release-history { position: static; max-height: none; }
+  .dataset-releases-page .release-approval-gate, .dataset-releases-page .release-publication-gate { grid-template-columns: 1fr; align-items: start; }
+  .dataset-releases-page .release-approval-gate > .button, .dataset-releases-page .release-publication-gate > .button { justify-self: start; }
+}
+
+@media (max-width: 620px) {
+  .dataset-releases-page { padding-inline: 14px; }
+  .dataset-releases-page .page-header { flex-wrap: wrap; }
+  .dataset-releases-page .release-builder-fields, .dataset-releases-page .release-case-grid,
+  .dataset-releases-page .released-version-board > div { grid-template-columns: 1fr; }
+  .dataset-releases-page .dataset-release-builder { padding: 14px; }
+  .dataset-releases-page .dataset-release-builder > .button { width: 100%; }
+  .dataset-releases-page .release-isolation-note { grid-template-columns: 1fr; gap: 8px; }
+  .dataset-releases-page .release-ledger { grid-template-columns: repeat(2, 1fr); }
+  .dataset-releases-page .release-ledger div:nth-child(2) { border-right: 0; }
+  .dataset-releases-page .release-ledger div:nth-child(n+3) { border-top: 1px solid var(--line); }
+  .dataset-releases-page .release-approval-gate, .dataset-releases-page .release-publication-gate { padding: 14px; }
+  .dataset-releases-page .release-manifest li { grid-template-columns: 28px minmax(0, 1fr); }
+  .dataset-releases-page .release-manifest li code { grid-column: 2; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dataset-releases-page .dataset-release-history > header a,
+  .dataset-releases-page .dataset-release-history li a,
+  .dataset-releases-page .release-builder-fields :is(input, textarea),
+  .dataset-releases-page .release-case-grid label { transition: none; }
+}

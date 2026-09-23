@@ -19,7 +19,21 @@ import {
   fetchRuns,
   retryRunScoring
 } from "./api";
-import { Button, FormField, Input, LoadingState, Modal, Select, Table } from "./components";
+import {
+  Button,
+  EmptyState,
+  FormField,
+  Input,
+  LoadingState,
+  Modal,
+  PageHeader,
+  ProgressBar,
+  Select,
+  StatusPill,
+  Table
+} from "./components";
+import type { StatusTone } from "./components";
+import "./runs.css";
 import { randomId } from "./randomId";
 import { abilityMetrics, metricDefinitionFor, formatCostUsd, leaderboardMetrics } from "./metrics";
 
@@ -29,6 +43,8 @@ const terminalStatuses = new Set<RunStatus>([
   "system_failed",
   "canceled"
 ]);
+
+const activeStatuses = new Set<RunStatus>(["queued", "running", "paused", "scoring"]);
 
 const statusLabels: Record<RunStatus, string> = {
   draft: "草稿",
@@ -114,10 +130,24 @@ function pollInterval(status?: RunStatus) {
   return document.visibilityState === "visible" ? 3_000 : 15_000;
 }
 
-function statusClass(status: RunStatus) {
+function runStatusLabel(run: { status: RunStatus; desired_state: string }) {
+  return run.desired_state === "canceled" && run.status !== "canceled"
+    ? "取消处理中"
+    : statusLabels[run.status];
+}
+
+function runStatusTone(run: { status: RunStatus; desired_state: string }): StatusTone {
+  if (run.desired_state === "canceled" && run.status !== "canceled") return "warning";
+  if (run.status === "running" || run.status === "scoring") return "info";
+  if (run.status === "queued" || run.status === "paused") return "warning";
+  if (run.status === "completed" || run.status === "published") return "success";
+  if (run.status === "system_failed" || run.status === "canceled") return "danger";
+  return "neutral";
+}
+
+function terminalClass(status: RunStatus) {
   if (status === "published" || status === "completed") return "is-success";
   if (status === "system_failed" || status === "canceled") return "is-danger";
-  if (status === "running" || status === "scoring") return "is-active";
   return "";
 }
 
@@ -445,32 +475,58 @@ function RunsList() {
 
   return (
     <main className="workspace runs-workspace">
-      <header className="section-header">
-        <div><p className="eyebrow">EVALUATION RUNS</p><h1>评测运行</h1><p>跟踪每个 Agent 的推理、裁判、引用、证据与结果发布进度。</p></div>
-        <Button type="button" onClick={openLaunch}>+ 发起评测</Button>
-      </header>
-      <section className="run-summary-strip">
-        <div><span>任务总数</span><strong>{runs.length}</strong></div>
-        <div><span>执行中</span><strong>{activeCount}</strong></div>
-        <div><span>已发布</span><strong>{publishedCount}</strong></div>
-        <p>运行状态每 3 秒同步；页面不可见时自动降低轮询频率。</p>
-      </section>
-      {runsQuery.isPending ? (
-        <LoadingState label="正在读取评测任务" />
-      ) : runsQuery.error ? (
-        <div className="table-state is-error">{runsQuery.error.message}</div>
-      ) : runs.length === 0 ? (
-        <section className="empty-state"><span>NO RUNS</span><h2>尚未发起评测</h2><p>选择一个 Agent 创建运行，或选择多个 Agent 创建持久化评测实验。</p><Button type="button" onClick={openLaunch}>发起首个评测</Button></section>
-      ) : (
-        <Table className="runs-table">
-          <thead><tr><th>任务</th><th>状态</th><th>处理进度</th><th>失败 / 重试</th><th>创建时间</th><th><span className="sr-only">查看</span></th></tr></thead>
-          <tbody>{runs.map((run: RunListItem) => {
-            const processed = run.completed + run.failed;
-            const percent = run.total ? Math.round(processed * 100 / run.total) : 0;
-            return <tr key={run.id}><td><strong>{run.name}</strong><small>{runProfileLabel(run)} · {run.agent_count} Agent · {run.total} 执行项</small></td><td><span className={`run-status ${statusClass(run.status)}`}><i />{run.desired_state === "canceled" && run.status !== "canceled" ? "取消处理中" : statusLabels[run.status]}</span><small className="stage-copy">{stageLabels[run.stage]}</small></td><td><div className="table-progress"><span><i style={{ width: `${percent}%` }} /></span><small>{processed} / {run.total} · {percent}%</small></div></td><td className="mono">{run.failed} / {run.retried}</td><td className="mono">{formatDate(run.created_at)}</td><td><Link className="row-link" to={`/runs/${run.id}`}>查看详情 →</Link></td></tr>;
-          })}</tbody>
-        </Table>
-      )}
+      <div className="stagger-in runs-page-body">
+        <PageHeader
+          title="评测任务"
+          meta={
+            <>
+              <span>共 <b>{runs.length}</b> 个任务</span>
+              <span>执行中 <b>{activeCount}</b></span>
+              <span>已发布 <b>{publishedCount}</b></span>
+              <span className="runs-poll-note">运行状态每 3 秒同步，页面不可见时自动降频</span>
+            </>
+          }
+          actions={<Button type="button" onClick={openLaunch}>+ 发起评测</Button>}
+        />
+        {runsQuery.isPending ? (
+          <LoadingState label="正在读取评测任务" />
+        ) : runsQuery.error ? (
+          <div className="table-state is-error">{runsQuery.error.message}</div>
+        ) : runs.length === 0 ? (
+          <EmptyState
+            className="runs-empty"
+            title={<h2 className="runs-empty-heading">尚未发起评测</h2>}
+            description="选择一个 Agent 创建运行，或选择多个 Agent 创建持久化评测实验。"
+            action={<Button type="button" onClick={openLaunch}>发起首个评测</Button>}
+          />
+        ) : (
+          <Table className="runs-table">
+            <thead><tr><th>任务</th><th>状态</th><th>处理进度</th><th data-numeric>失败 / 重试</th><th>创建时间</th><th><span className="sr-only">查看</span></th></tr></thead>
+            <tbody>{runs.map((run: RunListItem) => {
+              const processed = run.completed + run.failed;
+              const percent = run.total ? Math.round(processed * 100 / run.total) : 0;
+              return (
+                <tr key={run.id}>
+                  <td><strong>{run.name}</strong><small>{runProfileLabel(run)} · {run.agent_count} Agent · {run.total} 执行项</small></td>
+                  <td>
+                    <StatusPill tone={runStatusTone(run)}>{runStatusLabel(run)}</StatusPill>
+                    <small className="stage-copy">{stageLabels[run.stage]}</small>
+                  </td>
+                  <td>
+                    <div className="run-progress-cell">
+                      <ProgressBar value={percent} active={activeStatuses.has(run.status)} label={`${run.name} 处理进度`} />
+                      <small className="run-progress-copy">{processed} / {run.total} · {percent}%</small>
+                    </div>
+                  </td>
+                  <td data-numeric>{run.failed} / {run.retried}</td>
+                  <td data-numeric>{formatDate(run.created_at)}</td>
+                  <td><Link className="row-link" to={`/runs/${run.id}`}>查看详情 →</Link></td>
+                </tr>
+              );
+            })}</tbody>
+          </Table>
+        )}
+      </div>
       {launchOpen && <LaunchRunModal initialAgentVersion={quickSelection?.agentVersion} initialProfileKey={quickSelection?.profile} onClose={closeLaunch} />}
     </main>
   );
@@ -512,34 +568,49 @@ function RunDetail({ runId }: { runId: string }) {
 
   return (
     <main className="workspace run-detail-workspace">
-      <Link className="back-link" to="/runs">← 返回任务列表</Link>
-      <header className="run-detail-header">
-        <div><p className="eyebrow">RUN / {run.id.slice(0, 8).toUpperCase()}</p><h1>{run.name}</h1><div className="run-meta"><span className={`run-status ${statusClass(run.status)}`}><i />{run.desired_state === "canceled" && run.status !== "canceled" ? "取消处理中" : statusLabels[run.status]}</span><span>{runProfileLabel(run)}</span><span>{stageLabels[run.stage]}</span><span>每题 {run.trial_count} 次</span><span>创建于 {formatDate(run.created_at)}</span></div></div>
-        <div className="run-detail-actions">
-          {run.experiment_id && <Link className="button is-ghost" to={`/experiments/${run.experiment_id}`}>所属实验</Link>}
-          <Link className="button is-ghost" to={`/runs/${run.id}/evidence`}>查看运行证据</Link>
-          {cancelable ? <Button type="button" className="is-danger" onClick={() => setConfirmCancel(true)}>取消任务</Button> : scoringRetryable ? <Button type="button" onClick={() => setConfirmRetryScoring(true)}>重试评分</Button> : null}
-        </div>
-      </header>
+      <div className="stagger-in run-detail-body">
+        <Link className="back-link" to="/runs">← 返回任务列表</Link>
+        <PageHeader
+          className="run-detail-page-header"
+          title={run.name}
+          meta={
+            <>
+              <StatusPill tone={runStatusTone(run)}>{runStatusLabel(run)}</StatusPill>
+              <span>{runProfileLabel(run)}</span>
+              <span>{stageLabels[run.stage]}</span>
+              <span>每题 {run.trial_count} 次</span>
+              <span>创建于 {formatDate(run.created_at)}</span>
+              <span className="run-id-copy">RUN / {run.id.slice(0, 8).toUpperCase()}</span>
+            </>
+          }
+          actions={
+            <>
+              {run.experiment_id && <Link className="button is-ghost" to={`/experiments/${run.experiment_id}`}>所属实验</Link>}
+              <Link className="button is-ghost" to={`/runs/${run.id}/evidence`}>查看运行证据</Link>
+              {cancelable ? <Button type="button" className="is-danger" onClick={() => setConfirmCancel(true)}>取消任务</Button> : scoringRetryable ? <Button type="button" onClick={() => setConfirmRetryScoring(true)}>重试评分</Button> : null}
+            </>
+          }
+        />
 
-      <section className={`run-terminal ${terminalStatuses.has(run.status) ? "is-visible" : ""} ${statusClass(run.status)}`}>
-        <span>{run.status === "published" ? "PUBLISHED" : run.status === "system_failed" ? "SYSTEM FAILURE" : run.status === "canceled" ? "CANCELED" : "IN PROGRESS"}</span>
-        <strong>{run.status === "published" ? publishedMessage(run) : run.status === "system_failed" ? "平台处理发生系统异常，旧榜单未受影响。" : run.status === "canceled" ? "任务已取消，未发布任何结果。" : `当前阶段：${stageLabels[run.stage]}`}</strong>
-        {run.system_error && <small>{run.system_error}</small>}
-      </section>
+        <section className={`run-terminal ${terminalStatuses.has(run.status) ? "is-visible" : ""} ${terminalClass(run.status)}`}>
+          <span>{run.status === "published" ? "PUBLISHED" : run.status === "system_failed" ? "SYSTEM FAILURE" : run.status === "canceled" ? "CANCELED" : "IN PROGRESS"}</span>
+          <strong>{run.status === "published" ? publishedMessage(run) : run.status === "system_failed" ? "平台处理发生系统异常，旧榜单未受影响。" : run.status === "canceled" ? "任务已取消，未发布任何结果。" : `当前阶段：${stageLabels[run.stage]}`}</strong>
+          {run.system_error && <small>{run.system_error}</small>}
+        </section>
 
-      <section className="run-progress-panel">
-        <header><div><span>OVERALL PROGRESS</span><strong>{run.progress_percent.toFixed(2)}%</strong></div><p>{run.processed} / {run.total} 执行项已处理</p></header>
-        <div className="large-progress"><i style={{ width: `${run.progress_percent}%` }} /></div>
-        <dl><div><dt>成功</dt><dd>{run.completed}</dd></div><div><dt>失败</dt><dd>{run.failed}</dd></div><div><dt>重试</dt><dd>{run.retried}</dd></div><div><dt>心跳</dt><dd>{formatDate(run.heartbeat_at)}</dd></div></dl>
-      </section>
+        <section className="run-progress-panel">
+          <header><div><span>OVERALL PROGRESS</span><strong>{run.progress_percent.toFixed(2)}%</strong></div><p>{run.processed} / {run.total} 执行项已处理</p></header>
+          <ProgressBar className="run-detail-progress" value={run.progress_percent} active={activeStatuses.has(run.status)} label="整体处理进度" />
+          <dl><div><dt>成功</dt><dd>{run.completed}</dd></div><div><dt>失败</dt><dd>{run.failed}</dd></div><div><dt>重试</dt><dd>{run.retried}</dd></div><div><dt>心跳</dt><dd>{formatDate(run.heartbeat_at)}</dd></div></dl>
+        </section>
 
-      <section className="agent-progress-grid">
+        <section className="agent-progress-grid stagger-in">
         {run.agents.map((agent, index) => {
           const percent = agent.total ? agent.processed * 100 / agent.total : 0;
-          return <article key={agent.run_agent_id}><header><span>{String(index + 1).padStart(2, "0")}</span><div><strong><Link to={`/agents/${agent.agent_id}`}>{agent.agent_name}</Link></strong><small>{agent.provider} · V{agent.version}</small></div><Link className="agent-evidence-link" to={`/runs/${run.id}/evidence?run_agent_id=${encodeURIComponent(agent.run_agent_id)}`}>此 Agent 证据</Link></header><div className="agent-progress-value"><strong>{percent.toFixed(0)}%</strong><span>{agent.processed} / {agent.total}</span></div><div className="agent-progress-bar"><i style={{ width: `${percent}%` }} /></div><footer><span>成功 <b>{agent.completed}</b></span><span>失败 <b>{agent.failed}</b></span><span>重试 <b>{agent.retried}</b></span></footer>{agent.validity_status === "invalid" && <div className="result-validity-invalid"><strong>接入配置无效，不进入排行榜</strong><span>{validityReasonLabels[agent.validity_reason ?? ""] ?? agent.validity_reason} · {agent.configuration_failure_count} 项 / {agent.configuration_failure_rate.toFixed(2)}%</span></div>}{agent.result && <section className="run-result-summary six-metric-grid">{leaderboardMetrics.map((metric) => <div key={metric.key}><span>{metric.shortLabel}</span><strong>{metric.key === "overall" ? agent.result?.overall_score.toFixed(2) : agent.result?.ability_scores[metric.key]?.toFixed(2) ?? "—"}</strong></div>)}<footer><span>成功率 {agent.result.success_rate.toFixed(2)}%</span>{agent.result.pass_at_1 !== null && agent.result.pass_at_1 !== undefined && <span>pass@1 {agent.result.pass_at_1.toFixed(2)}%</span>}{agent.result.pass_pow_k !== null && agent.result.pass_pow_k !== undefined && <span>pass^k {agent.result.pass_pow_k.toFixed(2)}%</span>}{agent.result.ci_low !== null && agent.result.ci_low !== undefined && agent.result.ci_high !== null && agent.result.ci_high !== undefined && <span>95% CI {agent.result.ci_low.toFixed(2)}–{agent.result.ci_high.toFixed(2)}</span>}<span>HTTP {agent.result.http_call_count}</span><span>Token {formatCount(agent.result.total_tokens)}</span><span>成本 {formatCostUsd(agent.result.total_cost_usd)}</span><span>$/题 {formatCostUsd(agent.result.cost_per_task_usd)}</span><span>P50/P95 {agent.result.latency_p50_ms ?? "—"}/{agent.result.latency_p95_ms ?? "—"} ms</span></footer></section>}{Object.keys(agent.failure_categories ?? {}).length > 0 && <div className="failure-category-list">{Object.entries(agent.failure_categories).map(([category, count]) => <span key={category}>{failureLabels[category] ?? category}<b>{count}</b></span>)}</div>}</article>;
+          return <article key={agent.run_agent_id}><header><span>{String(index + 1).padStart(2, "0")}</span><div><strong><Link to={`/agents/${agent.agent_id}`}>{agent.agent_name}</Link></strong><small>{agent.provider} · V{agent.version}</small></div><Link className="agent-evidence-link" to={`/runs/${run.id}/evidence?run_agent_id=${encodeURIComponent(agent.run_agent_id)}`}>此 Agent 证据</Link></header><div className="agent-progress-value"><strong>{percent.toFixed(0)}%</strong><span>{agent.processed} / {agent.total}</span></div><ProgressBar className="agent-run-progress" value={percent} active={activeStatuses.has(run.status) && agent.processed < agent.total} label={`${agent.agent_name} 处理进度`} /><footer><span>成功 <b>{agent.completed}</b></span><span>失败 <b>{agent.failed}</b></span><span>重试 <b>{agent.retried}</b></span></footer>{agent.validity_status === "invalid" && <div className="result-validity-invalid"><strong>接入配置无效，不进入排行榜</strong><span>{validityReasonLabels[agent.validity_reason ?? ""] ?? agent.validity_reason} · {agent.configuration_failure_count} 项 / {agent.configuration_failure_rate.toFixed(2)}%</span></div>}{agent.result && <section className="run-result-summary six-metric-grid">{leaderboardMetrics.map((metric) => <div key={metric.key}><span>{metric.shortLabel}</span><strong>{metric.key === "overall" ? agent.result?.overall_score.toFixed(2) : agent.result?.ability_scores[metric.key]?.toFixed(2) ?? "—"}</strong></div>)}<footer><span>成功率 {agent.result.success_rate.toFixed(2)}%</span>{agent.result.pass_at_1 !== null && agent.result.pass_at_1 !== undefined && <span>pass@1 {agent.result.pass_at_1.toFixed(2)}%</span>}{agent.result.pass_pow_k !== null && agent.result.pass_pow_k !== undefined && <span>pass^k {agent.result.pass_pow_k.toFixed(2)}%</span>}{agent.result.ci_low !== null && agent.result.ci_low !== undefined && agent.result.ci_high !== null && agent.result.ci_high !== undefined && <span>95% CI {agent.result.ci_low.toFixed(2)}–{agent.result.ci_high.toFixed(2)}</span>}<span>HTTP {agent.result.http_call_count}</span><span>Token {formatCount(agent.result.total_tokens)}</span><span>成本 {formatCostUsd(agent.result.total_cost_usd)}</span><span>$/题 {formatCostUsd(agent.result.cost_per_task_usd)}</span><span>P50/P95 {agent.result.latency_p50_ms ?? "—"}/{agent.result.latency_p95_ms ?? "—"} ms</span></footer></section>}{Object.keys(agent.failure_categories ?? {}).length > 0 && <div className="failure-category-list">{Object.entries(agent.failure_categories).map(([category, count]) => <span key={category}>{failureLabels[category] ?? category}<b>{count}</b></span>)}</div>}</article>;
         })}
-      </section>
+        </section>
+      </div>
 
       {confirmCancel && <Modal eyebrow="DESTRUCTIVE ACTION" title="确认取消评测？" description="已完成的执行项会保留，但该批次不会发布榜单。" onClose={() => setConfirmCancel(false)}><div className="modal-form cancel-confirm"><p>任务：<strong>{run.name}</strong></p>{cancelMutation.error && <div className="result-banner is-error">{cancelMutation.error.message}</div>}<div className="modal-actions"><Button type="button" className="is-ghost" onClick={() => setConfirmCancel(false)}>继续运行</Button><Button type="button" className="is-danger" disabled={cancelMutation.isPending} onClick={() => cancelMutation.mutate()}>{cancelMutation.isPending ? "正在取消" : "确认取消任务"}</Button></div></div></Modal>}
       {confirmRetryScoring && <Modal eyebrow="RESUME JUDGING" title="继续未完成的评分？" description="已完成的 Agent 推理和评分会保留，只调用 DeepSeek 处理尚未评分的题目。" onClose={() => setConfirmRetryScoring(false)}><div className="modal-form cancel-confirm"><p>任务：<strong>{run.name}</strong></p>{retryScoringMutation.error && <div className="result-banner is-error">{retryScoringMutation.error.message}</div>}<div className="modal-actions"><Button type="button" className="is-ghost" onClick={() => setConfirmRetryScoring(false)}>暂不重试</Button><Button type="button" disabled={retryScoringMutation.isPending} onClick={() => retryScoringMutation.mutate()}>{retryScoringMutation.isPending ? "正在重新排队" : "确认重试评分"}</Button></div></div></Modal>}

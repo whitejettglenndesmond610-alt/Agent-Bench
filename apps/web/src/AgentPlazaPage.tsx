@@ -12,9 +12,10 @@ import {
   GlobalOverviewAgent,
   WorkspaceAgent
 } from "./api";
-import { LoadingState } from "./components";
+import { EmptyState, LoadingState, PageHeader, StatusPill } from "./components";
 import { leaderboardMetrics, metricByKey } from "./metrics";
 import { FavoriteAgentButton, formatUserDate, userQueryKeys } from "./userProduct";
+import "./agent-plaza.css";
 
 function PlazaCard({
   userId,
@@ -35,8 +36,8 @@ function PlazaCard({
       </header>
       <p>{agent.description || "该 Agent 暂未提供公开描述。"}</p>
       <div className="plaza-agent-badges">
-        <span>{agent.supports_citations ? "支持引用" : "纯文本回答"}</span>
-        <span>{overall?.score == null ? "暂无正式综合成绩" : "已有正式成绩"}</span>
+        <StatusPill tone={agent.supports_citations ? "info" : "neutral"}>{agent.supports_citations ? "支持引用" : "纯文本回答"}</StatusPill>
+        <StatusPill tone={overall?.score == null ? "neutral" : "success"}>{overall?.score == null ? "暂无正式综合成绩" : "已有正式成绩"}</StatusPill>
       </div>
       <section className="plaza-score-summary">
         <div><span>综合分</span><strong>{overall?.score?.toFixed(2) ?? "--"}</strong><small>{overall?.rank == null ? "未排名" : `正式排名 #${overall.rank}`}</small></div>
@@ -80,13 +81,14 @@ export function AgentPlazaPage({ userId }: { userId: string }) {
 
   return (
     <main className="workspace agent-plaza-page">
-      <header className="section-header">
-        <div><p className="eyebrow">AGENT MARKETPLACE</p><h1>Agent 广场</h1><p>结合活跃服务版本与正式公开成绩，找到适合当前任务的 Agent。</p></div>
-        <Link className="button" to="/workspace">直接开始对话</Link>
-      </header>
+      <PageHeader
+        title="Agent 广场"
+        meta={<span>结合活跃服务版本与正式公开成绩，找到适合当前任务的 Agent。</span>}
+        actions={<Link className="button" to="/workspace">直接开始对话</Link>}
+      />
       <section className="plaza-tools" aria-label="Agent 筛选">
-        <label><span>搜索</span><input type="search" aria-label="搜索 Agent" value={search} placeholder="名称、提供方或能力描述" onChange={(event) => setSearch(event.target.value)} /></label>
-        <label><span>提供方</span><select aria-label="筛选提供方" value={provider} onChange={(event) => setProvider(event.target.value)}><option value="all">全部提供方</option>{providers.map((item) => <option key={item}>{item}</option>)}</select></label>
+        <label><span>搜索</span><input className="control" type="search" aria-label="搜索 Agent" value={search} placeholder="名称、提供方或能力描述" onChange={(event) => setSearch(event.target.value)} /></label>
+        <label><span>提供方</span><select className="control" aria-label="筛选提供方" value={provider} onChange={(event) => setProvider(event.target.value)}><option value="all">全部提供方</option>{providers.map((item) => <option key={item}>{item}</option>)}</select></label>
         <label className="plaza-check"><input type="checkbox" checked={favorite} onChange={(event) => setFavorite(event.target.checked)} />仅看收藏</label>
         <label className="plaza-check"><input type="checkbox" checked={citations} onChange={(event) => setCitations(event.target.checked)} />支持引用</label>
         <label className="plaza-check"><input type="checkbox" checked={evaluated} onChange={(event) => setEvaluated(event.target.checked)} />已有评测</label>
@@ -99,7 +101,7 @@ export function AgentPlazaPage({ userId }: { userId: string }) {
           {filtered.map((agent) => <PlazaCard key={agent.agent_version_id} userId={userId} agent={agent} result={overviewById.get(agent.agent_id)} />)}
         </section>
       ) : (
-        <section className="empty-state"><span>NO MATCH</span><h2>没有符合筛选条件的 Agent</h2><p>清除部分筛选条件后再试。</p></section>
+        <EmptyState title="没有符合筛选条件的 Agent" description="清除部分筛选条件后再试。" />
       )}
       {overviewQuery.error && <p className="plaza-score-warning" role="alert">正式成绩暂时无法读取，Agent 仍可正常运行：{overviewQuery.error.message}</p>}
     </main>
@@ -131,7 +133,7 @@ function ScoreTrend({ detail }: { detail: AgentLeaderboardDetail }) {
   const protocols = new Set(ordered.map((point) => point.protocol_hash));
   return (
     <section className="plaza-trend-panel">
-      <header><div><p className="eyebrow">OFFICIAL SCORE HISTORY</p><h2>正式成绩趋势</h2></div><label><span className="sr-only">趋势指标</span><select aria-label="趋势指标" value={metric} onChange={(event) => setMetric(event.target.value as GlobalLeaderboardMetric)}>{leaderboardMetrics.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label></header>
+      <header><div><p className="eyebrow">OFFICIAL SCORE HISTORY</p><h2>正式成绩趋势</h2></div><label><span className="sr-only">趋势指标</span><select className="control" aria-label="趋势指标" value={metric} onChange={(event) => setMetric(event.target.value as GlobalLeaderboardMetric)}>{leaderboardMetrics.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label></header>
       {ordered.length ? <>
         <div className="score-trend-chart">
           <svg viewBox="0 0 680 190" role="img" aria-label={`${metricByKey[metric].label}正式分数趋势，0 到 100 分`}>
@@ -178,14 +180,16 @@ export function AgentPlazaDetailPage({ userId }: { userId: string }) {
   return (
     <main className="workspace plaza-detail-page">
       <Link className="back-link" to="/plaza">← 返回 Agent 广场</Link>
-      <header className="plaza-detail-header">
-        <div className="plaza-detail-identity"><i>{detail.agent_name.slice(0, 2).toUpperCase()}</i><div><p className="eyebrow">PUBLIC AGENT PROFILE</p><h1>{detail.agent_name}</h1><p>{detail.provider}{active ? ` · 活跃版本 V${active.version}` : detail.version ? ` · 公开成绩版本 V${detail.version}` : ""}</p></div></div>
-        <div className="plaza-detail-actions">
-          {active && <FavoriteAgentButton userId={userId} agent={active} className="button is-ghost" />}
-          {active && <Link className="button" to={`/workspace?agentVersion=${active.agent_version_id}`}>在线运行</Link>}
-          {active && <Link className="button is-ghost" to={`/compare?agentVersion=${active.agent_version_id}`}>加入对比</Link>}
-        </div>
-      </header>
+      <PageHeader
+        className="plaza-detail-header"
+        title={<><i className="plaza-detail-avatar" aria-hidden="true">{detail.agent_name.slice(0, 2).toUpperCase()}</i>{detail.agent_name}</>}
+        meta={<span>{detail.provider}{active ? ` · 活跃版本 V${active.version}` : detail.version ? ` · 公开成绩版本 V${detail.version}` : ""}</span>}
+        actions={active && <>
+          <FavoriteAgentButton userId={userId} agent={active} className="button is-ghost" />
+          <Link className="button" to={`/workspace?agentVersion=${active.agent_version_id}`}>在线运行</Link>
+          <Link className="button is-ghost" to={`/compare?agentVersion=${active.agent_version_id}`}>加入对比</Link>
+        </>}
+      />
       <p className="plaza-detail-description">{detail.description || "该 Agent 暂未提供公开描述。"}</p>
       <section className="plaza-public-metrics">{leaderboardMetrics.map((metric) => {
         const result = detail.metrics[metric.key];

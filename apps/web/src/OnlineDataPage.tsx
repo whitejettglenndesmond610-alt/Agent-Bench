@@ -14,8 +14,9 @@ import {
   OnlineDataEnvironment,
   OnlineDataRecordStatus
 } from "./api";
-import { Button, FormField, Input, LoadingState, Select, Textarea } from "./components";
+import { Button, FormField, Input, LoadingState, PageHeader, Select, Textarea } from "./components";
 import { randomId } from "./randomId";
+import "./online-data.css";
 
 const environmentLabels: Record<OnlineDataEnvironment, string> = {
   production: "生产",
@@ -180,27 +181,27 @@ export function OnlineDataPage() {
 
   return (
     <main className="workspace online-data-workspace">
-      <header className="online-data-header">
-        <div>
-          <p className="eyebrow">PRODUCTION FEEDBACK PIPELINE</p>
-          <h1>线上数据回流，<br />进入可追溯的质检闭环。</h1>
-          <p>按来源幂等接收 Agent 轨迹，自动预扫 Bad Pattern，再由人工保留为评测资产或安全丢弃。</p>
-        </div>
-        <div className="online-data-header-actions">
+      <PageHeader
+        title="线上数据回流，进入可追溯的质检闭环。"
+        meta={<>
+          <span className="online-data-header-tag">PRODUCTION FEEDBACK PIPELINE</span>
+          <span>按来源幂等接收 Agent 轨迹，自动预扫 Bad Pattern，再由人工保留为评测资产或安全丢弃。</span>
+        </>}
+        actions={<>
           <Link className="button is-ghost" to="/quality">返回质量闭环</Link>
           <Button type="button" onClick={() => setShowImporter((current) => !current)}>
             {showImporter ? "收起导入" : "导入回流批次"}
           </Button>
-        </div>
-      </header>
+        </>}
+      />
 
       <section className="online-data-kpis" aria-label="线上回流指标">
-        <article><span>回流批次</span><strong>{summary?.total_batches ?? "—"}</strong><small>{summary?.latest_received_at ? `最近 ${formatDate(summary.latest_received_at)}` : "等待首个批次"}</small></article>
-        <article><span>累计样本</span><strong>{summary?.total_records ?? "—"}</strong><small>跨来源去重后入库</small></article>
-        <article className="is-pending"><span>待处理</span><strong>{summary?.pending_records ?? "—"}</strong><small>等待人工数据判定</small></article>
-        <article className="is-risk"><span>风险样本</span><strong>{summary?.risky_records ?? "—"}</strong><small>命中 Bad Pattern</small></article>
-        <article><span>已保留</span><strong>{summary?.retained_records ?? "—"}</strong><small>可进入后续评测资产</small></article>
-        <article><span>已丢弃</span><strong>{summary?.discarded_records ?? "—"}</strong><small>不进入数据集</small></article>
+        <article className="kpi-card"><span>回流批次</span><strong>{summary?.total_batches ?? "—"}</strong><small>{summary?.latest_received_at ? `最近 ${formatDate(summary.latest_received_at)}` : "等待首个批次"}</small></article>
+        <article className="kpi-card"><span>累计样本</span><strong>{summary?.total_records ?? "—"}</strong><small>跨来源去重后入库</small></article>
+        <article className="kpi-card is-pending"><span>待处理</span><strong>{summary?.pending_records ?? "—"}</strong><small>等待人工数据判定</small></article>
+        <article className="kpi-card is-risk"><span>风险样本</span><strong>{summary?.risky_records ?? "—"}</strong><small>命中 Bad Pattern</small></article>
+        <article className="kpi-card"><span>已保留</span><strong>{summary?.retained_records ?? "—"}</strong><small>可进入后续评测资产</small></article>
+        <article className="kpi-card"><span>已丢弃</span><strong>{summary?.discarded_records ?? "—"}</strong><small>不进入数据集</small></article>
       </section>
 
       {showImporter && <form className="online-data-importer" onSubmit={submitImport}>

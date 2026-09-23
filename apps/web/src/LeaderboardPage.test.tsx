@@ -164,14 +164,36 @@ test("renders a compact podium and the six-metric overview matrix", async () => 
   expect(await screen.findByRole("heading", { name: "Agent 排行榜" })).toBeInTheDocument();
   expect(fetchMock).toHaveBeenCalledWith("/api/v1/leaderboards/global/overview", expect.any(Object));
   expect(page.container.querySelector(".leader-podium article")?.textContent).toContain("Agent Alpha");
-  const rows = page.container.querySelectorAll(".ability-overview-board > article");
+  const rows = page.container.querySelectorAll(".leaderboard-table tbody tr");
   expect(rows).toHaveLength(2);
   expect(rows[0]).toHaveTextContent("Agent Alpha");
   expect(rows[0]).toHaveTextContent("#01");
   expect(rows[0]).toHaveTextContent("90.00");
-  expect(screen.getByRole("button", { name: /综合按此列排序/ })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /指令遵循点击排序/ })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /长上下文点击排序/ })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "按综合排序" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "按指令遵循排序" })).toHaveAttribute("aria-pressed", "false");
+  expect(screen.getByRole("button", { name: "按长上下文排序" })).toBeInTheDocument();
+});
+
+test("sorts the overview table by clicking ability column headers", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(overview())));
+  const page = renderPage();
+
+  await screen.findByRole("heading", { name: "Agent 排行榜" });
+  const rows = () => page.container.querySelectorAll(".leaderboard-table tbody tr");
+  expect(rows()[0]).toHaveTextContent("Agent Alpha");
+
+  // Default sort is 综合 rank ascending; clicking it again flips to descending.
+  const overallSort = screen.getByRole("button", { name: "按综合排序" });
+  expect(overallSort).toHaveAttribute("aria-pressed", "true");
+  fireEvent.click(overallSort);
+  expect(rows()[0]).toHaveTextContent("Agent Beta");
+
+  // Clicking another ability column makes it the sort key, ascending again.
+  const reasoningSort = screen.getByRole("button", { name: "按推理排序" });
+  expect(reasoningSort).toHaveAttribute("aria-pressed", "false");
+  fireEvent.click(reasoningSort);
+  expect(reasoningSort).toHaveAttribute("aria-pressed", "true");
+  expect(rows()[0]).toHaveTextContent("Agent Alpha");
 });
 
 test("switches to a specialist board without fetching a second leaderboard", async () => {
@@ -191,8 +213,10 @@ test("switches to a specialist board without fetching a second leaderboard", asy
   renderPage();
 
   await screen.findByRole("heading", { name: "Agent 排行榜" });
-  fireEvent.click(screen.getByRole("button", { name: /检索榜/ }));
+  const retrievalTab = screen.getByRole("button", { name: /检索榜/ });
+  fireEvent.click(retrievalTab);
 
+  expect(retrievalTab).toHaveAttribute("aria-pressed", "true");
   expect(await screen.findByText("Retrieval Arena")).toBeInTheDocument();
   expect(screen.getAllByText("72.00").length).toBeGreaterThan(0);
   expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -248,7 +272,7 @@ test("explains an empty specialist metric", async () => {
 
   await screen.findByRole("heading", { name: "Agent 排行榜" });
   fireEvent.click(screen.getByRole("button", { name: /数据推理榜/ }));
-  expect(screen.getByRole("heading", { name: "当前视图暂无可排名结果" })).toBeInTheDocument();
+  expect(screen.getByText("当前视图暂无可排名结果")).toBeInTheDocument();
   expect(screen.getByText("Agent Pending")).toBeInTheDocument();
 });
 

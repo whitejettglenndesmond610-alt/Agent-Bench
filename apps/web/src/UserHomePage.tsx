@@ -10,12 +10,15 @@ import {
   fetchWorkspacePromptTemplates,
   SessionInfo
 } from "./api";
+import { EmptyState, LoadingState, PageHeader, StatusPill } from "./components";
 import { FavoriteAgentButton, formatUserDate, userQueryKeys } from "./userProduct";
 
+import "./user-home.css";
+
 function SectionState({ loading, error, empty }: { loading: boolean; error?: Error | null; empty: string }) {
-  if (loading) return <p className="user-section-state">正在同步...</p>;
+  if (loading) return <LoadingState label="正在同步" compact />;
   if (error) return <p className="user-section-state is-error" role="alert">{error.message}</p>;
-  return <p className="user-section-state">{empty}</p>;
+  return <EmptyState title={empty} className="user-section-state" />;
 }
 
 export function UserHomePage({ session }: { session: SessionInfo }) {
@@ -67,18 +70,17 @@ export function UserHomePage({ session }: { session: SessionInfo }) {
 
   return (
     <main className="workspace user-home-page">
-      <header className="user-hero">
-        <div>
-          <p className="eyebrow">YOUR AGENT WORKSPACE</p>
-          <h1>{session.display_name ? `${session.display_name}，` : ""}今天想让 Agent 做什么？</h1>
-          <p>从正式榜单选 Agent，在在线工作区完成问题、并行比较和个人复盘。</p>
-        </div>
-        <nav aria-label="快捷操作">
-          <Link className="button" to="/workspace">开始在线对话</Link>
-          <Link className="button is-ghost" to="/compare">发起多 Agent 对比</Link>
-          <Link className="button is-ghost" to="/plaza">浏览 Agent 广场</Link>
-        </nav>
-      </header>
+      <PageHeader
+        title={<>{session.display_name ? `${session.display_name}，` : ""}今天想让 Agent 做什么？</>}
+        meta={<span>从正式榜单选 Agent，在在线工作区完成问题、并行比较和个人复盘。</span>}
+        actions={(
+          <nav aria-label="快捷操作">
+            <Link className="button" to="/workspace">开始在线对话</Link>
+            <Link className="button is-ghost" to="/compare">发起多 Agent 对比</Link>
+            <Link className="button is-ghost" to="/plaza">浏览 Agent 广场</Link>
+          </nav>
+        )}
+      />
 
       <aside className="persistence-notice">
         <strong>{session.is_shared ? session.role === "operator" ? "共享管理身份提醒" : "共享浏览器提醒" : "个人记录已持续保存"}</strong>
@@ -135,7 +137,7 @@ export function UserHomePage({ session }: { session: SessionInfo }) {
         <article className="user-product-panel home-tasks-panel">
           <header><div><span>PRACTICE LAB</span><h2>精选体验任务</h2></div><Link to="/experience">全部任务</Link></header>
           {tasks.length ? <div>{tasks.map((task) => (
-            <section key={task.slug}><span>{task.difficulty}</span><strong>{task.title}</strong><p>{task.summary}</p><Link to={task.recommended_mode === "chat" ? `/workspace?task=${task.slug}` : `/compare?task=${task.slug}`}>开始体验</Link></section>
+            <section key={task.slug}><StatusPill tone="info">{task.difficulty}</StatusPill><strong>{task.title}</strong><p>{task.summary}</p><Link to={task.recommended_mode === "chat" ? `/workspace?task=${task.slug}` : `/compare?task=${task.slug}`}>开始体验</Link></section>
           ))}</div> : <SectionState loading={tasksQuery.isPending} error={tasksQuery.error} empty="体验任务暂不可用。" />}
           <footer>体验任务不参与正式排名，不展示参考答案或 Judge 数据。</footer>
         </article>

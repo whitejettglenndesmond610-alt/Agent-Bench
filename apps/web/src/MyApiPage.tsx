@@ -15,8 +15,9 @@ import {
   testPrivateAgent,
   updatePrivateAgent
 } from "./api";
-import { Button, FormField, Input, LoadingState, Modal, Select, Textarea } from "./components";
+import { Button, FormField, Input, LoadingState, Modal, PageHeader, Select, StatusPill, StatusTone, Textarea } from "./components";
 import { formatUserDate, userQueryKeys } from "./userProduct";
+import "./my-api.css";
 
 const presetLabels: Record<PrivateAgentPreset, string> = {
   zhipu: "智谱",
@@ -121,6 +122,13 @@ const healthLabels: Record<PrivateAgent["health_status"], string> = {
   healthy: "健康",
   unhealthy: "异常",
   revoked: "已撤销"
+};
+
+const healthTones: Record<PrivateAgent["health_status"], StatusTone> = {
+  untested: "neutral",
+  healthy: "success",
+  unhealthy: "danger",
+  revoked: "warning"
 };
 
 interface PrivateAgentFormValue {
@@ -339,14 +347,14 @@ export function MyApiPage({ userId, isShared }: { userId: string; isShared: bool
   const agents = agentsQuery.data?.items ?? [];
   return (
     <main className="workspace my-api-page">
-      <header className="section-header">
-        <div>
-          <p className="eyebrow">BRING YOUR OWN KEY</p>
-          <h1>我的 API</h1>
-          <p>连接你自己的模型账号，在在线对话和多 Agent 对比中使用。</p>
-        </div>
-        <Button onClick={() => openEditor("create")}>+ 添加 API</Button>
-      </header>
+      <PageHeader
+        title="我的 API"
+        meta={<>
+          <span className="my-api-header-tag">BRING YOUR OWN KEY</span>
+          <span>连接你自己的模型账号，在在线对话和多 Agent 对比中使用。</span>
+        </>}
+        actions={<Button onClick={() => openEditor("create")}>+ 添加 API</Button>}
+      />
 
       <section className="my-api-security" aria-label="API Key 安全说明">
         <strong>{isShared ? "共享会话风险" : "账号与浏览器提醒"}</strong>
@@ -372,7 +380,7 @@ export function MyApiPage({ userId, isShared }: { userId: string; isShared: bool
               <article className="my-api-card" key={agent.agent_id}>
                 <header>
                   <div><span>{presetLabels[agent.preset]}</span><h2>{agent.name}</h2></div>
-                  <b className={`private-health is-${agent.health_status}`}>{healthLabels[agent.health_status]}</b>
+                  <StatusPill tone={healthTones[agent.health_status]}>{healthLabels[agent.health_status]}</StatusPill>
                 </header>
                 <p>{agent.description || "未填写描述"}</p>
                 <dl>

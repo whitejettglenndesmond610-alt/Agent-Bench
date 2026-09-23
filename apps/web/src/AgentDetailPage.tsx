@@ -9,8 +9,10 @@ import {
   fetchGlobalLeaderboardOverview,
   GlobalLeaderboardMetric
 } from "./api";
-import { LoadingState } from "./components";
+import { LoadingState, PageHeader, StatusPill } from "./components";
 import { leaderboardMetrics } from "./metrics";
+
+import "./agent-detail.css";
 
 const evaluationStatusLabels: Record<AgentEvaluationMetricStatus, string> = {
   not_evaluated: "未评测",
@@ -81,26 +83,24 @@ export function AgentDetailPage() {
   return (
     <main className="workspace agent-detail-workspace">
       <Link className="back-link" to="/agents">← 返回 Agent 中心</Link>
-      <header className="agent-detail-header">
-        <div className="agent-detail-identity">
-          <span>{agent.logo_url ? <img src={agent.logo_url} alt="" /> : agent.name.slice(0, 2).toUpperCase()}</span>
-          <div>
-            <p className="eyebrow">EXTERNAL AGENT API</p>
-            <h1>{agent.name}</h1>
-            <p>{agent.provider} · {agent.description || "暂无 Agent 说明"}</p>
-            <div><span className={`registry-status ${agent.status === "enabled" ? "is-enabled" : ""}`}><i />{agent.status === "enabled" ? "已启用" : "已停用"}</span><small>创建于 {formatDate(agent.created_at)}</small></div>
-          </div>
-        </div>
-        <div className="agent-detail-actions">
-          {activeVersion ? (
-            <>
-              <Link className="button" to={`/workspace?agentVersion=${encodeURIComponent(activeVersion.id)}`}>在线运行</Link>
-              <Link className="button is-ghost" to={`/runs?launch=1&agentVersion=${encodeURIComponent(activeVersion.id)}`}>发起评测</Link>
-              <Link className="button is-ghost" to={`/compare?agentVersion=${encodeURIComponent(activeVersion.id)}`}>并行对比</Link>
-            </>
-          ) : <span className="agent-action-unavailable">设置当前版本后可在线运行和评测</span>}
-        </div>
-      </header>
+      <PageHeader
+        title={agent.name}
+        meta={
+          <>
+            <span className="agent-avatar">{agent.logo_url ? <img src={agent.logo_url} alt="" /> : agent.name.slice(0, 2).toUpperCase()}</span>
+            <span className="agent-meta-copy">{agent.provider} · {agent.description || "暂无 Agent 说明"}</span>
+            <StatusPill tone={agent.status === "enabled" ? "success" : "neutral"}>{agent.status === "enabled" ? "已启用" : "已停用"}</StatusPill>
+            <small>创建于 {formatDate(agent.created_at)}</small>
+          </>
+        }
+        actions={activeVersion ? (
+          <>
+            <Link className="button" to={`/workspace?agentVersion=${encodeURIComponent(activeVersion.id)}`}>在线运行</Link>
+            <Link className="button is-ghost" to={`/runs?launch=1&agentVersion=${encodeURIComponent(activeVersion.id)}`}>发起评测</Link>
+            <Link className="button is-ghost" to={`/compare?agentVersion=${encodeURIComponent(activeVersion.id)}`}>并行对比</Link>
+          </>
+        ) : <span className="agent-action-unavailable">设置当前版本后可在线运行和评测</span>}
+      />
 
       <section className="agent-version-overview">
         <article className="is-active">
