@@ -342,6 +342,10 @@ class RunEvidenceDetail(RunEvidenceListItem):
     score: RunEvidenceScoreDetail | None
     citations: list[RunEvidenceCitation]
     response_artifact: RunEvidenceArtifactMetadata | None
+    # Parsed tau2 trajectory replay payload for INTERACTIVE items; None when the
+    # question is held out, the artifact expired/is missing, or it exceeds the
+    # size guard. Structure matches the worker's trajectory artifact JSON.
+    trajectory: dict[str, Any] | None = None
 
 
 class RunAgentOption(BaseModel):

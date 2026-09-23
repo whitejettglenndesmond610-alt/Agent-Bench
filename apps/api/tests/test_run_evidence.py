@@ -18,16 +18,22 @@ from test_runs import (
 )
 
 from agent_eval.db.enums import (
+    Ability,
     ArtifactKind,
     AttemptStatus,
     CitationFetchStatus,
     ExecutionStatus,
+    Language,
+    QuestionType,
 )
 from agent_eval.db.models import (
     ArtifactIndex,
+    Benchmark,
     CitationRecord,
+    DatasetVersion,
     ExecutionItem,
     HttpAttempt,
+    Question,
     RunAgent,
     ScoreRecord,
 )
@@ -362,3 +368,211 @@ async def test_run_evidence_detail_orders_evidence_and_degrades_artifact_failure
         assert corrupt.status_code == 200
         assert corrupt.json()["candidate_answer"] is None
         assert corrupt.json()["candidate_answer_status"] == "unavailable"
+
+TRAJECTORY_PAYLOAD = {
+    "tau2_version": "1.0.1",
+    "domain": "retail",
+    "task_id": "task-1",
+    "task_split": "base",
+    "trial_index": 0,
+    "agent_protocol": "http-text-json-v1",
+    "simulator_model": "deepseek/deepseek-chat",
+    "turns": 2,
+    "termination_reason": "user_stop",
+    "agent_protocol_error": None,
+    "reward_info": {
+        "reward": 1.0,
+        "db_check": {"db_match": True, "db_reward": 1.0},
+        "action_checks": [],
+        "nl_assertions": [],
+        "communicate_checks": [],
+        "reward_basis": ["DB"],
+    },
+    "messages": [
+        {"role": "assistant", "content": "Hi! How can I help you today?"},
+        {"role": "user", "content": "Please cancel my order."},
+        {"role": "assistant", "content": "Done, your order is cancelled."},
+        {"role": "user", "content": "###STOP###"},
+    ],
+}
+
+
+async def seed_interactive_evidence(
+    app: FastAPI,
+    run_id: UUID,
+) -> dict[str, UUID]:
+    """Attach tau2 interactive items (plain / no artifact / held-out) to a run."""
+    now = datetime.now(UTC)
+    stored = app.state.artifact_store.put(
+        f"tests/run-evidence/{uuid4()}/trajectory.json",
+        json.dumps(TRAJECTORY_PAYLOAD).encode(),
+    )
+    held_out_stored = app.state.artifact_store.put(
+        f"tests/run-evidence/{uuid4()}/trajectory.json",
+        json.dumps(TRAJECTORY_PAYLOAD).encode(),
+    )
+    async with session_scope(app.state.session_factory) as session:
+        run_agent = await session.scalar(
+            select(RunAgent).where(RunAgent.run_id == run_id)
+        )
+        assert run_agent is not None
+        benchmark = Benchmark(
+            name="Tau2-Retail",
+            ability=Ability.AGENTIC,
+            language=Language.EN,
+            source="tau2-bench",
+        )
+        session.add(benchmark)
+        await session.flush()
+        released = DatasetVersion(
+            benchmark_id=benchmark.id,
+            version=1,
+            source_version="tau2-1.0.1",
+            content_hash="d" * 64,
+            question_count=2,
+            cohort_key="tau2-v1",
+            held_out=False,
+        )
+        private = DatasetVersion(
+            benchmark_id=benchmark.id,
+            version=2,
+            source_version="tau2-1.0.1",
+            content_hash="e" * 64,
+            question_count=1,
+            cohort_key="tau2-v1",
+            held_out=True,
+        )
+        session.add_all([released, private])
+        await session.flush()
+        questions = [
+            Question(
+                dataset_version_id=released.id,
+                external_id="retail-with-trajectory",
+                type=QuestionType.INTERACTIVE,
+                prompt="User scenario instructions",
+                reference_answer="tau2:retail:task-1",
+            ),
+            Question(
+                dataset_version_id=released.id,
+                external_id="retail-no-artifact",
+                type=QuestionType.INTERACTIVE,
+                prompt="User scenario instructions",
+                reference_answer="tau2:retail:task-2",
+            ),
+            Question(
+                dataset_version_id=private.id,
+                external_id="retail-held-out",
+                type=QuestionType.INTERACTIVE,
+                prompt="Private user scenario instructions",
+                reference_answer="tau2:retail:task-3",
+            ),
+        ]
+        session.add_all(questions)
+        await session.flush()
+        trajectory_artifact = ArtifactIndex(
+            kind=ArtifactKind.TRAJECTORY,
+            relative_path=stored.relative_path,
+            sha256=stored.sha256,
+            size_bytes=stored.size_bytes,
+            expires_at=now + timedelta(days=1),
+        )
+        held_out_artifact = ArtifactIndex(
+            kind=ArtifactKind.TRAJECTORY,
+            relative_path=held_out_stored.relative_path,
+            sha256=held_out_stored.sha256,
+            size_bytes=held_out_stored.size_bytes,
+            expires_at=now + timedelta(days=1),
+        )
+        session.add_all([trajectory_artifact, held_out_artifact])
+        await session.flush()
+        items = [
+            ExecutionItem(
+                run_agent_id=run_agent.id,
+                question_id=questions[0].id,
+                status=ExecutionStatus.SCORED,
+                task_reward=Decimal("1.0"),
+                artifact_id=trajectory_artifact.id,
+            ),
+            ExecutionItem(
+                run_agent_id=run_agent.id,
+                question_id=questions[1].id,
+                status=ExecutionStatus.SCORED,
+                task_reward=Decimal("0.0"),
+            ),
+            ExecutionItem(
+                run_agent_id=run_agent.id,
+                question_id=questions[2].id,
+                status=ExecutionStatus.SCORED,
+                task_reward=Decimal("0.5"),
+                artifact_id=held_out_artifact.id,
+            ),
+        ]
+        session.add_all(items)
+        await session.flush()
+        return {
+            "with_trajectory": items[0].id,
+            "no_artifact": items[1].id,
+            "held_out": items[2].id,
+        }
+
+
+async def test_run_evidence_detail_returns_tau2_trajectory(tmp_path: Path) -> None:
+    async with run_client(tmp_path) as (client, app, _, fixture):
+        mutation_headers = await login_operator(client)
+        run_id = await create_run(client, fixture, mutation_headers)
+        item_ids = await seed_interactive_evidence(app, run_id)
+
+        detail = await client.get(
+            f"/api/v1/evaluation-runs/{run_id}/evidence/{item_ids['with_trajectory']}"
+        )
+        assert detail.status_code == 200
+        payload = detail.json()
+        assert payload["question_type"] == "interactive"
+        assert payload["trajectory"] == TRAJECTORY_PAYLOAD
+        assert payload["trajectory"]["messages"][1]["content"] == "Please cancel my order."
+
+        missing = await client.get(
+            f"/api/v1/evaluation-runs/{run_id}/evidence/{item_ids['no_artifact']}"
+        )
+        assert missing.status_code == 200
+        assert missing.json()["trajectory"] is None
+
+        held_out = await client.get(
+            f"/api/v1/evaluation-runs/{run_id}/evidence/{item_ids['held_out']}"
+        )
+        assert held_out.status_code == 200
+        held_out_payload = held_out.json()
+        # held-out masking wins over artifact availability for trajectories too
+        assert held_out_payload["held_out"] is True
+        assert held_out_payload["prompt"] is None
+        assert held_out_payload["trajectory"] is None
+
+        async with session_scope(app.state.session_factory) as session:
+            item = await session.get(ExecutionItem, item_ids["with_trajectory"])
+            assert item is not None and item.artifact_id is not None
+            artifact = await session.get(ArtifactIndex, item.artifact_id)
+            assert artifact is not None
+            artifact.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        expired = await client.get(
+            f"/api/v1/evaluation-runs/{run_id}/evidence/{item_ids['with_trajectory']}"
+        )
+        assert expired.status_code == 200
+        assert expired.json()["trajectory"] is None
+
+        # non-interactive items never expose a trajectory payload
+        standard = await client.get(
+            f"/api/v1/evaluation-runs/{run_id}/evidence"
+        )
+        assert standard.status_code == 200
+        standard_item = next(
+            entry
+            for entry in standard.json()["items"]
+            if entry["question_type"] != "interactive"
+        )
+        standard_detail = await client.get(
+            f"/api/v1/evaluation-runs/{run_id}/evidence/"
+            f"{standard_item['execution_item_id']}"
+        )
+        assert standard_detail.status_code == 200
+        assert standard_detail.json()["trajectory"] is None
+

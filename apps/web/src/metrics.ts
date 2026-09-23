@@ -26,6 +26,13 @@ export const metricByKey = Object.fromEntries(
   leaderboardMetrics.map((metric) => [metric.key, metric])
 ) as Record<GlobalLeaderboardMetric, LeaderboardMetricDefinition>;
 
+// Abilities without a leaderboard metric (e.g. the agentic ability used by
+// tau2 interactive runs) resolve to undefined here; callers fall back to the
+// raw key instead of crashing.
+export function metricDefinitionFor(key: string): LeaderboardMetricDefinition | undefined {
+  return (metricByKey as Partial<Record<string, LeaderboardMetricDefinition>>)[key];
+}
+
 export function profileKeyForMetric(metric: GlobalLeaderboardMetric): string {
   return metric === "overall" ? "unified-v3" : `unified-v3-${metric}`;
 }

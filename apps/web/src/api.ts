@@ -870,7 +870,8 @@ export type Ability =
   | "retrieval"
   | "data_reasoning"
   | "instruction_following"
-  | "long_context";
+  | "long_context"
+  | "agentic";
 export type RunScope = "comprehensive" | "specialist" | "smoke";
 
 export type EvaluationCaseStatus = "draft" | "reviewed" | "published";
@@ -1269,6 +1270,61 @@ export interface RunEvidenceCitation {
   judge_artifact: RunEvidenceArtifactMetadata | null;
 }
 
+export interface TrajectoryToolCall {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+  requestor?: string;
+}
+
+export interface TrajectoryMessage {
+  role: "assistant" | "user" | "tool" | string;
+  id?: string;
+  content?: string | null;
+  tool_calls?: TrajectoryToolCall[] | null;
+  tool_messages?: TrajectoryMessage[] | null;
+  requestor?: "user" | "assistant";
+  error?: boolean;
+}
+
+export interface TrajectoryRewardInfo {
+  reward: number;
+  db_check?: { db_match: boolean; db_reward: number } | null;
+  action_checks?: Array<{
+    action: { name: string; arguments: Record<string, unknown> };
+    action_match: boolean;
+    action_reward: number;
+  }> | null;
+  nl_assertions?: Array<{
+    nl_assertion: string;
+    met: boolean;
+    justification: string;
+  }> | null;
+  communicate_checks?: Array<{
+    info: string;
+    met: boolean;
+    justification: string;
+  }> | null;
+  reward_basis?: string[] | null;
+  info?: Record<string, unknown> | null;
+}
+
+/** tau2 interactive episode replay payload, as stored by the worker. */
+export interface RunTrajectory {
+  tau2_version: string;
+  domain: string;
+  task_id: string;
+  task_split: string;
+  trial_index: number;
+  agent_protocol: string;
+  simulator_model: string;
+  turns: number;
+  termination_reason: string;
+  agent_protocol_error: string | null;
+  reward_info: TrajectoryRewardInfo | null;
+  messages: TrajectoryMessage[];
+}
+
 export interface RunEvidenceDetail extends RunEvidenceListItem {
   prompt: string | null;
   choices: Array<{ label: string; text: string }> | null;
@@ -1283,6 +1339,7 @@ export interface RunEvidenceDetail extends RunEvidenceListItem {
   }) | null;
   citations: RunEvidenceCitation[];
   response_artifact: RunEvidenceArtifactMetadata | null;
+  trajectory: RunTrajectory | null;
 }
 
 export interface RunEvidenceFilters {
@@ -1999,7 +2056,9 @@ export function fetchLeaderboardSnapshot(snapshotId: string): Promise<Leaderboar
   return requestJson<LeaderboardSnapshot>(`/api/v1/leaderboards/${snapshotId}`);
 }
 
-export type GlobalLeaderboardMetric = "overall" | Ability;
+// The agentic ability (tau2 interactive runs) never publishes leaderboard
+// metrics, so global metric keys exclude it.
+export type GlobalLeaderboardMetric = "overall" | Exclude<Ability, "agentic">;
 
 export interface GlobalRankedAgent {
   rank: number;

@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 from dataclasses import dataclass
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -27,7 +28,7 @@ from agent_eval.api.schemas.runs import (
 from agent_eval.core.artifact_store import ArtifactStore
 from agent_eval.core.artifacts import read_indexed_artifact
 from agent_eval.db.base import ensure_utc, utc_now
-from agent_eval.db.enums import Ability, ArtifactKind, ExecutionStatus, Language
+from agent_eval.db.enums import Ability, ArtifactKind, ExecutionStatus, Language, QuestionType
 from agent_eval.db.models import (
     AgentVersion,
     ArtifactIndex,
@@ -44,6 +45,11 @@ from agent_eval.db.models import (
 
 class RunEvidenceNotFoundError(LookupError):
     pass
+
+
+# Trajectory artifacts are bounded at write time by the agent response cap per
+# turn, but a long episode can still grow large; cap evidence replay payloads.
+MAX_TRAJECTORY_BYTES = 2 * MAX_RESPONSE_BYTES
 
 
 @dataclass(frozen=True)
@@ -143,6 +149,12 @@ async def get_run_evidence_detail(
     summary["score"] = _score_detail(item.score)
     question = item.question
     held_out = question.dataset_version.held_out
+    # Held-out masking applies to the trajectory as well: its first user
+    # message is derived from the same masked prompt text, so interactive
+    # held-out items must not leak it through the replay payload.
+    trajectory = None
+    if not held_out and question.type == QuestionType.INTERACTIVE:
+        trajectory = await _load_trajectory(artifact_store, item)
     return RunEvidenceDetail(
         **summary,
         prompt=None if held_out else question.prompt,
@@ -179,6 +191,7 @@ async def get_run_evidence_detail(
             for citation in sorted(item.citations, key=lambda value: (value.position, value.id))
         ],
         response_artifact=_artifact_metadata(item.artifact),
+        trajectory=trajectory,
     )
 
 
@@ -306,6 +319,32 @@ def _artifact_metadata(artifact: ArtifactIndex | None) -> RunEvidenceArtifactMet
         expires_at=artifact.expires_at,
         retained=ensure_utc(artifact.expires_at) > utc_now(),
     )
+
+
+async def _load_trajectory(
+    artifact_store: ArtifactStore,
+    item: ExecutionItem,
+) -> dict[str, Any] | None:
+    """Read and parse the tau2 trajectory artifact; degrade to None on failure."""
+    artifact = item.artifact
+    if artifact is None or artifact.kind != ArtifactKind.TRAJECTORY:
+        return None
+    if ensure_utc(artifact.expires_at) <= utc_now():
+        return None
+    if artifact.size_bytes > MAX_TRAJECTORY_BYTES:
+        return None
+    try:
+        content = await asyncio.to_thread(
+            read_indexed_artifact,
+            artifact_store,
+            relative_path=artifact.relative_path,
+            expected_sha256=artifact.sha256,
+            expected_size=artifact.size_bytes,
+        )
+        trajectory = json.loads(content)
+    except Exception:
+        return None
+    return trajectory if isinstance(trajectory, dict) else None
 
 
 async def _reconstruct_candidate_answer(

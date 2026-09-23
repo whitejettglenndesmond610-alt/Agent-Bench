@@ -35,7 +35,7 @@ import {
   CALIBRATION_MIN_RELIABLE_SAMPLE,
   formatCalibrationKappa,
   formatCalibrationRate,
-  metricByKey
+  metricDefinitionFor
 } from "./metrics";
 import { downloadText } from "./userProduct";
 
@@ -456,7 +456,7 @@ function CalibrationPanel() {
                     <strong>{task.question_external_id}</strong>
                     <time>{formatDate(task.created_at)}</time>
                   </header>
-                  <p>{task.agent_name} · {task.run_name} · {metricByKey[task.ability]?.label ?? task.ability} · {calibrationQuestionTypeLabels[task.question_type]}</p>
+                  <p>{task.agent_name} · {task.run_name} · {metricDefinitionFor(task.ability)?.label ?? task.ability} · {calibrationQuestionTypeLabels[task.question_type]}</p>
                   <p>裁判理由：{reason ?? "未记录判定理由"}</p>
                   <footer>
                     <Link className="button is-ghost" to={`/runs/${task.run_id}/evidence/${task.execution_item_id}`}>完整证据</Link>

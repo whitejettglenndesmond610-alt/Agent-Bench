@@ -11,7 +11,8 @@ import {
   RunEvidenceCitation
 } from "./api";
 import { Button, Input, LoadingState, Select, Table } from "./components";
-import { metricByKey } from "./metrics";
+import { TrajectoryView } from "./TrajectoryView";
+import { metricByKey, metricDefinitionFor } from "./metrics";
 
 const PAGE_SIZE = 25;
 
@@ -108,7 +109,7 @@ function EvidenceDetail({ runId, executionItemId }: { runId: string; executionIt
     <main className="workspace run-evidence-workspace">
       <Link className="back-link" to={`/runs/${runId}/evidence`}>← 返回运行证据</Link>
       <header className="evidence-detail-header">
-        <div><p className="eyebrow">EXECUTION EVIDENCE / {item.execution_item_id.slice(0, 8).toUpperCase()}</p><h1>{item.question_external_id}</h1><p>{item.benchmark_name} · {metricByKey[item.ability].label} · {item.language.toUpperCase()}</p></div>
+        <div><p className="eyebrow">EXECUTION EVIDENCE / {item.execution_item_id.slice(0, 8).toUpperCase()}</p><h1>{item.question_external_id}</h1><p>{item.benchmark_name} · {metricDefinitionFor(item.ability)?.label ?? item.ability} · {item.language.toUpperCase()}</p></div>
         <span className={`evidence-status is-${item.status}`}><i />{evidenceStatusLabels[item.status]}</span>
       </header>
 
@@ -141,6 +142,8 @@ function EvidenceDetail({ runId, executionItemId }: { runId: string; executionIt
           )}
         </article>
       </section>
+
+      {item.trajectory && <TrajectoryView trajectory={item.trajectory} />}
 
       <section className="evidence-judge-panel">
         <header><div><p className="eyebrow">JUDGE EVIDENCE</p><h2>评分与裁判理由</h2></div>{item.score && <strong>{item.score.final_score.toFixed(2)}</strong>}</header>
@@ -230,7 +233,7 @@ function EvidenceList({ runId }: { runId: string }) {
           <div className="evidence-list-summary"><span>共 {evidence.total} 项</span><strong>{pageStart}–{pageEnd}</strong></div>
           <Table className="evidence-table">
             <thead><tr><th>题目 / Agent</th><th>能力 / 语言</th><th>状态</th><th>分数</th><th>尝试 / 延迟</th><th><span className="sr-only">查看</span></th></tr></thead>
-            <tbody>{evidence.items.map((item) => <tr key={item.execution_item_id}><td><strong>{item.question_external_id}</strong><small>{item.agent_name} · {item.provider} V{item.version}</small>{item.answer_preview && <p>{item.answer_preview}</p>}</td><td><span>{metricByKey[item.ability].shortLabel}</span><small>{item.language.toUpperCase()} · {item.benchmark_name}</small></td><td><span className={`evidence-status is-${item.status}`}><i />{evidenceStatusLabels[item.status]}</span>{item.error_type && <small className="evidence-error-type">{item.error_type}</small>}</td><td className="evidence-score">{item.score ? item.score.final_score.toFixed(2) : "—"}</td><td><span>{item.attempt_count} 次</span><small>{item.latency_ms == null ? "延迟 —" : `${item.latency_ms} ms`}</small></td><td><Link className="row-link" to={`/runs/${runId}/evidence/${item.execution_item_id}`}>查看证据 →</Link></td></tr>)}</tbody>
+            <tbody>{evidence.items.map((item) => <tr key={item.execution_item_id}><td><strong>{item.question_external_id}</strong><small>{item.agent_name} · {item.provider} V{item.version}</small>{item.answer_preview && <p>{item.answer_preview}</p>}</td><td><span>{metricDefinitionFor(item.ability)?.shortLabel ?? item.ability}</span><small>{item.language.toUpperCase()} · {item.benchmark_name}</small></td><td><span className={`evidence-status is-${item.status}`}><i />{evidenceStatusLabels[item.status]}</span>{item.error_type && <small className="evidence-error-type">{item.error_type}</small>}</td><td className="evidence-score">{item.score ? item.score.final_score.toFixed(2) : "—"}</td><td><span>{item.attempt_count} 次</span><small>{item.latency_ms == null ? "延迟 —" : `${item.latency_ms} ms`}</small></td><td><Link className="row-link" to={`/runs/${runId}/evidence/${item.execution_item_id}`}>查看证据 →</Link></td></tr>)}</tbody>
           </Table>
           <nav className="evidence-pagination" aria-label="证据分页">
             <button type="button" disabled={offset === 0} onClick={() => { const next = new URLSearchParams(parameters); next.set("offset", String(Math.max(0, offset - PAGE_SIZE))); setParameters(next); }}>上一页</button>

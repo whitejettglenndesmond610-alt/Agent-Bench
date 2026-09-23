@@ -21,7 +21,7 @@ import {
 } from "./api";
 import { Button, FormField, Input, LoadingState, Modal, Select, Table } from "./components";
 import { randomId } from "./randomId";
-import { abilityMetrics, formatCostUsd, leaderboardMetrics } from "./metrics";
+import { abilityMetrics, metricDefinitionFor, formatCostUsd, leaderboardMetrics } from "./metrics";
 
 const terminalStatuses = new Set<RunStatus>([
   "completed",
@@ -398,7 +398,7 @@ function LaunchRunModal({
           </section>
           <section className="run-profile-review">
             <header><div><span>PROFILE DATASETS</span><strong>{selectedProfile.name}</strong></div><small>{selectedProfile.benchmark_count} 个 Benchmark · 裁判 {options.judge_model}</small></header>
-            <div>{selectedProfile.datasets.map((dataset) => <article key={dataset.dataset_version_id}><div><strong>{dataset.name}</strong><small>{abilityLabels[dataset.ability]} · {dataset.language.toUpperCase()} · V{dataset.version}</small></div><b>{dataset.question_count} 题</b></article>)}</div>
+            <div>{selectedProfile.datasets.map((dataset) => <article key={dataset.dataset_version_id}><div><strong>{dataset.name}</strong><small>{metricDefinitionFor(dataset.ability)?.shortLabel ?? dataset.ability} · {dataset.language.toUpperCase()} · V{dataset.version}</small></div><b>{dataset.question_count} 题</b></article>)}</div>
             <footer><span>发布去向</span><strong>{publicationLabel(selectedProfile.publishes_to)}</strong><small>{selectedProfile.ranking_eligible ? "计入排行榜" : "非排名运行，不计入排行榜"}</small></footer>
           </section>
           {!selectedProfile.ranking_eligible && <div className="smoke-review-warning"><strong>Smoke Profile</strong><span>本次结果用于快速验证，不会进入排行榜。</span></div>}
