@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -876,4 +876,85 @@ test("keeps the mobile drawer open until its explicit close control is used", as
   await waitFor(() => expect(toggle).toHaveFocus());
   expect(toggle).toHaveAttribute("aria-expanded", "false");
   expect(rail).toHaveAttribute("aria-hidden", "true");
+});
+
+class FakeEventSource {
+  static instances: FakeEventSource[] = [];
+  onerror: (() => void) | null = null;
+  closed = false;
+  private listeners = new Map<string, (event: { data: string }) => void>();
+  constructor(readonly url: string) {
+    FakeEventSource.instances.push(this);
+  }
+  addEventListener(type: string, listener: (event: { data: string }) => void) {
+    this.listeners.set(type, listener);
+  }
+  close() {
+    this.closed = true;
+  }
+  emit(type: string, data: unknown) {
+    this.listeners.get(type)?.({ data: JSON.stringify(data) });
+  }
+}
+
+function streamingDetailFetch(finalAnswer: string) {
+  let detailCalls = 0;
+  return vi.fn().mockImplementation((input: string) => {
+    if (input === "/api/v1/workspace/conversations/conversation-1") {
+      detailCalls += 1;
+      const runningTurn = {
+        turn_no: 1,
+        user_message: userMessage(1),
+        assistant_messages: [],
+        attempts: [attempt("attempt-1", "running")]
+      };
+      const succeededTurn = {
+        ...runningTurn,
+        assistant_messages: [assistantMessage("answer-1", 1, finalAnswer)],
+        attempts: [attempt("attempt-1", "succeeded", 1, "answer-1")]
+      };
+      return Promise.resolve(response({
+        ...conversation,
+        last_turn_no: 1,
+        turns: [detailCalls === 1 ? runningTurn : succeededTurn]
+      }));
+    }
+    return baseFetch(input);
+  });
+}
+
+test("renders streaming partial answers and refreshes on the done event", async () => {
+  FakeEventSource.instances = [];
+  vi.stubGlobal("EventSource", FakeEventSource);
+  vi.stubGlobal("fetch", streamingDetailFetch("流式最终回答"));
+
+  renderWorkspace("/workspace/conversation-1");
+  expect(await screen.findByRole("status")).toHaveTextContent("正在生成");
+  await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+  const source = FakeEventSource.instances[0];
+  expect(source.url).toBe("/api/v1/workspace/attempts/attempt-1/stream");
+
+  act(() => source.emit("partial", { text: "流式片段" }));
+  expect(await screen.findByText("流式片段")).toBeInTheDocument();
+  expect(screen.queryByText("流式最终回答")).not.toBeInTheDocument();
+
+  act(() => source.emit("done", { status: "succeeded", answer: "流式最终回答", error: null }));
+  expect(source.closed).toBe(true);
+  expect(await screen.findByText("流式最终回答")).toBeInTheDocument();
+  expect(screen.queryByText("流式片段")).not.toBeInTheDocument();
+});
+
+test("falls back to polling when the attempt stream errors", async () => {
+  FakeEventSource.instances = [];
+  vi.stubGlobal("EventSource", FakeEventSource);
+  vi.stubGlobal("fetch", streamingDetailFetch("轮询兜底回答"));
+
+  renderWorkspace("/workspace/conversation-1");
+  expect(await screen.findByRole("status")).toHaveTextContent("正在生成");
+  await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+  const source = FakeEventSource.instances[0];
+
+  act(() => source.onerror?.());
+  expect(source.closed).toBe(true);
+  expect(await screen.findByText("轮询兜底回答", {}, { timeout: 2500 })).toBeInTheDocument();
 });

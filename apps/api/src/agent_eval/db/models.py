@@ -1541,6 +1541,9 @@ class WorkspaceAttempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     prompt_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     prompt_characters: Mapped[int] = mapped_column(Integer, nullable=False)
     prompt_format: Mapped[str] = mapped_column(String(40), nullable=False)
+    # Streaming agents publish their in-progress answer here; finalized attempts
+    # keep it NULL because the terminal answer lives on the assistant message.
+    partial_answer: Mapped[str | None] = mapped_column(Text)
 
     conversation: Mapped[WorkspaceConversation] = relationship(back_populates="attempts")
     user_message: Mapped[WorkspaceMessage] = relationship(foreign_keys=[user_message_id])

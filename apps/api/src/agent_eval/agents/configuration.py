@@ -49,4 +49,6 @@ def inference_config_for_version(
         timeout_seconds=version.timeout_seconds,
         extra_headers=extra_headers,
         api_key_header=api_key_header,
+        # All private presets are OpenAI-compatible chat completions endpoints.
+        supports_streaming=version.private_preset is not None,
     )

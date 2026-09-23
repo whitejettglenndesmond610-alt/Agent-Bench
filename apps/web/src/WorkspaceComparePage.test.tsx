@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -362,4 +362,56 @@ test("renders an explicit comparison history error", async () => {
 
   expect(await screen.findByRole("alert")).toHaveTextContent("对比历史读取失败：对比服务不可用");
   expect(screen.queryByText("暂无对比记录")).not.toBeInTheDocument();
+});
+
+class FakeEventSource {
+  static instances: FakeEventSource[] = [];
+  onerror: (() => void) | null = null;
+  closed = false;
+  private listeners = new Map<string, (event: { data: string }) => void>();
+  constructor(readonly url: string) {
+    FakeEventSource.instances.push(this);
+  }
+  addEventListener(type: string, listener: (event: { data: string }) => void) {
+    this.listeners.set(type, listener);
+  }
+  close() {
+    this.closed = true;
+  }
+  emit(type: string, data: unknown) {
+    this.listeners.get(type)?.({ data: JSON.stringify(data) });
+  }
+}
+
+test("streams partial answers into each active comparison column", async () => {
+  FakeEventSource.instances = [];
+  vi.stubGlobal("EventSource", FakeEventSource);
+  const running = {
+    ...comparison("queued"),
+    status: "running" as const,
+    counts: { queued: 0, running: 2, succeeded: 0, failed: 0, canceled: 0 }
+  };
+  running.items[0].attempt = attempt("attempt-1", "running");
+  running.items[1].attempt = attempt("attempt-2", "running");
+  vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => {
+    if (input === "/api/v1/workspace/comparisons") return Promise.resolve(response({ items: [running] }));
+    if (input === "/api/v1/workspace/comparisons/comparison-1") return Promise.resolve(response(running));
+    throw new Error(`Unexpected request: ${input}`);
+  }));
+
+  renderPage("/compare/comparison-1");
+  await screen.findByText("PROMPT / IMMUTABLE");
+  await waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
+  expect(FakeEventSource.instances.map((source) => source.url).sort()).toEqual([
+    "/api/v1/workspace/attempts/attempt-1/stream",
+    "/api/v1/workspace/attempts/attempt-2/stream"
+  ]);
+
+  const betaSource = FakeEventSource.instances.find((source) => source.url.includes("attempt-2"));
+  act(() => betaSource?.emit("partial", { text: "Beta 流式片段" }));
+  expect(await screen.findByText("Beta 流式片段")).toBeInTheDocument();
+
+  act(() => betaSource?.emit("done", { status: "failed", answer: null, error: null }));
+  expect(betaSource?.closed).toBe(true);
+  expect(screen.queryByText("Beta 流式片段")).not.toBeInTheDocument();
 });

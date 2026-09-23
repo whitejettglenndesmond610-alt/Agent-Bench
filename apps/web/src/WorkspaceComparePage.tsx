@@ -24,6 +24,7 @@ import { AgentPicker } from "./AgentPicker";
 import { Button, Input, LoadingState, Modal } from "./components";
 import { randomId } from "./randomId";
 import { Citations, MarkdownContent } from "./markdown";
+import { useAttemptStreams } from "./useAttemptStreams";
 import {
   AttemptAnnotationControls,
   ClipboardButton,
@@ -149,6 +150,7 @@ function AnswerCard({
   canDraft,
   canceling,
   drafting,
+  streamingText,
   onCancel,
   onDraft
 }: {
@@ -157,6 +159,7 @@ function AnswerCard({
   canDraft: boolean;
   canceling: boolean;
   drafting: boolean;
+  streamingText: string | undefined;
   onCancel: () => void;
   onDraft: () => void;
 }) {
@@ -175,6 +178,10 @@ function AnswerCard({
           <Citations citations={attempt.assistant_message.citations ?? []} />
           <AttemptAnnotationControls userId={userId} attempt={attempt} compact />
         </>
+      ) : active && streamingText ? (
+        <div className="comparison-answer-streaming" aria-live="polite">
+          <MarkdownContent content={streamingText} />
+        </div>
       ) : (
         <div className="comparison-answer-state" role={attempt.status === "failed" ? "alert" : "status"}>
           {active && <span className="status-dot" />}
@@ -449,6 +456,19 @@ export function WorkspaceComparePage({ userId, canDraft }: { userId: string; can
   const comparison = comparisonQuery.data;
   const sortedItems = comparison ? [...comparison.items].sort((left, right) => left.position - right.position) : [];
   const active = comparison ? activeComparisonStatuses.has(comparison.status) : false;
+  const streamPartials = useAttemptStreams(
+    sortedItems
+      .filter((item) => activeAttemptStatuses.has(item.attempt.status))
+      .map((item) => item.attempt.id),
+    () => {
+      // Terminal event on any column: refresh the comparison immediately.
+      if (comparisonId) {
+        void queryClient.invalidateQueries({
+          queryKey: workspaceComparisonKey(userId, comparisonId)
+        });
+      }
+    }
+  );
 
   return (
     <main className="workspace workspace-compare-page">
@@ -572,6 +592,7 @@ export function WorkspaceComparePage({ userId, canDraft }: { userId: string; can
                   userId={userId}
                   item={item}
                   canDraft={canDraft}
+                  streamingText={streamPartials[item.attempt.id]}
                   canceling={
                     cancelItemMutation.isPending
                     && cancelItemMutation.variables?.attemptId === item.attempt.id

@@ -36,6 +36,7 @@ import { AgentPicker } from "./AgentPicker";
 import { LoadingState } from "./components";
 import { Citations, MarkdownContent } from "./markdown";
 import { randomId } from "./randomId";
+import { useAttemptStreams } from "./useAttemptStreams";
 import {
   AttemptAnnotationControls,
   ClipboardButton,
@@ -206,6 +207,7 @@ function TurnLedger({
   evaluationCaseIdsByAttempt,
   evaluationCasesReady,
   draftingAttemptId,
+  streamPartials,
   onSelectVariant,
   onCancel,
   onCreateDraft,
@@ -220,6 +222,7 @@ function TurnLedger({
   evaluationCaseIdsByAttempt: Record<string, string>;
   evaluationCasesReady: boolean;
   draftingAttemptId: string | undefined;
+  streamPartials: Record<string, string>;
   onSelectVariant: (variant: number) => void;
   onCancel: (attemptId: string) => void;
   onCreateDraft: (attemptId: string) => void;
@@ -241,6 +244,7 @@ function TurnLedger({
   const pendingNewAttempt = latestAttempt
     && latestAttempt.id !== selectedAttempt?.id
     && (isActiveAttempt(latestAttempt) || latestAttempt.status === "failed" || latestAttempt.status === "canceled");
+  const streamingText = latestAttempt ? streamPartials[latestAttempt.id] : undefined;
 
   return (
     <article className="ledger-turn">
@@ -306,6 +310,15 @@ function TurnLedger({
           {selectedAttempt?.status === "succeeded" && (
             <AttemptAnnotationControls userId={userId} attempt={selectedAttempt} />
           )}
+        </section>
+      )}
+
+      {latestAttempt && (!selectedMessage || pendingNewAttempt) && streamingText && (
+        <section className="ledger-agent-message is-streaming" aria-live="polite">
+          <header className="agent-message-header">
+            <div><i /><span>AGENT RESPONSE / STREAMING</span></div>
+          </header>
+          <MarkdownContent content={streamingText} />
         </section>
       )}
 
@@ -502,6 +515,18 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
   const activeAttempt = conversation?.turns
     .flatMap((turn) => turn.attempts)
     .find(isActiveAttempt);
+  const streamPartials = useAttemptStreams(
+    activeAttempt ? [activeAttempt.id] : [],
+    () => {
+      // Terminal event: pull the reconciled final state immediately instead of
+      // waiting for the next polling tick.
+      if (conversationId) {
+        void queryClient.invalidateQueries({
+          queryKey: workspaceConversationKey(userId, conversationId)
+        });
+      }
+    }
+  );
   const maximumCharacters = selectedAgent?.max_prompt_characters ?? null;
   const archived = Boolean(conversation?.archived_at);
   const detailUnavailable = Boolean(conversationId) && !conversation;
@@ -1088,6 +1113,7 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
                evaluationCaseIdsByAttempt={evaluationCaseIdsByAttempt}
                evaluationCasesReady={evaluationCasesQuery.isSuccess}
                draftingAttemptId={createDraftMutation.isPending ? createDraftMutation.variables?.attemptId : undefined}
+               streamPartials={streamPartials}
                onSelectVariant={(variant) => setVariantSelection((current) => ({ ...current, [turn.turn_no]: variant }))}
               onCancel={(attemptId) => {
                  if (conversationId) cancelMutation.mutate({ attemptId, originConversationId: conversationId });

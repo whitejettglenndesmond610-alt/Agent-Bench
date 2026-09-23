@@ -54,6 +54,8 @@ class InferenceConfig:
     timeout_seconds: int
     extra_headers: dict[str, str] = field(default_factory=dict)
     api_key_header: str | None = None
+    # OpenAI-compatible SSE streaming (chat.completion.chunk deltas).
+    supports_streaming: bool = False
 
 
 @dataclass(frozen=True)
@@ -83,6 +85,36 @@ class InferenceOutcome:
 StartAttempt = Callable[[int], Awaitable[UUID | None]]
 FinishAttempt = Callable[[AttemptCompletion], Awaitable[None]]
 Sleep = Callable[[float], Awaitable[None]]
+PartialCallback = Callable[[str], Awaitable[None]]
+
+
+class StreamChunkError(RuntimeError):
+    """An SSE chunk carrying an error payload instead of a content delta."""
+
+
+def _stream_error_text(error: Any) -> str:
+    if isinstance(error, dict):
+        message = error.get("message")
+        if isinstance(message, str):
+            return message
+    return str(error)
+
+
+def sse_delta_content(payload: Any) -> str | None:
+    """Extract one OpenAI-compatible chat.completion.chunk content delta."""
+    if not isinstance(payload, dict):
+        return None
+    choices = payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return None
+    first = choices[0]
+    if not isinstance(first, dict):
+        return None
+    delta = first.get("delta")
+    if not isinstance(delta, dict):
+        return None
+    content = delta.get("content")
+    return content if isinstance(content, str) else None
 
 
 def post_agent_prompt(
@@ -326,6 +358,249 @@ async def execute_inference(
             canceled=False,
             answer=redact_secret(answer, config.token),
             citations=redact_secret(citations, config.token),
+            response_content=last_content,
+            latency_ms=total_latency,
+            attempt_count=attempts_made,
+            error_type=None,
+        )
+
+    return InferenceOutcome(
+        success=False,
+        canceled=False,
+        answer=None,
+        citations=[],
+        response_content=last_content,
+        latency_ms=total_latency,
+        attempt_count=attempts_made,
+        error_type=last_error,
+    )
+
+
+async def execute_streaming_inference(
+    client: httpx.AsyncClient,
+    config: InferenceConfig,
+    prompt: str,
+    *,
+    previous_attempt_count: int,
+    start_attempt: StartAttempt,
+    finish_attempt: FinishAttempt,
+    on_partial: PartialCallback,
+    sleep: Sleep = asyncio.sleep,
+) -> InferenceOutcome:
+    """OpenAI-compatible SSE variant of execute_inference for workspace attempts.
+
+    Sends the rendered template with "stream": true and accumulates
+    chat.completion.chunk deltas, reporting the accumulated text through
+    on_partial. Token usage is only recorded when the provider includes it in
+    the stream (no stream_options is sent, for maximum preset compatibility).
+    """
+    request_body = render_request_template(config.request_template, prompt)
+    request_body["stream"] = True
+    headers = json_request_headers(
+        auth_type=config.auth_type,
+        token=config.token,
+        extra_headers=config.extra_headers,
+        api_key_header=config.api_key_header,
+    )
+
+    total_latency = 0
+    last_content: bytes | None = None
+    last_error = "agent_attempts_exhausted"
+    attempts_made = previous_attempt_count
+    for attempt_no in range(previous_attempt_count + 1, 3):
+        attempt_id = await start_attempt(attempt_no)
+        if attempt_id is None:
+            return InferenceOutcome(
+                success=False,
+                canceled=True,
+                answer=None,
+                citations=[],
+                response_content=None,
+                latency_ms=total_latency,
+                attempt_count=attempts_made,
+                error_type="run_canceled",
+            )
+        attempts_made = attempt_no
+        started_at = perf_counter()
+        answer_parts: list[str] = []
+        usage_payload: Any = None
+        raw = bytearray()
+        status_code: int | None = None
+        response_too_large = False
+        try:
+            async with client.stream(
+                "POST",
+                config.endpoint_url,
+                headers=headers,
+                json=request_body,
+                timeout=httpx.Timeout(config.timeout_seconds),
+            ) as response:
+                status_code = response.status_code
+                if response.is_success:
+                    async for line in response.aiter_lines():
+                        raw.extend(line.encode("utf-8", errors="replace"))
+                        raw.extend(b"\n")
+                        if len(raw) > MAX_RESPONSE_BYTES:
+                            response_too_large = True
+                            break
+                        if not line.startswith("data:"):
+                            continue
+                        data = line.removeprefix("data:").strip()
+                        if not data or data == "[DONE]":
+                            continue
+                        try:
+                            chunk: Any = json.loads(data)
+                        except json.JSONDecodeError:
+                            continue
+                        if isinstance(chunk, dict) and chunk.get("error") is not None:
+                            raise StreamChunkError(_stream_error_text(chunk["error"]))
+                        delta = sse_delta_content(chunk)
+                        if delta:
+                            answer_parts.append(delta)
+                            await on_partial("".join(answer_parts))
+                        if isinstance(chunk, dict) and isinstance(chunk.get("usage"), dict):
+                            usage_payload = chunk["usage"]
+                else:
+                    async for chunk in response.aiter_bytes():
+                        remaining = MAX_RESPONSE_BYTES + 1 - len(raw)
+                        raw.extend(chunk[:remaining])
+                        if len(chunk) > remaining or len(raw) > MAX_RESPONSE_BYTES:
+                            response_too_large = True
+                            break
+        except httpx.TimeoutException:
+            latency_ms = elapsed_ms(started_at)
+            total_latency += latency_ms
+            last_error = error_type("timeout")
+            await finish_attempt(
+                AttemptCompletion(
+                    attempt_id=attempt_id,
+                    status=AttemptStatus.FAILED,
+                    status_code=None,
+                    latency_ms=latency_ms,
+                    error_type=last_error,
+                )
+            )
+            if attempt_no == 1:
+                await sleep(1)
+                continue
+            break
+        except StreamChunkError as error:
+            latency_ms = elapsed_ms(started_at)
+            total_latency += latency_ms
+            # Mid-stream error payloads arrive with HTTP 200; when the message
+            # does not classify to a concrete category, treat it as a
+            # provider-side server error.
+            category = classify_agent_failure(status_code=None, error=str(error))
+            last_error = error_type("server_error" if category == "unknown" else category)
+            await finish_attempt(
+                AttemptCompletion(
+                    attempt_id=attempt_id,
+                    status=AttemptStatus.FAILED,
+                    status_code=status_code,
+                    latency_ms=latency_ms,
+                    error_type=last_error,
+                )
+            )
+            break
+        except (httpx.RequestError, UnicodeError, ValueError):
+            latency_ms = elapsed_ms(started_at)
+            total_latency += latency_ms
+            last_error = error_type("network")
+            await finish_attempt(
+                AttemptCompletion(
+                    attempt_id=attempt_id,
+                    status=AttemptStatus.FAILED,
+                    status_code=None,
+                    latency_ms=latency_ms,
+                    error_type=last_error,
+                )
+            )
+            if attempt_no == 1:
+                await sleep(1)
+                continue
+            break
+
+        latency_ms = elapsed_ms(started_at)
+        total_latency += latency_ms
+        if status_code is None:
+            # Unreachable in practice: a completed client.stream always yields
+            # a status code; guard so the comparisons below stay typed.
+            last_error = error_type("network")
+            break
+        if response_too_large:
+            last_content = None
+            last_error = "agent_response_too_large"
+            await finish_attempt(
+                failed_attempt(attempt_id, status_code, latency_ms, last_error)
+            )
+            break
+        last_content = redact_content(bytes(raw), config.token)
+        if status_code == 429:
+            last_error = error_type("rate_limit")
+            await finish_attempt(
+                failed_attempt(attempt_id, status_code, latency_ms, last_error)
+            )
+            if attempt_no == 1:
+                await sleep(retry_delay(response.headers.get("Retry-After")))
+                continue
+            break
+        if 500 <= status_code <= 599:
+            last_error = error_type("server_error")
+            await finish_attempt(
+                failed_attempt(attempt_id, status_code, latency_ms, last_error)
+            )
+            if attempt_no == 1:
+                await sleep(1)
+                continue
+            break
+        if status_code == 408:
+            last_error = error_type("timeout")
+            await finish_attempt(
+                failed_attempt(attempt_id, status_code, latency_ms, last_error)
+            )
+            if attempt_no == 1:
+                await sleep(1)
+                continue
+            break
+        if not 200 <= status_code <= 299:
+            last_error = error_type(
+                classify_agent_failure(status_code=status_code, content=last_content)
+            )
+            await finish_attempt(
+                failed_attempt(attempt_id, status_code, latency_ms, last_error)
+            )
+            break
+
+        answer = "".join(answer_parts).strip()
+        if not answer:
+            last_error = error_type(
+                classify_agent_failure(status_code=status_code, error="answer is empty")
+            )
+            await finish_attempt(
+                failed_attempt(attempt_id, status_code, latency_ms, last_error)
+            )
+            break
+
+        input_tokens, output_tokens, total_tokens = extract_token_usage(
+            {"usage": usage_payload} if usage_payload is not None else None
+        )
+        await finish_attempt(
+            AttemptCompletion(
+                attempt_id=attempt_id,
+                status=AttemptStatus.SUCCEEDED,
+                status_code=status_code,
+                latency_ms=latency_ms,
+                error_type=None,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens,
+            )
+        )
+        return InferenceOutcome(
+            success=True,
+            canceled=False,
+            answer=redact_secret(answer, config.token),
+            citations=[],
             response_content=last_content,
             latency_ms=total_latency,
             attempt_count=attempts_made,

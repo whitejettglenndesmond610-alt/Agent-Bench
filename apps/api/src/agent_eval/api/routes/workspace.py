@@ -7,8 +7,10 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import joinedload
 
 from agent_eval.api.dependencies import (
@@ -35,6 +37,7 @@ from agent_eval.api.schemas.workspace import (
     WorkspaceSendResult,
     WorkspaceTurnResponse,
 )
+from agent_eval.core.settings import Settings
 from agent_eval.db.base import utc_now
 from agent_eval.db.enums import (
     AgentStatus,
@@ -819,6 +822,98 @@ async def owned_attempt(
     if attempt is None:
         raise workspace_error(404, "attempt_not_found", "Attempt not found")
     return attempt
+
+
+def sse_event(event: str, data: dict[str, object]) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@router.get("/attempts/{attempt_id}/stream")
+async def stream_attempt(
+    attempt_id: UUID,
+    request: Request,
+    database: DatabaseSession,
+    auth_session: WorkspaceSession,
+) -> StreamingResponse:
+    """EventSource-compatible stream of one attempt's in-progress answer.
+
+    Workers publish throttled partial answers on workspace_attempts while a
+    streaming agent runs; this endpoint polls the database and forwards changes
+    as SSE events. Terminal states emit a single done event and close the
+    stream. GET requests need the workspace session cookie only (no CSRF).
+    """
+    owner_user_id = workspace_user_id(auth_session)
+    await owned_attempt(database, attempt_id, owner_user_id)
+    session_factory: async_sessionmaker[AsyncSession] = request.app.state.session_factory
+    settings: Settings = request.app.state.settings
+    poll_seconds = settings.workspace_stream_poll_seconds
+    deadline = (
+        asyncio.get_running_loop().time() + settings.workspace_stream_max_seconds
+    )
+
+    async def events() -> AsyncIterator[str]:
+        sent_partial: str | None = None
+        while True:
+            async with session_factory() as session:
+                attempt = await session.scalar(
+                    select(WorkspaceAttempt)
+                    .options(joinedload(WorkspaceAttempt.assistant_message))
+                    .where(WorkspaceAttempt.id == attempt_id)
+                )
+            if attempt is None:
+                yield sse_event(
+                    "done",
+                    {
+                        "status": "failed",
+                        "answer": None,
+                        "error": {"type": "attempt_not_found", "category": "internal"},
+                    },
+                )
+                return
+            if (
+                attempt.status in ACTIVE_ATTEMPT_STATUSES
+                and asyncio.get_running_loop().time() < deadline
+            ):
+                partial = attempt.partial_answer
+                if partial is not None and partial != sent_partial:
+                    sent_partial = partial
+                    yield sse_event("partial", {"text": partial})
+                else:
+                    yield ": ping\n\n"
+                await asyncio.sleep(poll_seconds)
+                continue
+            answer = (
+                attempt.assistant_message.content
+                if attempt.status == WorkspaceAttemptStatus.SUCCEEDED
+                and attempt.assistant_message is not None
+                else None
+            )
+            yield sse_event(
+                "done",
+                {
+                    "status": attempt.status.value,
+                    "answer": answer,
+                    "error": (
+                        {
+                            "type": attempt.error_type,
+                            "category": attempt.error_category,
+                        }
+                        if attempt.error_type is not None
+                        else None
+                    ),
+                },
+            )
+            return
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            # Disable proxy buffering so nginx forwards events immediately.
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.patch(

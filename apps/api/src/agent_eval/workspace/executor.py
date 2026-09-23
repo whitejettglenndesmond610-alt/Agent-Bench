@@ -1,9 +1,11 @@
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import timedelta
 from functools import partial
+from time import monotonic
 from uuid import UUID, uuid4
 
 import httpx
@@ -20,6 +22,7 @@ from agent_eval.agents.inference import (
     InferenceConfig,
     InferenceOutcome,
     execute_inference,
+    execute_streaming_inference,
 )
 from agent_eval.auth.encryption import TokenCipher
 from agent_eval.core.artifact_store import ArtifactStore, StoredArtifact
@@ -233,6 +236,69 @@ async def finish_http_attempt(
             .values(**values)
         )
         await session.commit()
+
+
+PARTIAL_ANSWER_WRITE_INTERVAL_SECONDS = 0.5
+
+
+async def write_partial_answer(
+    session_factory: async_sessionmaker[AsyncSession],
+    claim: WorkspaceClaim,
+    owner_id: str,
+    text: str,
+) -> None:
+    """Persist the latest streaming partial answer if this worker still owns the claim."""
+    async with session_factory() as session:
+        await session.execute(
+            update(WorkspaceAttempt)
+            .where(
+                WorkspaceAttempt.id == claim.attempt_id,
+                WorkspaceAttempt.status == WorkspaceAttemptStatus.RUNNING,
+                WorkspaceAttempt.claim_owner_id == owner_id,
+                WorkspaceAttempt.claim_token == claim.claim_token,
+            )
+            .values(partial_answer=text, updated_at=utc_now())
+        )
+        await session.commit()
+
+
+class PartialAnswerWriter:
+    """Throttled sink for streaming partial answers (~one DB write per interval).
+
+    The leading write goes through immediately; later deltas are coalesced so a
+    fast token stream cannot flood the database. flush() persists the trailing
+    state so stream consumers see the complete text before finalization.
+    """
+
+    def __init__(
+        self,
+        persist: Callable[[str], Awaitable[None]],
+        *,
+        interval: float = PARTIAL_ANSWER_WRITE_INTERVAL_SECONDS,
+        clock: Callable[[], float] = monotonic,
+    ) -> None:
+        self._persist = persist
+        self._interval = interval
+        self._clock = clock
+        self._latest: str | None = None
+        self._last_write: float | None = None
+        self._pending = False
+
+    async def write(self, text: str) -> None:
+        self._latest = text
+        now = self._clock()
+        if self._last_write is not None and now - self._last_write < self._interval:
+            self._pending = True
+            return
+        self._last_write = now
+        self._pending = False
+        await self._persist(text)
+
+    async def flush(self) -> None:
+        if self._pending and self._latest is not None:
+            self._pending = False
+            self._last_write = self._clock()
+            await self._persist(self._latest)
 
 
 async def watch_cancellation(
@@ -482,6 +548,9 @@ async def finalize_workspace_attempt(
         if outcome.latency_ms or attempt.latency_ms is None:
             attempt.latency_ms = outcome.latency_ms
         attempt.http_attempt_count = max(attempt.http_attempt_count, outcome.attempt_count)
+        # Terminal answers live on the assistant message (or the error fields);
+        # the streaming partial is cleared so no stale in-progress text remains.
+        attempt.partial_answer = None
         attempt.claim_owner_id = None
         attempt.claim_token = None
         attempt.lease_expires_at = None
@@ -504,6 +573,7 @@ async def process_workspace_attempt(
     owner_id: str,
     limits: WorkerLimits,
     transport: httpx.AsyncBaseTransport | None = None,
+    partial_write_interval: float = PARTIAL_ANSWER_WRITE_INTERVAL_SECONDS,
 ) -> bool:
     stored: StoredArtifact | None = None
     try:
@@ -519,6 +589,36 @@ async def process_workspace_attempt(
                 ),
                 httpx.AsyncClient(transport=transport, follow_redirects=False) as client,
             ):
+                if work.config.supports_streaming:
+                    writer = PartialAnswerWriter(
+                        partial(write_partial_answer, session_factory, claim, owner_id),
+                        interval=partial_write_interval,
+                    )
+                    try:
+                        return await execute_streaming_inference(
+                            client,
+                            work.config,
+                            work.prompt,
+                            previous_attempt_count=0,
+                            start_attempt=partial(
+                                start_http_attempt,
+                                session_factory,
+                                claim,
+                                owner_id,
+                            ),
+                            finish_attempt=partial(
+                                finish_http_attempt,
+                                session_factory,
+                                claim,
+                                owner_id,
+                            ),
+                            on_partial=writer.write,
+                        )
+                    finally:
+                        # Best-effort trailing write; a canceled task may not
+                        # complete it, which finalize then clears anyway.
+                        with suppress(Exception):
+                            await writer.flush()
                 return await execute_inference(
                     client,
                     work.config,

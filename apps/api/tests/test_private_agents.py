@@ -184,13 +184,22 @@ async def test_private_agent_api_lifecycle_workspace_and_isolation(tmp_path: Pat
             assert str(request.url) == "https://api.openai.com/v1/chat/completions"
             assert request.headers["Authorization"] == f"Bearer {API_KEY}"
             body = json.loads(request.content)
-            assert body == {
-                "model": expected_model,
-                "messages": [{"role": "user", "content": body["messages"][0]["content"]}],
-                "stream": False,
-            }
+            assert body["model"] == expected_model
+            assert len(body["messages"]) == 1
             if response_status != 200:
                 return httpx.Response(response_status, json={"error": {"message": API_KEY}})
+            if body.get("stream") is True:
+                # Workspace attempts use the OpenAI-compatible SSE stream.
+                chunks = (
+                    'data: {"choices":[{"delta":{"content":"OK"}}]}\n\n'
+                    "data: [DONE]\n\n"
+                )
+                return httpx.Response(
+                    200,
+                    content=chunks.encode(),
+                    headers={"content-type": "text/event-stream"},
+                )
+            assert body["stream"] is False
             return httpx.Response(
                 200,
                 json={"choices": [{"message": {"content": "OK"}}]},
