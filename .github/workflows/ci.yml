@@ -25,8 +25,17 @@ jobs:
       - name: Mypy
         run: uv run mypy
 
+      - name: Cache demo dataset fixture
+        id: cache-demo
+        uses: actions/cache@v4
+        with:
+          path: data/demo-dataset
+          key: demo-dataset-${{ hashFiles('apps/api/src/agent_eval/datasets/demo_builder.py', 'apps/api/src/agent_eval/datasets/schema.py') }}
+
       - name: Build demo dataset fixture
-        # Upstream HuggingFace datasets-server intermittently returns 500s; retry before failing.
+        # Upstream HuggingFace datasets-server intermittently returns 5xx for minutes at a
+        # time; retry on cache miss and reuse the cached fixture when the code is unchanged.
+        if: steps.cache-demo.outputs.cache-hit != 'true'
         run: |
           for attempt in 1 2 3; do
             uv run python -m agent_eval.maintenance.main build-demo-dataset && exit 0
