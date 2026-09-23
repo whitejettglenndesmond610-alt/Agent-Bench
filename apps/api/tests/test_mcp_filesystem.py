@@ -59,12 +59,15 @@ from agent_eval.runs.service import (  # noqa: E402
 from agent_eval.worker.executor import WorkItem, route_interactive_items  # noqa: E402
 from agent_eval.worker.mcp_executor import (  # noqa: E402
     McpExecutionError,
+    McpWorkItem,
     ensure_state_zip,
+    execute_mcp_items,
     extract_state_zip,
     parse_mcp_task_ref,
     run_mcp_episode,
     run_verify_script,
 )
+from agent_eval.worker.result_writer import AttemptCompletion  # noqa: E402
 
 FAKE_COMMIT = "0" * 40
 
@@ -689,3 +692,61 @@ async def test_mcp_filesystem_run_rejects_ranking_eligible(tmp_path: Path) -> No
             assert excinfo.value.code == "mcp_filesystem_incomplete"
     finally:
         await engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# ExceptionGroup unwrapping in execute_mcp_items
+# ---------------------------------------------------------------------------
+
+
+class _FakeResultWriter:
+    def __init__(self) -> None:
+        self.completions: list[AttemptCompletion] = []
+
+    async def start_attempt(self, item_id: object, attempt_number: int) -> object:
+        return uuid4()
+
+    async def finish_attempt(self, completion: AttemptCompletion) -> None:
+        self.completions.append(completion)
+
+    async def finalize_item(self, **kwargs: object) -> None:
+        return None
+
+
+async def test_execute_mcp_items_unwraps_exception_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agent_eval.worker import mcp_executor
+
+    async def boom(**kwargs: object) -> None:
+        raise ExceptionGroup("episode", [RuntimeError("server crashed")])
+
+    monkeypatch.setattr(mcp_executor, "run_mcp_episode", boom)
+
+    async def record_outcome(outcome: object, prompt_characters: int) -> None:
+        return None
+
+    writer = _FakeResultWriter()
+    item = McpWorkItem(
+        item_id=uuid4(),
+        run_agent_id=uuid4(),
+        question_id=uuid4(),
+        attempt_count=0,
+        trial_index=0,
+        task_ref="mcp:filesystem:easy/file_context/task_one",
+        prompt_characters=10,
+    )
+    await execute_mcp_items(
+        [item],
+        agent_id=uuid4(),
+        version_id=uuid4(),
+        concurrency=1,
+        config=make_config("http://agent.test/run"),
+        settings=Settings(
+            database_url=f"sqlite+aiosqlite:///{tmp_path}/x.db", data_dir=tmp_path
+        ),
+        writer=writer,  # type: ignore[arg-type]
+        record_outcome=record_outcome,
+    )
+    assert len(writer.completions) == 1
+    assert writer.completions[0].error_type == "mcp_episode_RuntimeError"

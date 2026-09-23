@@ -720,6 +720,10 @@ async def _run_mcp_item(
             latency_ms=elapsed_ms(started_at),
         )
     except Exception as error:
+        # anyio task groups surface failures as ExceptionGroup; unwrap the first
+        # leaf so error_type stays a meaningful classification.
+        if isinstance(error, ExceptionGroup) and error.exceptions:
+            error = error.exceptions[0]
         result = EpisodeResult(
             success=False,
             error_type=f"mcp_episode_{type(error).__name__}"[:80],
