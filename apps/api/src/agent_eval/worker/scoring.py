@@ -12,10 +12,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import joinedload
 
+from agent_eval.agents.inference import extract_token_usage
 from agent_eval.agents.mapping import extract_answer
 from agent_eval.core.artifact_store import ArtifactStore
 from agent_eval.core.artifacts import read_indexed_artifact, store_judge_response
 from agent_eval.core.settings import Settings
+from agent_eval.core.tracing import set_attributes, trace_span
 from agent_eval.db.base import utc_now
 from agent_eval.db.enums import (
     Ability,
@@ -273,6 +275,7 @@ async def execute_answer_scoring(
                             judge_runtime,
                             sleep,
                             request_limit,
+                            run_id=run_id,
                         ),
                         name=f"answer-judge-{index}",
                     )
@@ -459,6 +462,23 @@ def interactive_score(item: ScoreWork) -> ScoreResult:
     )
 
 
+def judge_usage_attributes(raw_response: bytes) -> dict[str, int]:
+    """Token usage parsed from the raw judge response body (best effort)."""
+    try:
+        payload: Any = json.loads(raw_response)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return {}
+    input_tokens, output_tokens, total_tokens = extract_token_usage(payload)
+    attributes: dict[str, int] = {}
+    if input_tokens is not None:
+        attributes["gen_ai.usage.input_tokens"] = input_tokens
+    if output_tokens is not None:
+        attributes["gen_ai.usage.output_tokens"] = output_tokens
+    if total_tokens is not None:
+        attributes["gen_ai.usage.total_tokens"] = total_tokens
+    return attributes
+
+
 async def judge_worker(
     queue: asyncio.Queue[ScoreWork],
     writer: ScoringWriter,
@@ -467,6 +487,8 @@ async def judge_worker(
     judge_runtime: JudgeRuntime,
     sleep: Sleep,
     request_limit: RequestLimit | None = None,
+    *,
+    run_id: UUID | None = None,
 ) -> bool:
     api_key = settings.deepseek_api_key
     if api_key is None:
@@ -483,63 +505,87 @@ async def judge_worker(
             reason: str
             raw_response: bytes
             model_returned: str | None
+            judge_attempts: int
             judge_details: dict[str, Any] | None = None
-            async with concurrency_slot(request_limit):
-                if (
-                    item.question_type == QuestionType.OPEN_ENDED
-                    and judge_runtime.prompt_version == RUBRIC_PROMPT_VERSION
-                ):
-                    judged_rubric = await judge_rubric_answer(
-                        client,
-                        api_url=settings.deepseek_api_url,
-                        api_key=api_key.get_secret_value(),
-                        model=judge_runtime.model,
-                        question=item.question,
-                        reference_answer=item.reference_answer,
-                        candidate_answer=item.candidate_answer,
-                        timeout_seconds=settings.deepseek_timeout_seconds,
-                        sleep=sleep,
-                    )
-                    score = judged_rubric.score
-                    reason = judged_rubric.reason
-                    raw_response = judged_rubric.raw_response
-                    model_returned = judged_rubric.model_returned
-                    judge_details = {
-                        "rubric": {
-                            "prompt_version": RUBRIC_PROMPT_VERSION,
-                            "dimensions": [
-                                {
-                                    "key": dimension.key,
-                                    "label": dimension.label,
-                                    "weight": dimension.weight,
-                                    "verdict": dimension.verdict,
-                                    "rationale": dimension.rationale,
-                                }
-                                for dimension in judged_rubric.dimensions
-                            ],
+            with trace_span(
+                f"eval.judge run={run_id} item={item.item_id}",
+                attributes={
+                    "gen_ai.system": judge_runtime.provider,
+                    "gen_ai.operation.name": "judge",
+                    "gen_ai.request.model": judge_runtime.model,
+                    "agent_eval.run_id": str(run_id) if run_id is not None else None,
+                    "agent_eval.item_id": str(item.item_id),
+                    "agent_eval.question_type": item.question_type.value,
+                    "agent_eval.judge_prompt_version": judge_runtime.prompt_version,
+                },
+            ) as judge_span:
+                async with concurrency_slot(request_limit):
+                    if (
+                        item.question_type == QuestionType.OPEN_ENDED
+                        and judge_runtime.prompt_version == RUBRIC_PROMPT_VERSION
+                    ):
+                        judged_rubric = await judge_rubric_answer(
+                            client,
+                            api_url=settings.deepseek_api_url,
+                            api_key=api_key.get_secret_value(),
+                            model=judge_runtime.model,
+                            question=item.question,
+                            reference_answer=item.reference_answer,
+                            candidate_answer=item.candidate_answer,
+                            timeout_seconds=settings.deepseek_timeout_seconds,
+                            sleep=sleep,
+                        )
+                        score = judged_rubric.score
+                        reason = judged_rubric.reason
+                        raw_response = judged_rubric.raw_response
+                        model_returned = judged_rubric.model_returned
+                        judge_attempts = judged_rubric.attempt_count
+                        judge_details = {
+                            "rubric": {
+                                "prompt_version": RUBRIC_PROMPT_VERSION,
+                                "dimensions": [
+                                    {
+                                        "key": dimension.key,
+                                        "label": dimension.label,
+                                        "weight": dimension.weight,
+                                        "verdict": dimension.verdict,
+                                        "rationale": dimension.rationale,
+                                    }
+                                    for dimension in judged_rubric.dimensions
+                                ],
+                            }
                         }
-                    }
-                else:
-                    judge = (
-                        judge_open_answer
-                        if item.question_type == QuestionType.OPEN_ENDED
-                        else judge_short_answer
-                    )
-                    judged = await judge(
-                        client,
-                        api_url=settings.deepseek_api_url,
-                        api_key=api_key.get_secret_value(),
-                        model=judge_runtime.model,
-                        question=item.question,
-                        reference_answer=item.reference_answer,
-                        candidate_answer=item.candidate_answer,
-                        timeout_seconds=settings.deepseek_timeout_seconds,
-                        sleep=sleep,
-                    )
-                    score = judged.score
-                    reason = judged.reason
-                    raw_response = judged.raw_response
-                    model_returned = judged.model_returned
+                    else:
+                        judge = (
+                            judge_open_answer
+                            if item.question_type == QuestionType.OPEN_ENDED
+                            else judge_short_answer
+                        )
+                        judged = await judge(
+                            client,
+                            api_url=settings.deepseek_api_url,
+                            api_key=api_key.get_secret_value(),
+                            model=judge_runtime.model,
+                            question=item.question,
+                            reference_answer=item.reference_answer,
+                            candidate_answer=item.candidate_answer,
+                            timeout_seconds=settings.deepseek_timeout_seconds,
+                            sleep=sleep,
+                        )
+                        score = judged.score
+                        reason = judged.reason
+                        raw_response = judged.raw_response
+                        model_returned = judged.model_returned
+                        judge_attempts = judged.attempt_count
+                set_attributes(
+                    judge_span,
+                    {
+                        **judge_usage_attributes(raw_response),
+                        "gen_ai.response.model": model_returned,
+                        "agent_eval.judge_score": score,
+                        "agent_eval.judge_attempts": judge_attempts,
+                    },
+                )
             written = await writer.write(
                 ScoreResult(
                     item_id=item.item_id,

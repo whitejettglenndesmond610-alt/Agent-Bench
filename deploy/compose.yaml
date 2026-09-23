@@ -90,6 +90,14 @@ services:
       TAU2_DATA_DIR: ${TAU2_DATA_DIR:-/data/tau2}
       AGENT_EVAL_INTERACTIVE_CONCURRENCY: ${AGENT_EVAL_INTERACTIVE_CONCURRENCY:-4}
       AGENT_EVAL_INTERACTIVE_TIMEOUT_SECONDS: ${AGENT_EVAL_INTERACTIVE_TIMEOUT_SECONDS:-900}
+      # Optional Langfuse/OTLP tracing for agent, judge, and simulator calls.
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+    # Join an external Langfuse compose network when tracing is enabled.
+    networks:
+      - default
+      - langfuse_default
     volumes:
       - app_data:/data
     depends_on:
@@ -143,3 +151,9 @@ services:
 
 volumes:
   app_data:
+
+networks:
+  # External network shared with a separately deployed Langfuse stack.
+  # Only the worker joins it; safe to leave declared when unused.
+  langfuse_default:
+    external: true

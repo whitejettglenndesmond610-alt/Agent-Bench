@@ -28,6 +28,14 @@ from agent_eval.auth.encryption import TokenCipher
 from agent_eval.core.artifact_store import ArtifactStore, StoredArtifact
 from agent_eval.core.artifacts import store_workspace_response
 from agent_eval.core.settings import Settings
+from agent_eval.core.tracing import (
+    completion_usage_attributes,
+    endpoint_host,
+    set_attributes,
+    set_current_span_attributes,
+    trace_span,
+    track_finish_attempt,
+)
 from agent_eval.db.base import utc_now
 from agent_eval.db.enums import (
     AgentStatus,
@@ -575,11 +583,54 @@ async def process_workspace_attempt(
     transport: httpx.AsyncBaseTransport | None = None,
     partial_write_interval: float = PARTIAL_ANSWER_WRITE_INTERVAL_SECONDS,
 ) -> bool:
+    with trace_span(
+        f"workspace.attempt {claim.attempt_id}",
+        attributes={
+            "gen_ai.operation.name": "chat",
+            "agent_eval.attempt_id": str(claim.attempt_id),
+        },
+    ):
+        return await _process_workspace_attempt(
+            session_factory,
+            settings,
+            claim,
+            artifact_store=artifact_store,
+            token_cipher=token_cipher,
+            owner_id=owner_id,
+            limits=limits,
+            transport=transport,
+            partial_write_interval=partial_write_interval,
+        )
+
+
+async def _process_workspace_attempt(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+    claim: WorkspaceClaim,
+    *,
+    artifact_store: ArtifactStore,
+    token_cipher: TokenCipher | None,
+    owner_id: str,
+    limits: WorkerLimits,
+    transport: httpx.AsyncBaseTransport | None = None,
+    partial_write_interval: float = PARTIAL_ANSWER_WRITE_INTERVAL_SECONDS,
+) -> bool:
     stored: StoredArtifact | None = None
     try:
         work = await load_workspace_work(session_factory, claim, owner_id, token_cipher)
+        set_current_span_attributes(
+            {
+                "agent_eval.conversation_id": str(work.conversation_id),
+                "agent_eval.agent_version_id": str(work.agent_version_id),
+                "agent_eval.generation_no": work.generation_no,
+                "agent_eval.streaming": work.config.supports_streaming,
+            }
+        )
 
         async def execute() -> InferenceOutcome:
+            finish_attempt, completions = track_finish_attempt(
+                partial(finish_http_attempt, session_factory, claim, owner_id)
+            )
             async with (
                 agent_request_slots(
                     limits.agent_versions,
@@ -589,13 +640,42 @@ async def process_workspace_attempt(
                 ),
                 httpx.AsyncClient(transport=transport, follow_redirects=False) as client,
             ):
-                if work.config.supports_streaming:
-                    writer = PartialAnswerWriter(
-                        partial(write_partial_answer, session_factory, claim, owner_id),
-                        interval=partial_write_interval,
-                    )
-                    try:
-                        return await execute_streaming_inference(
+                with trace_span(
+                    "gen_ai.chat agent",
+                    attributes={
+                        "gen_ai.system": endpoint_host(work.config.endpoint_url),
+                        "gen_ai.operation.name": "chat",
+                        "agent_eval.streaming": work.config.supports_streaming,
+                        "agent_eval.prompt_characters": len(work.prompt),
+                    },
+                ) as agent_span:
+                    if work.config.supports_streaming:
+                        writer = PartialAnswerWriter(
+                            partial(write_partial_answer, session_factory, claim, owner_id),
+                            interval=partial_write_interval,
+                        )
+                        try:
+                            outcome = await execute_streaming_inference(
+                                client,
+                                work.config,
+                                work.prompt,
+                                previous_attempt_count=0,
+                                start_attempt=partial(
+                                    start_http_attempt,
+                                    session_factory,
+                                    claim,
+                                    owner_id,
+                                ),
+                                finish_attempt=finish_attempt,
+                                on_partial=writer.write,
+                            )
+                        finally:
+                            # Best-effort trailing write; a canceled task may not
+                            # complete it, which finalize then clears anyway.
+                            with suppress(Exception):
+                                await writer.flush()
+                    else:
+                        outcome = await execute_inference(
                             client,
                             work.config,
                             work.prompt,
@@ -606,37 +686,19 @@ async def process_workspace_attempt(
                                 claim,
                                 owner_id,
                             ),
-                            finish_attempt=partial(
-                                finish_http_attempt,
-                                session_factory,
-                                claim,
-                                owner_id,
-                            ),
-                            on_partial=writer.write,
+                            finish_attempt=finish_attempt,
                         )
-                    finally:
-                        # Best-effort trailing write; a canceled task may not
-                        # complete it, which finalize then clears anyway.
-                        with suppress(Exception):
-                            await writer.flush()
-                return await execute_inference(
-                    client,
-                    work.config,
-                    work.prompt,
-                    previous_attempt_count=0,
-                    start_attempt=partial(
-                        start_http_attempt,
-                        session_factory,
-                        claim,
-                        owner_id,
-                    ),
-                    finish_attempt=partial(
-                        finish_http_attempt,
-                        session_factory,
-                        claim,
-                        owner_id,
-                    ),
-                )
+                    set_attributes(
+                        agent_span,
+                        {
+                            **completion_usage_attributes(completions),
+                            "agent_eval.attempts": outcome.attempt_count,
+                            "agent_eval.latency_ms": outcome.latency_ms,
+                            "agent_eval.success": outcome.success,
+                            "error.type": outcome.error_type,
+                        },
+                    )
+                    return outcome
 
         inference_task = asyncio.create_task(
             execute(), name=f"workspace-inference-{claim.attempt_id}"
@@ -671,6 +733,13 @@ async def process_workspace_attempt(
             watcher.cancel()
             await asyncio.gather(watcher, return_exceptions=True)
 
+        set_current_span_attributes(
+            {
+                "agent_eval.success": outcome.success,
+                "agent_eval.latency_ms": outcome.latency_ms,
+                "error.type": outcome.error_type,
+            }
+        )
         if outcome.response_content is not None:
             storage_task = asyncio.create_task(
                 asyncio.to_thread(
@@ -710,6 +779,7 @@ async def process_workspace_attempt(
     except WorkspaceWorkUnavailable as error:
         if error.error_type == "claim_lost":
             return False
+        set_current_span_attributes({"error.type": error.error_type})
         return await finalize_workspace_attempt(
             session_factory,
             settings,
@@ -727,6 +797,7 @@ async def process_workspace_attempt(
                 "error_type": type(error).__name__,
             },
         )
+        set_current_span_attributes({"error.type": "workspace_internal"})
         if stored is not None:
             await delete_artifact_if_unindexed(
                 session_factory, artifact_store, claim, stored

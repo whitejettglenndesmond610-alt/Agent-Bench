@@ -34,6 +34,7 @@ from tau2.registry import registry  # noqa: E402
 
 from agent_eval.agents.inference import InferenceConfig  # noqa: E402
 from agent_eval.agents.interactive import (  # noqa: E402
+    AGENT_PROTOCOL,
     STOP_TOKEN,
     AgentProtocolError,
     HttpTextProtocolAgent,
@@ -57,6 +58,7 @@ from agent_eval.runs.profiles import (  # noqa: E402
     default_profile_key,
 )
 from agent_eval.worker.interactive_executor import (  # noqa: E402
+    SIMULATOR_MODEL,
     InteractiveExecutionError,
     parse_task_ref,
     run_tau2_episode,
@@ -634,3 +636,81 @@ def test_agent_message_usage_none_when_endpoint_omits_it() -> None:
     )
     assert message.usage is None
 
+
+
+# ---------------------------------------------------------------------------
+# Langfuse tracing of tau2 episodes
+# ---------------------------------------------------------------------------
+
+
+def test_episode_tracing_spans(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+
+    from agent_eval.core import tracing
+    from agent_eval.core.tracing import init_tracing, trace_span, tracing_enabled
+
+    tracing._reset_for_tests()
+    try:
+        # Disabled: the episode produces no spans and trace_span is a no-op.
+        assert tracing_enabled() is False
+        with trace_span("noop") as span:
+            assert span is None
+
+        exporter = InMemorySpanExporter()
+        assert init_tracing(
+            Settings(
+                LANGFUSE_HOST="http://langfuse.test",
+                LANGFUSE_PUBLIC_KEY="pk-test",
+                LANGFUSE_SECRET_KEY="sk-test",
+            ),
+            exporter=exporter,
+        )
+
+        usage = {"prompt_tokens": 10, "completion_tokens": 4}
+        result = run_episode(
+            tmp_path,
+            monkeypatch,
+            [
+                fenced({"action": "tool", "name": "get_users", "arguments": {}}),
+                fenced({"action": "respond", "content": "There are no users."}),
+            ],
+            usage=usage,
+        )
+        assert result.success is True
+
+        spans = exporter.get_finished_spans()
+        (episode,) = [span for span in spans if span.name.startswith("tau2.episode ")]
+        agent_spans = [span for span in spans if span.name == "gen_ai.chat agent"]
+        simulator_spans = [
+            span for span in spans if span.name == "gen_ai.chat user_simulator"
+        ]
+        tool_spans = [span for span in spans if span.name.startswith("tool.execute ")]
+        # two agent turns, one tool execution, at least one simulator turn
+        assert len(agent_spans) == 2
+        assert len(tool_spans) == 1
+        assert simulator_spans
+        for child in agent_spans + simulator_spans + tool_spans:
+            assert child.parent.span_id == episode.context.span_id
+            assert child.context.trace_id == episode.context.trace_id
+
+        episode_attributes = dict(episode.attributes)
+        assert episode_attributes["agent_eval.task_ref"] == "tau2:mock:mock-1"
+        assert episode_attributes["agent_eval.agent_protocol"] == AGENT_PROTOCOL
+        assert episode_attributes["agent_eval.reward"] == 1.0
+        assert episode_attributes["agent_eval.termination_reason"] == "user_stop"
+        assert episode_attributes["agent_eval.turns"] > 0
+        assert episode_attributes["gen_ai.usage.input_tokens"] == 20
+        assert episode_attributes["gen_ai.usage.output_tokens"] == 8
+
+        agent_attributes = dict(agent_spans[0].attributes)
+        assert agent_attributes["gen_ai.operation.name"] == "chat"
+        assert agent_attributes["agent_eval.agent_protocol"] == AGENT_PROTOCOL
+        assert agent_attributes["gen_ai.usage.input_tokens"] == 10
+        assert dict(tool_spans[0].attributes)["gen_ai.tool.name"] == "get_users"
+        simulator_attributes = dict(simulator_spans[0].attributes)
+        assert simulator_attributes["gen_ai.request.model"] == SIMULATOR_MODEL
+        assert simulator_attributes["agent_eval.component"] == "user_simulator"
+    finally:
+        tracing._reset_for_tests()

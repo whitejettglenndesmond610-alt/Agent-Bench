@@ -21,6 +21,13 @@ from agent_eval.agents.prompt import build_question_prompt
 from agent_eval.auth.encryption import TokenCipher
 from agent_eval.core.artifact_store import ArtifactStore
 from agent_eval.core.settings import Settings
+from agent_eval.core.tracing import (
+    completion_usage_attributes,
+    endpoint_host,
+    set_attributes,
+    trace_span,
+    track_finish_attempt,
+)
 from agent_eval.db.enums import ExecutionStatus, QuestionType
 from agent_eval.db.models import AgentVersion, DatasetVersion, ExecutionItem, Question, RunAgent
 from agent_eval.worker.limits import RequestLimit, agent_request_slots
@@ -43,6 +50,7 @@ class WorkItem:
 
 @dataclass(frozen=True)
 class AgentWork:
+    run_id: UUID
     run_agent_id: UUID
     agent_id: UUID
     version_id: UUID
@@ -189,6 +197,7 @@ async def load_run_work(
         ]
         work.append(
             AgentWork(
+                run_id=run_id,
                 run_agent_id=run_agent.id,
                 agent_id=version.agent_id,
                 version_id=version.id,
@@ -331,48 +340,91 @@ async def agent_worker(
             return
         try:
             skip_reason = await circuit_breaker.skip_reason(item)
-            if skip_reason is not None:
+            with trace_span(
+                f"eval.item run={work.run_id} question={item.question_id}",
+                attributes={
+                    "gen_ai.operation.name": "chat",
+                    "agent_eval.run_id": str(work.run_id),
+                    "agent_eval.item_id": str(item.id),
+                    "agent_eval.question_id": str(item.question_id),
+                    "agent_eval.agent_id": str(work.agent_id),
+                    "agent_eval.agent_version_id": str(work.version_id),
+                    "agent_eval.question_type": item.question_type.value,
+                    "agent_eval.trial_index": item.trial_index,
+                },
+            ) as item_span:
+                if skip_reason is not None:
+                    set_attributes(
+                        item_span,
+                        {"error.type": skip_reason, "agent_eval.success": False},
+                    )
+                    await writer.finalize_item(
+                        item_id=item.id,
+                        run_agent_id=item.run_agent_id,
+                        agent_id=work.agent_id,
+                        question_id=item.question_id,
+                        outcome=InferenceOutcome(
+                            success=False,
+                            canceled=False,
+                            answer=None,
+                            citations=[],
+                            response_content=None,
+                            latency_ms=0,
+                            attempt_count=item.attempt_count,
+                            error_type=skip_reason,
+                        ),
+                    )
+                    continue
+                finish_attempt, completions = track_finish_attempt(writer.finish_attempt)
+                async with agent_request_slots(
+                    version_request_limit,
+                    request_limit,
+                    version_id=str(work.version_id),
+                    version_limit=work.concurrency,
+                ):
+                    with trace_span(
+                        "gen_ai.chat agent",
+                        attributes={
+                            "gen_ai.system": endpoint_host(work.config.endpoint_url),
+                            "gen_ai.operation.name": "chat",
+                            "agent_eval.prompt_characters": len(item.prompt),
+                        },
+                    ) as agent_span:
+                        outcome = await execute_inference(
+                            client,
+                            work.config,
+                            item.prompt,
+                            previous_attempt_count=item.attempt_count,
+                            start_attempt=partial(writer.start_attempt, item.id),
+                            finish_attempt=finish_attempt,
+                            sleep=sleep,
+                        )
+                        set_attributes(
+                            agent_span,
+                            {
+                                **completion_usage_attributes(completions),
+                                "agent_eval.attempts": outcome.attempt_count,
+                                "agent_eval.latency_ms": outcome.latency_ms,
+                                "error.type": outcome.error_type,
+                            },
+                        )
+                if outcome.canceled:
+                    return
+                set_attributes(
+                    item_span,
+                    {
+                        "agent_eval.success": outcome.success,
+                        "agent_eval.latency_ms": outcome.latency_ms,
+                        "error.type": outcome.error_type,
+                    },
+                )
                 await writer.finalize_item(
                     item_id=item.id,
                     run_agent_id=item.run_agent_id,
                     agent_id=work.agent_id,
                     question_id=item.question_id,
-                    outcome=InferenceOutcome(
-                        success=False,
-                        canceled=False,
-                        answer=None,
-                        citations=[],
-                        response_content=None,
-                        latency_ms=0,
-                        attempt_count=item.attempt_count,
-                        error_type=skip_reason,
-                    ),
+                    outcome=outcome,
                 )
-                continue
-            async with agent_request_slots(
-                version_request_limit,
-                request_limit,
-                version_id=str(work.version_id),
-                version_limit=work.concurrency,
-            ):
-                outcome = await execute_inference(
-                    client,
-                    work.config,
-                    item.prompt,
-                    previous_attempt_count=item.attempt_count,
-                    start_attempt=partial(writer.start_attempt, item.id),
-                    finish_attempt=writer.finish_attempt,
-                    sleep=sleep,
-                )
-            if outcome.canceled:
-                return
-            await writer.finalize_item(
-                item_id=item.id,
-                run_agent_id=item.run_agent_id,
-                agent_id=work.agent_id,
-                question_id=item.question_id,
-                outcome=outcome,
-            )
-            await circuit_breaker.record(outcome, len(item.prompt))
+                await circuit_breaker.record(outcome, len(item.prompt))
         finally:
             item_queue.task_done()

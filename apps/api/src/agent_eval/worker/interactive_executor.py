@@ -33,6 +33,12 @@ from agent_eval.agents.inference import (
     elapsed_ms,
 )
 from agent_eval.core.settings import Settings
+from agent_eval.core.tracing import (
+    SpanAttributes,
+    set_attributes,
+    trace_span,
+    tracing_enabled,
+)
 from agent_eval.db.enums import AttemptStatus
 from agent_eval.worker.limits import (
     RequestLimit,
@@ -144,8 +150,100 @@ def run_tau2_episode(
     trial_index: int,
     timeout_seconds: int,
     settings: Settings,
+    trace_attributes: SpanAttributes | None = None,
 ) -> EpisodeResult:
-    """Run one tau2 simulation synchronously; call from a worker thread."""
+    """Run one tau2 simulation synchronously; call from a worker thread.
+
+    The whole episode is one trace (root span here, in the worker thread, so
+    per-turn child spans attach without cross-thread context propagation):
+    agent HTTP calls, user simulator calls, and tool executions nest below it.
+    """
+    with trace_span(
+        f"tau2.episode {task_ref} trial={trial_index}",
+        attributes={
+            "gen_ai.operation.name": "tau2_episode",
+            "agent_eval.task_ref": task_ref,
+            "agent_eval.trial_index": trial_index,
+            **(trace_attributes or {}),
+        },
+    ) as episode_span:
+        return _run_tau2_episode(
+            episode_span=episode_span,
+            config=config,
+            task_ref=task_ref,
+            trial_index=trial_index,
+            timeout_seconds=timeout_seconds,
+            settings=settings,
+        )
+
+
+def _trace_simulator_calls(user: Any) -> None:
+    """Wrap the simulator so each user turn becomes a child span (no content)."""
+    if not tracing_enabled():
+        return
+    original = user.generate_next_message
+
+    def generate_next_message(message: Any, state: Any) -> Any:
+        with trace_span(
+            "gen_ai.chat user_simulator",
+            attributes={
+                "gen_ai.system": "deepseek",
+                "gen_ai.operation.name": "chat",
+                "gen_ai.request.model": SIMULATOR_MODEL,
+                "agent_eval.component": "user_simulator",
+            },
+        ) as span:
+            reply, new_state = original(message, state)
+            usage = getattr(reply, "usage", None)
+            attributes: SpanAttributes = {}
+            if isinstance(usage, dict):
+                prompt_tokens = usage.get("prompt_tokens")
+                completion_tokens = usage.get("completion_tokens")
+                if isinstance(prompt_tokens, int) and not isinstance(prompt_tokens, bool):
+                    attributes["gen_ai.usage.input_tokens"] = prompt_tokens
+                if isinstance(completion_tokens, int) and not isinstance(
+                    completion_tokens, bool
+                ):
+                    attributes["gen_ai.usage.output_tokens"] = completion_tokens
+            set_attributes(span, attributes)
+            return reply, new_state
+
+    user.generate_next_message = generate_next_message
+
+
+def _trace_environment_tools(environment: Any) -> None:
+    """Wrap environment.get_response so each tool execution becomes a span."""
+    if not tracing_enabled():
+        return
+    original = environment.get_response
+
+    def get_response(message: Any) -> Any:
+        tool_name = str(getattr(message, "name", "unknown"))
+        with trace_span(
+            f"tool.execute {tool_name}",
+            attributes={
+                "gen_ai.operation.name": "execute_tool",
+                "gen_ai.tool.name": tool_name,
+            },
+        ) as span:
+            result = original(message)
+            set_attributes(
+                span, {"agent_eval.tool_error": bool(getattr(result, "error", False))}
+            )
+            return result
+
+    environment.get_response = get_response
+
+
+def _run_tau2_episode(
+    *,
+    episode_span: Any,
+    config: InferenceConfig,
+    task_ref: str,
+    trial_index: int,
+    timeout_seconds: int,
+    settings: Settings,
+) -> EpisodeResult:
     from tau2.orchestrator.orchestrator import Orchestrator
     from tau2.registry import registry
     from tau2.runner.simulation import run_simulation
@@ -164,6 +262,7 @@ def run_tau2_episode(
     if task is None:
         raise InteractiveExecutionError("interactive_task_missing")
     environment = registry.get_env_constructor(domain)()
+    _trace_environment_tools(environment)
     base_trajectory: dict[str, Any] = {
         "tau2_version": tau2_version(),
         "domain": domain,
@@ -190,6 +289,7 @@ def run_tau2_episode(
             tools=user_tools or None,
             llm_args={"temperature": 0.0},
         )
+        _trace_simulator_calls(user)
         orchestrator = Orchestrator(
             domain=domain,
             agent=agent,
@@ -219,6 +319,22 @@ def run_tau2_episode(
             output_tokens = spent["completion_tokens"] if spent else None
             simulator_input, simulator_output = _sum_message_usage(
                 orchestrator.trajectory, role="user"
+            )
+            set_attributes(
+                episode_span,
+                {
+                    "agent_eval.domain": domain,
+                    "agent_eval.task_id": task_id,
+                    "agent_eval.agent_protocol": AGENT_PROTOCOL,
+                    "agent_eval.reward": 0.0,
+                    "agent_eval.turns": len(orchestrator.trajectory),
+                    "agent_eval.termination_reason": "agent_error",
+                    "error.type": "agent_protocol_error",
+                    "gen_ai.usage.input_tokens": input_tokens,
+                    "gen_ai.usage.output_tokens": output_tokens,
+                    "agent_eval.simulator_input_tokens": simulator_input,
+                    "agent_eval.simulator_output_tokens": simulator_output,
+                },
             )
             return EpisodeResult(
                 success=True,
@@ -252,6 +368,22 @@ def run_tau2_episode(
     answer = (
         f"reward={reward:.4f}; termination={termination_value}; "
         f"turns={len(simulation.messages)}; {_reward_summary(reward_info)}"
+    )
+    set_attributes(
+        episode_span,
+        {
+            "agent_eval.domain": domain,
+            "agent_eval.task_id": task_id,
+            "agent_eval.agent_protocol": AGENT_PROTOCOL,
+            "agent_eval.tau2_version": tau2_version(),
+            "agent_eval.reward": reward,
+            "agent_eval.turns": len(simulation.messages),
+            "agent_eval.termination_reason": termination_value,
+            "gen_ai.usage.input_tokens": input_tokens,
+            "gen_ai.usage.output_tokens": output_tokens,
+            "agent_eval.simulator_input_tokens": simulator_input,
+            "agent_eval.simulator_output_tokens": simulator_output,
+        },
     )
     return EpisodeResult(
         success=True,
@@ -409,6 +541,11 @@ async def _run_interactive_item(
                         trial_index=item.trial_index,
                         timeout_seconds=settings.interactive_timeout_seconds,
                         settings=settings,
+                        trace_attributes={
+                            "agent_eval.item_id": str(item.item_id),
+                            "agent_eval.run_agent_id": str(item.run_agent_id),
+                            "agent_eval.question_id": str(item.question_id),
+                        },
                     ),
                 ),
                 timeout=settings.interactive_timeout_seconds + 120,

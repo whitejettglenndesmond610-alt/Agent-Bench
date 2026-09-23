@@ -35,6 +35,7 @@ from agent_eval.agents.inference import (
     InferenceConfig,
     post_agent_prompt,
 )
+from agent_eval.core.tracing import endpoint_host, set_attributes, trace_span
 
 STOP_TOKEN = "###STOP###"
 AGENT_PROTOCOL = "http-text-json-v1"
@@ -255,12 +256,31 @@ class HttpTextProtocolAgent(HalfDuplexAgent):  # type: ignore[misc]
             history=history,
             correction=self._correction,
         )
-        try:
-            result = post_agent_prompt(self._client, self._config, prompt)
-        except AgentPromptError:
-            raise
-        self._spent.append(result)
-        return result
+        with trace_span(
+            "gen_ai.chat agent",
+            attributes={
+                "gen_ai.system": endpoint_host(self._config.endpoint_url),
+                "gen_ai.operation.name": "chat",
+                "agent_eval.agent_protocol": AGENT_PROTOCOL,
+            },
+        ) as span:
+            try:
+                result = post_agent_prompt(self._client, self._config, prompt)
+            except AgentPromptError as error:
+                set_attributes(span, {"error.type": error.error_type})
+                raise
+            self._spent.append(result)
+            set_attributes(
+                span,
+                {
+                    "gen_ai.usage.input_tokens": result.input_tokens,
+                    "gen_ai.usage.output_tokens": result.output_tokens,
+                    "gen_ai.usage.total_tokens": result.total_tokens,
+                    "agent_eval.latency_ms": result.latency_ms,
+                    "http.status_code": result.status_code,
+                },
+            )
+            return result
 
     @staticmethod
     def _to_message(

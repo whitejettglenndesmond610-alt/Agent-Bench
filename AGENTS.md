@@ -21,6 +21,7 @@
 - `AGENT_EVAL_ARTIFACT_BACKEND` currently supports only `local`; keep artifact storage shared across API and every worker. Losing `AGENT_EVAL_ENCRYPTION_KEY` prevents decryption of stored Agent tokens.
 - `data/demo-dataset/`, `data/balanced-v2-candidate/`, and `data/official-v4/` are ignored because they contain restricted benchmark material. Do not commit or redistribute them; use `import-balanced-v2` for candidate data and `import-official-v4` for the Official V4 cohort.
 - tau2-bench interactive evaluation (the `tau2-retail` profile) needs the optional dependency group (`uv sync --group tau2`) and `TAU2_DATA_DIR` pointing at a tau2-bench data checkout; tau2 imports must stay lazy so the API works without the group, and tau2 tests must use `pytest.importorskip("tau2")`. Import tasks with `import-tau2-retail`; the user simulator uses the DeepSeek settings.
+- Worker-side Langfuse tracing is enabled only when `LANGFUSE_HOST`, `LANGFUSE_PUBLIC_KEY`, and `LANGFUSE_SECRET_KEY` (unprefixed, worker-only) are all set; spans go over OTLP to `{LANGFUSE_HOST}/api/public/otel` and record IDs/usage/latency/scores only, never question or answer text.
 
 ## Deployment
 

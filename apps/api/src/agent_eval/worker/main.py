@@ -15,6 +15,7 @@ from agent_eval.core.artifact_store import ArtifactStore, create_artifact_store
 from agent_eval.core.logging import configure_logging
 from agent_eval.core.settings import Settings
 from agent_eval.core.storage import ensure_storage
+from agent_eval.core.tracing import init_tracing, shutdown_tracing
 from agent_eval.db.engine import create_engine, verify_database
 from agent_eval.db.enums import CitationFetchStatus, ExecutionStatus, RunStage, RunStatus
 from agent_eval.db.models import (
@@ -276,6 +277,11 @@ async def run_worker(
     worker_artifact_store = artifact_store or create_artifact_store(worker_settings)
     worker_settings.require_worker_runtime()
     configure_logging(worker_settings.log_level)
+    if init_tracing(worker_settings):
+        logger.info(
+            "langfuse_tracing_enabled",
+            extra={"langfuse_host": worker_settings.langfuse_host},
+        )
     ensure_storage(worker_settings)
     await asyncio.to_thread(worker_artifact_store.verify_writable)
     engine = create_engine(worker_settings)
@@ -499,6 +505,7 @@ async def run_worker(
                     extra={"owner_id": owner_id, "error_type": type(error).__name__},
                 )
         await engine.dispose()
+        shutdown_tracing()
         logger.info("worker_stopped")
 
 

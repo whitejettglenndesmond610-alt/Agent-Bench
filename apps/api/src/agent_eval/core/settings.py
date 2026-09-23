@@ -80,6 +80,13 @@ class Settings(BaseSettings):
     tau2_data_dir: Path | None = Field(default=None, validation_alias="TAU2_DATA_DIR")
     interactive_concurrency: int = Field(default=4, ge=1, le=20)
     interactive_timeout_seconds: int = Field(default=900, gt=0, le=7200)
+    # Langfuse OTLP tracing (worker only). Compose passes these unprefixed; all
+    # three must be set to enable tracing, otherwise it stays fully disabled.
+    langfuse_host: str | None = Field(default=None, validation_alias="LANGFUSE_HOST")
+    langfuse_public_key: str | None = Field(default=None, validation_alias="LANGFUSE_PUBLIC_KEY")
+    langfuse_secret_key: SecretStr | None = Field(
+        default=None, validation_alias="LANGFUSE_SECRET_KEY"
+    )
     read_only_password_hash: SecretStr | None = None
     read_only_password_hash_file: Path | None = None
     operator_password_hash: SecretStr | None = None
@@ -100,10 +107,16 @@ class Settings(BaseSettings):
         "operator_password_hash",
         "encryption_key",
         "deepseek_api_key",
+        "langfuse_secret_key",
         mode="before",
     )
     @classmethod
     def empty_secret_is_unset(cls, value: object) -> object:
+        return None if value == "" else value
+
+    @field_validator("langfuse_host", "langfuse_public_key", mode="before")
+    @classmethod
+    def empty_langfuse_value_is_unset(cls, value: object) -> object:
         return None if value == "" else value
 
     @field_validator("database_url")
@@ -220,6 +233,14 @@ class Settings(BaseSettings):
     @property
     def secure_cookies(self) -> bool:
         return self.environment == "production"
+
+    @property
+    def langfuse_enabled(self) -> bool:
+        return (
+            self.langfuse_host is not None
+            and self.langfuse_public_key is not None
+            and self.langfuse_secret_key is not None
+        )
 
     @property
     def artifact_dir(self) -> Path:
