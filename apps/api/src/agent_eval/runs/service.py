@@ -394,7 +394,7 @@ async def prepare_evaluation_run(
         dataset_versions
     ):
         raise RunConfigurationError(
-            "tau2_retail_incomplete", "tau2-retail 必须使用完整的 5 题 Tau2-Retail 配置"
+            "tau2_retail_incomplete", "tau2-retail 必须使用完整的 114 题 Tau2-Retail 配置"
         )
 
     for version in agent_versions:

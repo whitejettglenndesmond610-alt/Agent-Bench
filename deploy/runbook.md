@@ -254,6 +254,35 @@ After the first successful publication, require a fallback snapshot:
 deploy/manage.sh preflight --require-snapshot
 ```
 
+## tau2 Interactive Evaluation Data
+
+The `tau2-retail` profile (114 retail tasks) is optional. The worker image already ships the
+`tau2` dependency group; only the data directory needs provisioning. On the host that owns the
+data volume:
+
+```bash
+git clone --depth 1 --branch v1.0.1 https://github.com/sierra-research/tau2-bench.git /tmp/tau2-src
+mkdir -p "$AGENT_EVAL_DATA_PATH/tau2/tau2/domains"
+cp -r /tmp/tau2-src/data/tau2/domains/retail "$AGENT_EVAL_DATA_PATH/tau2/tau2/domains/"
+chown -R 10001:10001 "$AGENT_EVAL_DATA_PATH/tau2"
+rm -rf /tmp/tau2-src
+```
+
+The compose worker sets `TAU2_DATA_DIR=/data/tau2` (overridable via the `TAU2_DATA_DIR` env in
+`.env.production`), so the layout above resolves to `/data/tau2/tau2/domains/retail` inside the
+container. Then import and verify:
+
+```bash
+docker compose --env-file .env.production --profile tools \
+  -f deploy/compose.yaml -f deploy/compose.production.yaml \
+  run --build --rm maintenance import-tau2-retail
+```
+
+The user simulator calls DeepSeek (`deepseek/deepseek-chat`) and shares the judge concurrency
+limit, so the existing `deepseek-api-key` secret is the only credential required. Importing with
+`--limit` is for development only: the profile stays hidden until all 114 tasks are present.
+Do not commit or redistribute the tau2 data directory.
+
 ## Local Fake Rehearsal
 
 The demo overlay is local-only and must never be used for an official ranking. It starts two

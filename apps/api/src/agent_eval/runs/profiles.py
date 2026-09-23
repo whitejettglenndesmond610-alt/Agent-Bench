@@ -64,7 +64,8 @@ HELDOUT_V1_EXPECTED = {
     "HLE-TextOnly": 40,
 }
 TAU2_RETAIL_PROFILE_KEY = "tau2-retail"
-TAU2_RETAIL_EXPECTED = {"Tau2-Retail": 5}
+# Full base split of the pinned tau2 v1.0.1 retail task set.
+TAU2_RETAIL_EXPECTED = {"Tau2-Retail": 114}
 
 # The first balanced-v2 release used these two names before the Original prefix
 # convention was applied consistently. Their source is still the frozen original cohort.
@@ -338,7 +339,7 @@ async def build_run_profiles(session: AsyncSession) -> list[RunProfile]:
             _profile(
                 key=TAU2_RETAIL_PROFILE_KEY,
                 name="Tau2 Retail Interactive",
-                description="Five tau2-bench retail interactive tasks against HTTP agents.",
+                description="Full tau2-bench retail base split (114 tasks) against HTTP agents.",
                 scope=RunScope.SMOKE,
                 target_ability=None,
                 datasets=tau2_datasets,

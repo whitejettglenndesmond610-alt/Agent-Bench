@@ -23,7 +23,8 @@ TAU2_RETAIL_BENCHMARK = "Tau2-Retail"
 TAU2_SOURCE = "tau2-bench"
 TAU2_VERSION = "1.0.1"
 TAU2_TASK_SPLIT = "base"
-DEFAULT_IMPORT_LIMIT = 5
+# None imports the full base split (114 tasks in pinned tau2 v1.0.1).
+DEFAULT_IMPORT_LIMIT: int | None = None
 
 
 def build_tau2_retail_records(

@@ -665,7 +665,7 @@ def main() -> None:
         "--limit",
         type=int,
         default=DEFAULT_IMPORT_LIMIT,
-        help="number of retail tasks to import (default: 5)",
+        help="number of retail tasks to import (default: the full base split)",
     )
     bootstrap_parser = subparsers.add_parser("bootstrap")
     bootstrap_parser.add_argument("--dataset", type=Path, default=Path("/datasets/demo"))

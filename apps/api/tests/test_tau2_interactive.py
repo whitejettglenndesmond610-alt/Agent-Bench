@@ -445,14 +445,14 @@ async def import_fake_tau2(
 async def test_tau2_retail_profile_appears_after_complete_import(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    task_ids = [f"task-{index}" for index in range(5)]
+    task_ids = [f"task-{index}" for index in range(114)]
     imported, before, after = await import_fake_tau2(tmp_path, monkeypatch, task_ids)
 
     assert TAU2_RETAIL_PROFILE_KEY not in {profile.key for profile in before}
-    assert len(imported) == 1 and imported[0].question_count == 5
+    assert len(imported) == 1 and imported[0].question_count == 114
 
     profile = next(item for item in after if item.key == TAU2_RETAIL_PROFILE_KEY)
-    assert profile.question_count == 5
+    assert profile.question_count == 114
     assert profile.score_config_id is None
     assert profile.ranking_eligible is False
     assert profile.publishes_to == ()
@@ -466,7 +466,7 @@ async def test_tau2_retail_profile_appears_after_complete_import(
 async def test_tau2_retail_profile_hidden_when_incomplete(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    task_ids = [f"task-{index}" for index in range(4)]
+    task_ids = [f"task-{index}" for index in range(113)]
     _, _, after = await import_fake_tau2(tmp_path, monkeypatch, task_ids)
     assert TAU2_RETAIL_PROFILE_KEY not in {profile.key for profile in after}
 
