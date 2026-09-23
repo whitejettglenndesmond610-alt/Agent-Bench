@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -307,7 +307,7 @@ def _stdio_filesystem_client(workspace: Path) -> AbstractAsyncContextManager[Mcp
         # inside the workspace so "." stays within the allowed directory.
         cwd=str(workspace),
     )
-    return Client(params)
+    return cast("AbstractAsyncContextManager[McpClientLike]", Client(params))
 
 
 def _tool_schemas(tools: list[Any]) -> list[dict[str, Any]]:
