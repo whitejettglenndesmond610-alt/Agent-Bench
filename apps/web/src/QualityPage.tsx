@@ -18,6 +18,7 @@ import {
   fetchBadPatternRules,
   fetchCalibrationReport,
   fetchCalibrationTasks,
+  fetchFailureClusters,
   fetchQualityFeedbackExport,
   fetchQualityDashboard,
   fetchQualityFinding,
@@ -371,6 +372,8 @@ export function QualityPage() {
 
       <CalibrationPanel />
 
+      <FailureClusterPanel />
+
       <section className="quality-rules">
         <header><div><span>DETECTION RULES</span><h2>底线检测规则</h2></div><small>规则变更随下一次运行生效，可对历史执行项手动重新检测。</small></header>
         {rulesQuery.isPending ? <LoadingState label="正在读取检测规则" compact /> : rulesQuery.error ? <div className="quality-state is-error">{rulesQuery.error.message}</div> :
@@ -470,6 +473,53 @@ function CalibrationPanel() {
               );
             }) : <div className="quality-state"><strong>暂无待标注的校准任务</strong><span>点击「抽取样本」从最近的评测运行中随机抽取已评分样本。</span></div>}
       </div>
+    </section>
+  );
+}
+
+function FailureClusterPanel() {
+  const clustersQuery = useQuery({
+    queryKey: ["quality-failure-clusters"],
+    queryFn: () => fetchFailureClusters()
+  });
+
+  return (
+    <section className="quality-clusters" aria-label="失败聚类">
+      <header>
+        <div><span>FAILURE CLUSTERING</span><h2>失败聚类</h2></div>
+        <small>评测运行完成后，自动对失败与低分（&lt;60）回答做两阶段 LLM 聚类，归并成命名问题组辅助人工质检。</small>
+      </header>
+      {clustersQuery.isPending ? <LoadingState label="正在读取失败聚类" compact /> :
+        clustersQuery.error ? <div className="quality-state is-error">{clustersQuery.error.message}</div> :
+          clustersQuery.data?.length ?
+            <div className="quality-cluster-list">
+              {clustersQuery.data.map((cluster) => (
+                <article key={cluster.id}>
+                  <header>
+                    <strong>{cluster.name}</strong>
+                    <span className="quality-cluster-count">{cluster.sample_count} 个样本</span>
+                    <time>{formatDate(cluster.created_at)}</time>
+                  </header>
+                  <p>{cluster.description ?? "未提供簇描述"}</p>
+                  <p className="quality-cluster-scope">
+                    {cluster.run_name ? `运行：${cluster.run_name}` : `范围：最近 ${cluster.window_days} 天`} · 共分析 {cluster.failure_count} 条失败/低分回答
+                  </p>
+                  {cluster.samples.length > 0 && <footer>
+                    <span>代表样本</span>
+                    {cluster.samples.map((sample) => (
+                      <Link key={sample.execution_item_id} className="button is-ghost"
+                        to={`/runs/${sample.run_id}/evidence/${sample.execution_item_id}`}>
+                        证据 {sample.execution_item_id.slice(0, 8)}
+                      </Link>
+                    ))}
+                  </footer>}
+                </article>
+              ))}
+            </div> :
+            <div className="quality-state">
+              <strong>暂无失败聚类</strong>
+              <span>评测运行完成且失败/低分回答达到 5 条时会自动聚类，也可通过 maintenance 的 cluster-failures 命令手动补跑。</span>
+            </div>}
     </section>
   );
 }

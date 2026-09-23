@@ -165,6 +165,9 @@ test("reviews a full Agent trace and confirms a Bad Pattern", async () => {
         by_prompt_version: {}
       }));
     }
+    if (input === "/api/v1/quality/clusters" && method === "GET") {
+      return Promise.resolve(response([]));
+    }
     if (input.startsWith("/api/v1/quality/calibration/tasks") && method === "GET") {
       return Promise.resolve(response({ items: [], total: 0, limit: 50, offset: 0 }));
     }
@@ -337,6 +340,9 @@ test("shows the calibration report and labels a pending task", async () => {
         offset: 0
       }));
     }
+    if (input === "/api/v1/quality/clusters" && method === "GET") {
+      return Promise.resolve(response([]));
+    }
     throw new Error(`Unexpected request: ${method} ${input}`);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -367,4 +373,91 @@ test("shows the calibration report and labels a pending task", async () => {
   }));
   await waitFor(() => expect(screen.queryByText("reason-042")).not.toBeInTheDocument());
   expect(await screen.findByText("暂无待标注的校准任务")).toBeInTheDocument();
+});
+
+function mockQualityBase(clusters: unknown) {
+  const fetchMock = vi.fn().mockImplementation((input: string, init?: RequestInit) => {
+    const method = init?.method ?? "GET";
+    if (input.startsWith("/api/v1/quality/dashboard") && method === "GET") {
+      return Promise.resolve(response({
+        summary: {
+          total_findings: 0,
+          open_findings: 0,
+          critical_open_findings: 0,
+          confirmed_findings: 0,
+          dismissed_findings: 0,
+          reviewed_items: 0,
+          enabled_rules: 1,
+          unassigned_tasks: 0,
+          active_tasks: 0,
+          completed_tasks: 0
+        },
+        findings: [],
+        total: 0,
+        limit: 50,
+        offset: 0
+      }));
+    }
+    if (input === "/api/v1/quality/rules" && method === "GET") {
+      return Promise.resolve(response([rule]));
+    }
+    if (input === "/api/v1/quality/reviewers" && method === "GET") {
+      return Promise.resolve(response([]));
+    }
+    if (input === "/api/v1/quality/calibration/report" && method === "GET") {
+      return Promise.resolve(response({
+        overall: { labeled: 0, agree: 0, disagree: 0, agreement: null, kappa: null, insufficient_sample: true },
+        by_question_type: {},
+        by_ability: {},
+        by_prompt_version: {}
+      }));
+    }
+    if (input.startsWith("/api/v1/quality/calibration/tasks") && method === "GET") {
+      return Promise.resolve(response({ items: [], total: 0, limit: 50, offset: 0 }));
+    }
+    if (input === "/api/v1/quality/clusters" && method === "GET") {
+      return Promise.resolve(response(clusters));
+    }
+    throw new Error(`Unexpected request: ${method} ${input}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+}
+
+test("lists failure clusters with representative sample evidence links", async () => {
+  mockQualityBase([
+    {
+      id: "cluster-1",
+      run_id: "run-1",
+      run_name: "失败聚类回归",
+      window_days: null,
+      name: "调用超时",
+      description: "Agent 接口超时，没有返回答案",
+      sample_count: 3,
+      failure_count: 6,
+      samples: [
+        { execution_item_id: "item-aaaaaa00", run_id: "run-1" },
+        { execution_item_id: "item-bbbbbb11", run_id: "run-1" }
+      ],
+      created_at: "2026-09-23T08:00:00Z"
+    }
+  ]);
+
+  renderPage("/quality");
+  expect(await screen.findByRole("heading", { name: "失败聚类" })).toBeInTheDocument();
+  expect(await screen.findByText("调用超时")).toBeInTheDocument();
+  expect(screen.getByText("Agent 接口超时，没有返回答案")).toBeInTheDocument();
+  expect(screen.getByText("3 个样本")).toBeInTheDocument();
+  expect(screen.getByText(/运行：失败聚类回归/)).toBeInTheDocument();
+  const links = screen.getAllByRole("link", { name: /证据/ });
+  expect(links[0]).toHaveAttribute("href", "/runs/run-1/evidence/item-aaaaaa00");
+  expect(links[1]).toHaveAttribute("href", "/runs/run-1/evidence/item-bbbbbb11");
+});
+
+test("shows an empty-state guide when no failure clusters exist", async () => {
+  mockQualityBase([]);
+
+  renderPage("/quality");
+  expect(await screen.findByRole("heading", { name: "失败聚类" })).toBeInTheDocument();
+  expect(await screen.findByText("暂无失败聚类")).toBeInTheDocument();
+  expect(screen.getByText(/cluster-failures/)).toBeInTheDocument();
 });

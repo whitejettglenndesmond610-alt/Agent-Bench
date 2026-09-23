@@ -13,6 +13,7 @@
 - Backend API: `uv run alembic upgrade head` then `uv run uvicorn agent_eval.api.main:app --reload`. Vite: `pnpm dev:web` on port 5173, proxying to port 8000.
 - Full verification order: `uv run ruff check .`, `uv run mypy`, `uv run pytest`, `pnpm lint:web`, `pnpm test:web`, `pnpm build:web`.
 - Focused tests: `uv run pytest apps/api/tests/test_runs.py`; `pnpm --filter @agent-eval/web test -- src/App.test.tsx`.
+- E2E (Playwright, Chromium only): `pnpm test:e2e` builds the web app, then boots a disposable stack (temporary sqlite database with migrations, API and worker, demo fake agent/judge services on loopback ports, `vite preview`) and runs the specs in `apps/web/e2e`. Install the browser once with `pnpm --filter @agent-eval/web exec playwright install chromium`.
 - PostgreSQL migration/concurrency coverage is skipped unless `AGENT_EVAL_TEST_POSTGRES_URL` points to a disposable database; that test downgrades it to `base` and cleans it afterward.
 
 ## Configuration And Data

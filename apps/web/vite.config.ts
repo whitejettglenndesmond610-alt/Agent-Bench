@@ -1,6 +1,14 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
+// E2E runs serve the production build via `vite preview` and point the API
+// proxy at the disposable E2E backend instead of the dev server on :8000.
+const apiProxyTarget = process.env.E2E_API_ORIGIN ?? "http://127.0.0.1:8000";
+const apiProxy = {
+  "/api": { target: apiProxyTarget, changeOrigin: false },
+  "/health": { target: apiProxyTarget, changeOrigin: false }
+};
+
 export default defineConfig({
   plugins: [react()],
   build: {
@@ -18,13 +26,20 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    proxy: {
-      "/api": { target: "http://127.0.0.1:8000", changeOrigin: false },
-      "/health": { target: "http://127.0.0.1:8000", changeOrigin: false }
-    }
+    proxy: apiProxy
+  },
+  preview: {
+    proxy: apiProxy
   },
   test: {
     environment: "jsdom",
-    setupFiles: "./src/test/setup.ts"
+    setupFiles: "./src/test/setup.ts",
+    exclude: [
+      "e2e/**",
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/.{idea,git,cache,output,temp}/**",
+      "**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build,eslint,prettier}.config.*"
+    ]
   }
 });

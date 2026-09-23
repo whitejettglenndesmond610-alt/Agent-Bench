@@ -1695,6 +1695,30 @@ export function labelCalibrationTask(
   );
 }
 
+export interface FailureClusterSample {
+  execution_item_id: string;
+  run_id: string;
+}
+
+export interface FailureCluster {
+  id: string;
+  run_id: string | null;
+  run_name: string | null;
+  window_days: number | null;
+  name: string;
+  description: string | null;
+  sample_count: number;
+  failure_count: number;
+  samples: FailureClusterSample[];
+  created_at: string;
+}
+
+export function fetchFailureClusters(runId?: string): Promise<FailureCluster[]> {
+  return requestJson<FailureCluster[]>(
+    `/api/v1/quality/clusters${runId ? `?run_id=${runId}` : ""}`
+  );
+}
+
 export type OnlineDataEnvironment = "production" | "staging" | "replay";
 export type OnlineDataRecordStatus = "pending" | "retained" | "discarded";
 

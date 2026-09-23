@@ -36,5 +36,10 @@ apps/web/vite.config.js
 apps/web/vite.config.d.ts
 # Contains real deployment identifiers and evaluation results.
 deploy/day19-report.md
+# Playwright E2E artifacts and the disposable E2E runtime (sqlite db, logs).
+apps/web/playwright-report/
+apps/web/test-results/
+apps/web/blob-report/
+apps/web/.e2e/
 *.log
 .DS_Store
