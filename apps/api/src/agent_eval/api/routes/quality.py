@@ -27,6 +27,8 @@ from agent_eval.api.schemas.quality import (
     CalibrationSummaryResponse,
     CalibrationTaskItem,
     CalibrationTaskList,
+    FailureClusterResponse,
+    FailureClusterSample,
     QualityBatchOperationResponse,
     QualityDashboardResponse,
     QualityDashboardSummary,
@@ -60,6 +62,7 @@ from agent_eval.db.models import (
     DatasetVersion,
     EvaluationRun,
     ExecutionItem,
+    FailureCluster,
     HttpAttempt,
     JudgeCalibrationLabel,
     QualityReview,
@@ -1260,3 +1263,75 @@ async def get_calibration_report(
             for key, pairs in sorted(by_prompt_version.items())
         },
     )
+
+
+def failure_cluster_response(
+    cluster: FailureCluster,
+    run_name: str | None,
+    run_lookup: dict[UUID, UUID],
+) -> FailureClusterResponse:
+    samples: list[FailureClusterSample] = []
+    for raw_id in cluster.sample_item_ids:
+        try:
+            item_id = UUID(str(raw_id))
+        except ValueError:
+            continue
+        sample_run_id = run_lookup.get(item_id)
+        if sample_run_id is None:
+            continue
+        samples.append(
+            FailureClusterSample(execution_item_id=item_id, run_id=sample_run_id)
+        )
+    return FailureClusterResponse(
+        id=cluster.id,
+        run_id=cluster.run_id,
+        run_name=run_name,
+        window_days=cluster.window_days,
+        name=cluster.name,
+        description=cluster.description,
+        sample_count=cluster.sample_count,
+        failure_count=cluster.failure_count,
+        samples=samples,
+        created_at=cluster.created_at,
+    )
+
+
+@router.get("/clusters", response_model=list[FailureClusterResponse])
+async def list_failure_clusters(
+    database: DatabaseSession,
+    _authorization: OperatorSession,
+    run_id: UUID | None = None,
+    limit: int = Query(default=50, ge=1, le=100),
+) -> list[FailureClusterResponse]:
+    filters = []
+    if run_id is not None:
+        filters.append(FailureCluster.run_id == run_id)
+    rows = (
+        await database.execute(
+            select(FailureCluster, EvaluationRun.name)
+            .outerjoin(EvaluationRun, EvaluationRun.id == FailureCluster.run_id)
+            .where(*filters)
+            .order_by(FailureCluster.created_at.desc(), FailureCluster.id)
+            .limit(limit)
+        )
+    ).all()
+    item_ids: set[UUID] = set()
+    for cluster, _ in rows:
+        for raw_id in cluster.sample_item_ids:
+            try:
+                item_ids.add(UUID(str(raw_id)))
+            except ValueError:
+                continue
+    run_lookup: dict[UUID, UUID] = {}
+    if item_ids:
+        pairs = (
+            await database.execute(
+                select(ExecutionItem.id, RunAgent.run_id)
+                .join(RunAgent, RunAgent.id == ExecutionItem.run_agent_id)
+                .where(ExecutionItem.id.in_(item_ids))
+            )
+        ).all()
+        run_lookup = {item_id: sample_run_id for item_id, sample_run_id in pairs}
+    return [
+        failure_cluster_response(cluster, run_name, run_lookup) for cluster, run_name in rows
+    ]

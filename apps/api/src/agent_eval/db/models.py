@@ -1020,6 +1020,33 @@ class QualityReviewTask(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
 
+class FailureCluster(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "failure_clusters"
+    __table_args__ = (
+        CheckConstraint("length(name) > 0", name="name_nonempty"),
+        CheckConstraint("sample_count > 0", name="sample_count_positive"),
+        CheckConstraint("failure_count >= 0", name="failure_count_nonnegative"),
+        CheckConstraint(
+            "(run_id IS NOT NULL AND window_days IS NULL) OR "
+            "(run_id IS NULL AND window_days BETWEEN 1 AND 90)",
+            name="scope_valid",
+        ),
+        Index("ix_failure_clusters_scope_created", "run_id", "created_at"),
+    )
+
+    run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("evaluation_runs.id", ondelete="CASCADE"), index=True
+    )
+    window_days: Mapped[int | None] = mapped_column(SmallInteger)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    sample_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    failure_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    sample_item_ids: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+
+    run: Mapped[EvaluationRun | None] = relationship()
+
+
 class OnlineDataBatch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "online_data_batches"
     __table_args__ = (

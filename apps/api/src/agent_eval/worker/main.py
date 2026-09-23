@@ -27,6 +27,7 @@ from agent_eval.db.models import (
 )
 from agent_eval.db.session import create_session_factory
 from agent_eval.leaderboards.publisher import execute_aggregation_and_publish
+from agent_eval.quality.clustering import cluster_run_failures_best_effort
 from agent_eval.runs.lifecycle import (
     apply_requested_cancellations,
     heartbeat_run,
@@ -230,6 +231,9 @@ async def process_run(
         if not phase_complete:
             return False
         if phase == "aggregation":
+            await cluster_run_failures_best_effort(
+                session_factory, settings, run_id, request_limit=limits.judge_requests
+            )
             return True
         if phase == "inference":
             phase = "answer_scoring"

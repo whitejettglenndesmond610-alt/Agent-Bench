@@ -30,7 +30,7 @@ from agent_eval.db.models import (
 from agent_eval.db.session import create_session_factory, session_scope
 from agent_eval.maintenance.operational_check import alert_reasons, collect_operational_status
 
-HEAD = "f6e1d2c3b4a5"
+HEAD = "a9c1e3f5d724"
 
 
 def migration_config(database_path: Path) -> Config:

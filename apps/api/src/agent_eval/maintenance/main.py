@@ -90,6 +90,7 @@ from agent_eval.maintenance.workspace_users import (
     reset_workspace_user_password,
     write_credential,
 )
+from agent_eval.quality.clustering import ClusteringError, execute_failure_clustering
 
 
 async def check(
@@ -590,6 +591,30 @@ async def print_run_report(run_id: UUID) -> None:
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
 
+async def cluster_failures(run_id: UUID | None, days: int | None) -> None:
+    settings = Settings()
+    configure_logging(settings.log_level)
+    engine = create_engine(settings)
+    session_factory = create_session_factory(engine)
+    try:
+        await verify_database(engine)
+        report = await execute_failure_clustering(
+            session_factory, settings, run_id=run_id, window_days=days
+        )
+    finally:
+        await engine.dispose()
+    if report.skipped:
+        print(
+            f"failure clustering skipped: {report.skipped} "
+            f"(failures={report.failure_count})"
+        )
+        return
+    print(
+        f"failure clustering: failures={report.failure_count} "
+        f"clusters={report.cluster_count} llm_calls={report.llm_calls}"
+    )
+
+
 async def run_fake_suite(timeout_seconds: int) -> None:
     settings = Settings()
     engine = create_engine(settings)
@@ -724,6 +749,10 @@ def main() -> None:
     demo_env_parser.add_argument("output", type=Path)
     report_parser = subparsers.add_parser("run-report")
     report_parser.add_argument("run_id", type=UUID)
+    cluster_parser = subparsers.add_parser("cluster-failures")
+    cluster_scope = cluster_parser.add_mutually_exclusive_group(required=True)
+    cluster_scope.add_argument("--run-id", type=UUID)
+    cluster_scope.add_argument("--days", type=int)
     suite_parser = subparsers.add_parser("run-fake-suite")
     suite_parser.add_argument("--timeout", type=int, default=300)
     set_secret_parser = subparsers.add_parser("set-deepseek-key")
@@ -891,6 +920,11 @@ def main() -> None:
         print(f"Local demo environment initialized: {output}")
     elif arguments.command == "run-report":
         asyncio.run(print_run_report(arguments.run_id))
+    elif arguments.command == "cluster-failures":
+        try:
+            asyncio.run(cluster_failures(arguments.run_id, arguments.days))
+        except (ClusteringError, ValueError) as error:
+            parser.exit(1, f"failure clustering failed: {error}\n")
     elif arguments.command == "run-fake-suite":
         asyncio.run(run_fake_suite(arguments.timeout))
     elif arguments.command == "set-deepseek-key":

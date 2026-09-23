@@ -257,3 +257,21 @@ class CalibrationReportResponse(QualitySchema):
     by_question_type: dict[str, CalibrationSummaryResponse]
     by_ability: dict[str, CalibrationSummaryResponse]
     by_prompt_version: dict[str, CalibrationSummaryResponse]
+
+
+class FailureClusterSample(QualitySchema):
+    execution_item_id: UUID
+    run_id: UUID
+
+
+class FailureClusterResponse(QualitySchema):
+    id: UUID
+    run_id: UUID | None
+    run_name: str | None
+    window_days: int | None
+    name: str
+    description: str | None
+    sample_count: int
+    failure_count: int
+    samples: list[FailureClusterSample]
+    created_at: datetime
