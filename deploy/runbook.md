@@ -256,14 +256,16 @@ deploy/manage.sh preflight --require-snapshot
 
 ## tau2 Interactive Evaluation Data
 
-The `tau2-retail` profile (114 retail tasks) is optional. The worker image already ships the
-`tau2` dependency group; only the data directory needs provisioning. On the host that owns the
-data volume:
+The `tau2-retail` (114 tasks), `tau2-telecom` (114), and `tau2-airline` (50) profiles are
+optional. The worker image already ships the `tau2` dependency group; only the data directory
+needs provisioning. On the host that owns the data volume:
 
 ```bash
 git clone --depth 1 --branch v1.0.1 https://github.com/sierra-research/tau2-bench.git /tmp/tau2-src
 mkdir -p "$AGENT_EVAL_DATA_PATH/tau2/tau2/domains"
-cp -r /tmp/tau2-src/data/tau2/domains/retail "$AGENT_EVAL_DATA_PATH/tau2/tau2/domains/"
+for domain in retail telecom airline; do
+  cp -r "/tmp/tau2-src/data/tau2/domains/$domain" "$AGENT_EVAL_DATA_PATH/tau2/tau2/domains/"
+done
 chown -R 10001:10001 "$AGENT_EVAL_DATA_PATH/tau2"
 rm -rf /tmp/tau2-src
 ```
@@ -273,14 +275,18 @@ The compose worker sets `TAU2_DATA_DIR=/data/tau2` (overridable via the `TAU2_DA
 container. Then import and verify:
 
 ```bash
-docker compose --env-file .env.production --profile tools \
-  -f deploy/compose.yaml -f deploy/compose.production.yaml \
-  run --build --rm maintenance import-tau2-retail
+for domain in retail telecom airline; do
+  docker compose --env-file .env.production --profile tools \
+    -f deploy/compose.yaml -f deploy/compose.production.yaml \
+    run --build --rm maintenance import-tau2 --domain "$domain"
+done
 ```
 
-The user simulator calls DeepSeek (`deepseek/deepseek-chat`) and shares the judge concurrency
+telecom tasks attach user tools to the simulator (assembled the same way as tau2's official
+runner); retail and airline have none. The user simulator calls DeepSeek (`deepseek/deepseek-chat`)
+and shares the judge concurrency
 limit, so the existing `deepseek-api-key` secret is the only credential required. Importing with
-`--limit` is for development only: the profile stays hidden until all 114 tasks are present.
+`--limit` is for development only: each profile stays hidden until its full task count is present.
 Do not commit or redistribute the tau2 data directory.
 
 ## Local Fake Rehearsal

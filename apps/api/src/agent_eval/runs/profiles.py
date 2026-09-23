@@ -64,8 +64,13 @@ HELDOUT_V1_EXPECTED = {
     "HLE-TextOnly": 40,
 }
 TAU2_RETAIL_PROFILE_KEY = "tau2-retail"
-# Full base split of the pinned tau2 v1.0.1 retail task set.
-TAU2_RETAIL_EXPECTED = {"Tau2-Retail": 114}
+# Full base splits of the pinned tau2 v1.0.1 task sets.
+TAU2_PROFILES: dict[str, tuple[str, str, int]] = {
+    "tau2-retail": ("Tau2-Retail", "Tau2 Retail Interactive", 114),
+    "tau2-telecom": ("Tau2-Telecom", "Tau2 Telecom Interactive", 114),
+    "tau2-airline": ("Tau2-Airline", "Tau2 Airline Interactive", 50),
+}
+TAU2_PROFILE_KEYS = frozenset(TAU2_PROFILES)
 
 # The first balanced-v2 release used these two names before the Original prefix
 # convention was applied consistently. Their source is still the frozen original cohort.
@@ -334,15 +339,22 @@ async def build_run_profiles(session: AsyncSession) -> list[RunProfile]:
         ),
         key=lambda item: (item.benchmark.name.casefold(), str(item.id)),
     )
-    if is_complete_tau2_retail(tau2_datasets):
+    for profile_key, (benchmark_name, profile_name, expected) in TAU2_PROFILES.items():
+        domain_datasets = [
+            item for item in tau2_datasets if item.benchmark.name == benchmark_name
+        ]
+        if not is_complete_tau2_domain(domain_datasets, benchmark_name, expected):
+            continue
         profiles.append(
             _profile(
-                key=TAU2_RETAIL_PROFILE_KEY,
-                name="Tau2 Retail Interactive",
-                description="Full tau2-bench retail base split (114 tasks) against HTTP agents.",
+                key=profile_key,
+                name=profile_name,
+                description=(
+                    f"Full tau2-bench base split ({expected} tasks) against HTTP agents."
+                ),
                 scope=RunScope.SMOKE,
                 target_ability=None,
-                datasets=tau2_datasets,
+                datasets=domain_datasets,
                 publishes_to=[],
                 ranking_eligible=False,
                 score_config=None,
@@ -364,11 +376,11 @@ def available_run_profiles(profiles: list[RunProfile]) -> list[RunProfile]:
         "smoke",
         OFFICIAL_V4_PROFILE_KEY,
         HELDOUT_V1_PROFILE_KEY,
-        TAU2_RETAIL_PROFILE_KEY,
+        *TAU2_PROFILE_KEYS,
         *UNIFIED_V3_PROFILE_KEYS,
     }
-    # smoke and tau2-retail alone must not hide the legacy profile list.
-    standalone = {"smoke", TAU2_RETAIL_PROFILE_KEY}
+    # smoke and the tau2 profiles alone must not hide the legacy profile list.
+    standalone = {"smoke", *TAU2_PROFILE_KEYS}
     if any(profile.key in allowed and profile.key not in standalone for profile in profiles):
         return [profile for profile in profiles if profile.key in allowed]
     return profiles
@@ -512,16 +524,15 @@ def is_complete_heldout_v1(datasets: list[DatasetVersion]) -> bool:
     )
 
 
-def is_complete_tau2_retail(datasets: list[DatasetVersion]) -> bool:
+def is_complete_tau2_domain(
+    datasets: list[DatasetVersion], benchmark_name: str, expected_count: int
+) -> bool:
     if not datasets or any(item.held_out for item in datasets):
         return False
     by_name = {item.benchmark.name: item for item in datasets}
-    if set(by_name) != set(TAU2_RETAIL_EXPECTED):
+    if set(by_name) != {benchmark_name}:
         return False
-    return all(
-        by_name[name].question_count == count
-        for name, count in TAU2_RETAIL_EXPECTED.items()
-    )
+    return by_name[benchmark_name].question_count == expected_count
 
 
 def _is_balanced_v2_original(dataset: DatasetVersion) -> bool:

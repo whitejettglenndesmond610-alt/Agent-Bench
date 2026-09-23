@@ -280,8 +280,10 @@ def _run_tau2_episode(
             config=config,
         )
         try:
-            user_tools = environment.get_user_tools()
-        except Exception:  # retail and other domains without user tools
+            # Align with tau2's official runner (runner/build.py): tasks may
+            # restrict the user simulator to a subset of the domain user tools.
+            user_tools = environment.get_user_tools(include=task.user_tools)
+        except Exception:  # retail/airline and other domains without user tools
             user_tools = None
         user = UserSimulator(
             llm=SIMULATOR_MODEL,

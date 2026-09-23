@@ -175,21 +175,27 @@ uv run python -m agent_eval.maintenance.main import-official-v4 data/official-v4
 六个冻结版本齐备后，API 才会把 `official-v4` 设为默认档。balanced-v2 只能走
 `import-balanced-v2`，不要混进 `legacy-v1`。
 
-tau2-bench 交互评测（`tau2-retail` profile，retail base split 全量 114 题）使用独立的
-依赖组和数据目录；数据不随 wheel 分发，同样不要入库或外传：
+tau2-bench 交互评测（`tau2-retail` / `tau2-telecom` / `tau2-airline` profile，base split
+分别为 114 / 114 / 50 题）使用独立的依赖组和数据目录；数据不随 wheel 分发，同样不要
+入库或外传：
 
 ```bash
 uv sync --group tau2
 git clone --depth 1 --branch v1.0.1 https://github.com/sierra-research/tau2-bench.git /tmp/tau2-src
-export TAU2_DATA_DIR=/path/to/tau2-data   # 内含 tau2/domains/retail 等目录
-uv run python -m agent_eval.maintenance.main import-tau2-retail            # 全量 114 题
-uv run python -m agent_eval.maintenance.main import-tau2-retail --limit 5  # 冒烟子集
+export TAU2_DATA_DIR=/path/to/tau2-data   # 内含 tau2/domains/{retail,telecom,airline}
+uv run python -m agent_eval.maintenance.main import-tau2 --domain retail    # 全量 114 题
+uv run python -m agent_eval.maintenance.main import-tau2 --domain telecom
+uv run python -m agent_eval.maintenance.main import-tau2 --domain airline   # 全量 50 题
+uv run python -m agent_eval.maintenance.main import-tau2 --domain retail --limit 5  # 冒烟子集
 ```
+
+`import-tau2-retail` 保留为 `--domain retail` 的兼容别名。telecom 域的用户模拟器带
+user tools（按 tau2 官方 runner 的方式装配），airline 与 retail 不带。
 
 worker 侧需要 `TAU2_DATA_DIR` 和 `AGENT_EVAL_DEEPSEEK_API_KEY`（用户模拟器固定走
 `deepseek/deepseek-chat`，与裁判共享 `AGENT_EVAL_DEEPSEEK_CONCURRENCY` 并发槽位）；
 `AGENT_EVAL_INTERACTIVE_CONCURRENCY` 与 `AGENT_EVAL_INTERACTIVE_TIMEOUT_SECONDS` 控制单题
-并发与超时。`--limit` 子集仅供开发调试：题目数不足 114 时 `tau2-retail` profile 不会出现。
+并发与超时。`--limit` 子集仅供开发调试：题目数不足各自全量时对应 profile 不会出现。
 
 ## 验证
 

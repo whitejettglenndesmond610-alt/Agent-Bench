@@ -43,10 +43,13 @@ from agent_eval.agents.interactive import (  # noqa: E402
 from agent_eval.core.settings import Settings  # noqa: E402
 from agent_eval.datasets.schema import QuestionRecord, records_content_hash  # noqa: E402
 from agent_eval.datasets.tau2_importer import (  # noqa: E402
+    SUPPORTED_DOMAINS,
     TAU2_RETAIL_BENCHMARK,
     TAU2_VERSION,
+    build_tau2_records,
     build_tau2_retail_records,
-    import_tau2_retail,
+    import_tau2,
+    tau2_benchmark_name,
 )
 from agent_eval.db.engine import create_engine  # noqa: E402
 from agent_eval.db.enums import Ability, AuthType, QuestionType  # noqa: E402
@@ -57,6 +60,7 @@ from agent_eval.runs.profiles import (  # noqa: E402
     build_run_profiles,
     default_profile_key,
 )
+from agent_eval.worker import interactive_executor  # noqa: E402
 from agent_eval.worker.interactive_executor import (  # noqa: E402
     SIMULATOR_MODEL,
     InteractiveExecutionError,
@@ -396,11 +400,14 @@ def fake_tau2_tasks(ids: list[str]) -> list[SimpleNamespace]:
     ]
 
 
-def patch_tasks_loader(monkeypatch: pytest.MonkeyPatch, ids: list[str]) -> None:
+def patch_tasks_loader(
+    monkeypatch: pytest.MonkeyPatch, ids: list[str] | dict[str, list[str]]
+) -> None:
+    ids_by_domain = ids if isinstance(ids, dict) else {"retail": ids}
     monkeypatch.setattr(
         registry,
         "get_tasks_loader",
-        lambda domain: (lambda split: fake_tau2_tasks(ids)),
+        lambda domain: (lambda split: fake_tau2_tasks(ids_by_domain[domain])),
     )
 
 
@@ -433,6 +440,33 @@ def test_tau2_content_hash_includes_tau2_version(
     assert records_content_hash(records) != records_content_hash(mutated)
 
 
+def test_tau2_importer_supports_telecom_and_airline(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    patch_tasks_loader(
+        monkeypatch, {"telecom": ["t1", "t2"], "airline": ["a9"]}
+    )
+    for domain, expected_ids in (("telecom", ["t1", "t2"]), ("airline", ["a9"])):
+        records = build_tau2_records(tmp_path, domain)
+        assert [record.external_id for record in records] == [
+            f"{domain}-{task_id}" for task_id in expected_ids
+        ]
+        for record in records:
+            task_id = record.external_id.removeprefix(f"{domain}-")
+            assert record.benchmark == tau2_benchmark_name(domain)
+            assert record.reference_answer == f"tau2:{domain}:{task_id}"
+            assert record.domain == domain
+            assert record.ability == Ability.AGENTIC
+            assert record.type == QuestionType.INTERACTIVE
+            assert record.source_version == f"tau2-{TAU2_VERSION}"
+
+
+def test_tau2_importer_rejects_unknown_domain(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="unsupported tau2 domain"):
+        build_tau2_records(tmp_path, "banking_knowledge")
+    assert "banking_knowledge" not in SUPPORTED_DOMAINS
+
+
 # ---------------------------------------------------------------------------
 # Run profile
 # ---------------------------------------------------------------------------
@@ -445,9 +479,12 @@ def migration_config(database_path: Path) -> Config:
 
 
 async def import_fake_tau2(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, task_ids: list[str]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    task_ids: list[str] | dict[str, list[str]],
 ):
-    patch_tasks_loader(monkeypatch, task_ids)
+    ids_by_domain = task_ids if isinstance(task_ids, dict) else {"retail": task_ids}
+    patch_tasks_loader(monkeypatch, ids_by_domain)
     database_path = tmp_path / "tau2.db"
     await asyncio.to_thread(command.upgrade, migration_config(database_path), "head")
     settings = Settings(
@@ -458,10 +495,14 @@ async def import_fake_tau2(
     try:
         async with session_scope(session_factory) as session:
             before = await build_run_profiles(session)
-        async with session_scope(session_factory) as session:
-            imported = await import_tau2_retail(
-                session, data_dir=tmp_path, limit=len(task_ids)
-            )
+        imported = []
+        for domain, ids in ids_by_domain.items():
+            async with session_scope(session_factory) as session:
+                imported.extend(
+                    await import_tau2(
+                        session, domain=domain, data_dir=tmp_path, limit=len(ids)
+                    )
+                )
         async with session_scope(session_factory) as session:
             after = await build_run_profiles(session)
     finally:
@@ -496,6 +537,39 @@ async def test_tau2_retail_profile_hidden_when_incomplete(
     task_ids = [f"task-{index}" for index in range(113)]
     _, _, after = await import_fake_tau2(tmp_path, monkeypatch, task_ids)
     assert TAU2_RETAIL_PROFILE_KEY not in {profile.key for profile in after}
+
+
+async def test_tau2_telecom_and_airline_profiles(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    imported, _, after = await import_fake_tau2(
+        tmp_path,
+        monkeypatch,
+        {
+            "telecom": [f"task-{index}" for index in range(114)],
+            "airline": [f"task-{index}" for index in range(50)],
+        },
+    )
+    assert sorted(item.question_count for item in imported) == [50, 114]
+    by_key = {profile.key: profile for profile in after}
+    assert TAU2_RETAIL_PROFILE_KEY not in by_key  # retail was not imported here
+    for key, count in (("tau2-telecom", 114), ("tau2-airline", 50)):
+        profile = by_key[key]
+        assert profile.question_count == count
+        assert profile.score_config_id is None
+        assert profile.ranking_eligible is False
+        assert profile.publishes_to == ()
+    assert "tau2-telecom" in {item.key for item in available_run_profiles(after)}
+    assert "tau2-airline" in {item.key for item in available_run_profiles(after)}
+
+
+async def test_tau2_telecom_profile_hidden_when_incomplete(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, _, after = await import_fake_tau2(
+        tmp_path, monkeypatch, {"telecom": [f"task-{index}" for index in range(113)]}
+    )
+    assert "tau2-telecom" not in {profile.key for profile in after}
 
 
 # ---------------------------------------------------------------------------
@@ -714,3 +788,39 @@ def test_episode_tracing_spans(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
         assert simulator_attributes["agent_eval.component"] == "user_simulator"
     finally:
         tracing._reset_for_tests()
+
+def test_episode_routes_domain_to_matching_registry_entries(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """task_ref 的 domain 段决定装配哪个 environment / task loader。"""
+    calls: list[str] = []
+    real_env_constructor = registry.get_env_constructor
+    real_tasks_loader = registry.get_tasks_loader
+
+    def tracking_env_constructor(domain: str):
+        calls.append(f"env:{domain}")
+        return real_env_constructor("mock")
+
+    def tracking_tasks_loader(domain: str):
+        calls.append(f"tasks:{domain}")
+        return real_tasks_loader("mock")
+
+    monkeypatch.setattr(registry, "get_env_constructor", tracking_env_constructor)
+    monkeypatch.setattr(registry, "get_tasks_loader", tracking_tasks_loader)
+    monkeypatch.setattr("tau2.user.user_simulator.UserSimulator", FakeUserSimulator)
+    monkeypatch.setattr(interactive_executor, "_tasks_cache", {})
+
+    with scripted_agent_server([fenced({"action": "stop"})]) as server:
+        result = run_tau2_episode(
+            config=make_config(server.url),
+            task_ref="tau2:telecom:mock-1",
+            trial_index=0,
+            timeout_seconds=60,
+            settings=episode_settings(tmp_path),
+        )
+    assert result.success is True
+    assert result.trajectory is not None
+    assert result.trajectory["domain"] == "telecom"
+    assert result.trajectory["task_id"] == "mock-1"
+    assert "tasks:telecom" in calls and "env:telecom" in calls
+

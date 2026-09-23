@@ -35,14 +35,15 @@ from agent_eval.runs.profiles import (
     BALANCED_V2_PROFILE_KEY,
     HELDOUT_V1_PROFILE_KEY,
     OFFICIAL_V4_PROFILE_KEY,
-    TAU2_RETAIL_PROFILE_KEY,
+    TAU2_PROFILE_KEYS,
+    TAU2_PROFILES,
     UNIFIED_V3_PROFILE_KEY,
     UNIFIED_V3_PROFILE_KEYS,
     build_run_profiles,
     is_complete_balanced_v2,
     is_complete_heldout_v1,
     is_complete_official_v4,
-    is_complete_tau2_retail,
+    is_complete_tau2_domain,
     is_complete_unified_v3,
 )
 from agent_eval.scoring.aggregation import AGGREGATION_VERSION
@@ -286,7 +287,7 @@ async def prepare_evaluation_run(
     locked_profile = unified_profile or profile_key in {
         OFFICIAL_V4_PROFILE_KEY,
         HELDOUT_V1_PROFILE_KEY,
-        TAU2_RETAIL_PROFILE_KEY,
+        *TAU2_PROFILE_KEYS,
     }
     if locked_profile:
         profile = next(
@@ -302,8 +303,8 @@ async def prepare_evaluation_run(
             or set(profile.dataset_version_ids) != set(dataset_version_ids)
             or profile.scope != run_scope
             or profile.target_ability != target_ability
-            or (not ranking_eligible and profile_key != TAU2_RETAIL_PROFILE_KEY)
-            or (profile_key == TAU2_RETAIL_PROFILE_KEY and ranking_eligible)
+            or (not ranking_eligible and profile_key not in TAU2_PROFILE_KEYS)
+            or (profile_key in TAU2_PROFILE_KEYS and ranking_eligible)
         ):
             raise RunConfigurationError(
                 (
@@ -315,7 +316,7 @@ async def prepare_evaluation_run(
                         else (
                             "heldout_v1_incomplete"
                             if profile_key == HELDOUT_V1_PROFILE_KEY
-                            else "tau2_retail_incomplete"
+                            else f"{profile_key.replace('-', '_')}_incomplete"
                         )
                     )
                 ),
@@ -390,12 +391,13 @@ async def prepare_evaluation_run(
         raise RunConfigurationError(
             "heldout_v1_incomplete", "heldout-v1 必须使用完整的 100 题 LiveBench+HLE 私有配置"
         )
-    if profile_key == TAU2_RETAIL_PROFILE_KEY and not is_complete_tau2_retail(
-        dataset_versions
-    ):
-        raise RunConfigurationError(
-            "tau2_retail_incomplete", "tau2-retail 必须使用完整的 114 题 Tau2-Retail 配置"
-        )
+    if profile_key in TAU2_PROFILE_KEYS:
+        benchmark_name, _profile_name, expected = TAU2_PROFILES[profile_key]
+        if not is_complete_tau2_domain(dataset_versions, benchmark_name, expected):
+            raise RunConfigurationError(
+                f"{profile_key.replace('-', '_')}_incomplete",
+                f"{profile_key} 必须使用完整的 {expected} 题 {benchmark_name} 配置",
+            )
 
     for version in agent_versions:
         compatibility = analyze_profile_compatibility(version, profile_key, questions)

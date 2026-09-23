@@ -34,7 +34,11 @@ from agent_eval.datasets.livebench_builder import (
 )
 from agent_eval.datasets.official_builder import build_official_v4_dataset
 from agent_eval.datasets.schema import load_question_records, validate_demo_distribution
-from agent_eval.datasets.tau2_importer import DEFAULT_IMPORT_LIMIT, import_tau2_retail
+from agent_eval.datasets.tau2_importer import (
+    DEFAULT_IMPORT_LIMIT,
+    SUPPORTED_DOMAINS,
+    import_tau2,
+)
 from agent_eval.db.engine import create_engine, verify_database
 from agent_eval.db.enums import SessionRole
 from agent_eval.db.session import create_session_factory, session_scope
@@ -299,7 +303,9 @@ async def import_hle(path: Path) -> None:
     print(f"imported {len(records)} held-out hle questions across {len(imported)} benchmarks")
 
 
-async def import_tau2_retail_command(data_dir: Path | None, limit: int | None) -> None:
+async def import_tau2_command(
+    domain: str, data_dir: Path | None, limit: int | None
+) -> None:
     settings = Settings()
     resolved_dir = data_dir or settings.tau2_data_dir
     if resolved_dir is None:
@@ -310,7 +316,9 @@ async def import_tau2_retail_command(data_dir: Path | None, limit: int | None) -
     session_factory = create_session_factory(engine)
     try:
         async with session_scope(session_factory) as session:
-            imported = await import_tau2_retail(session, data_dir=resolved_dir, limit=limit)
+            imported = await import_tau2(
+                session, domain=domain, data_dir=resolved_dir, limit=limit
+            )
     finally:
         await engine.dispose()
     for item in imported:
@@ -654,6 +662,26 @@ def main() -> None:
     hle_parser.add_argument("output", type=Path, nargs="?", default=Path("data/hle-heldout"))
     hle_import_parser = subparsers.add_parser("import-hle")
     hle_import_parser.add_argument("path", type=Path)
+    tau2_parser = subparsers.add_parser("import-tau2")
+    tau2_parser.add_argument(
+        "--domain",
+        choices=SUPPORTED_DOMAINS,
+        required=True,
+        help="tau2-bench domain to import",
+    )
+    tau2_parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=None,
+        help="tau2-bench data directory (defaults to TAU2_DATA_DIR)",
+    )
+    tau2_parser.add_argument(
+        "--limit",
+        type=int,
+        default=DEFAULT_IMPORT_LIMIT,
+        help="number of tasks to import (default: the full base split)",
+    )
+    # Legacy alias from the retail-only phase; equivalent to --domain retail.
     tau2_import_parser = subparsers.add_parser("import-tau2-retail")
     tau2_import_parser.add_argument(
         "--data-dir",
@@ -797,9 +825,15 @@ def main() -> None:
         print(f"built {len(hle_records)} hle questions in {arguments.output}")
     elif arguments.command == "import-hle":
         asyncio.run(import_hle(arguments.path))
+    elif arguments.command == "import-tau2":
+        asyncio.run(
+            import_tau2_command(
+                arguments.domain, data_dir=arguments.data_dir, limit=arguments.limit
+            )
+        )
     elif arguments.command == "import-tau2-retail":
         asyncio.run(
-            import_tau2_retail_command(data_dir=arguments.data_dir, limit=arguments.limit)
+            import_tau2_command("retail", data_dir=arguments.data_dir, limit=arguments.limit)
         )
     elif arguments.command == "build-balanced-v2":
         local_anchors = Path("data/demo-dataset")
