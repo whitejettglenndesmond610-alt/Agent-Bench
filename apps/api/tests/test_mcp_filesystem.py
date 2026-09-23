@@ -20,6 +20,7 @@ from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
 from mcp import Client  # noqa: E402
 from mcp.server.mcpserver import MCPServer  # noqa: E402
+from sqlalchemy import select  # noqa: E402
 
 from agent_eval.agents.inference import InferenceConfig  # noqa: E402
 from agent_eval.agents.protocol import (  # noqa: E402
@@ -37,13 +38,23 @@ from agent_eval.datasets.mcpmark_importer import (  # noqa: E402
     mcpmark_commit_pin,
 )
 from agent_eval.db.engine import create_engine  # noqa: E402
-from agent_eval.db.enums import Ability, AuthType, QuestionType  # noqa: E402
+from agent_eval.db.enums import Ability, AgentStatus, AuthType, QuestionType, RunScope  # noqa: E402
+from agent_eval.db.models import (  # noqa: E402
+    Agent,
+    AgentVersion,
+    DatasetVersion,
+    JudgeConfig,
+)
 from agent_eval.db.session import create_session_factory, session_scope  # noqa: E402
 from agent_eval.runs.profiles import (  # noqa: E402
     MCP_FILESYSTEM_PROFILE_KEY,
     available_run_profiles,
     build_run_profiles,
     default_profile_key,
+)
+from agent_eval.runs.service import (  # noqa: E402
+    RunConfigurationError,
+    prepare_evaluation_run,
 )
 from agent_eval.worker.executor import WorkItem, route_interactive_items  # noqa: E402
 from agent_eval.worker.mcp_executor import (  # noqa: E402
@@ -291,10 +302,6 @@ async def import_fake_mcpmark(tmp_path: Path, *, tasks: int = 10, commit: str = 
             imported = await import_mcpmark_filesystem(session, repo_dir=repo, suite="easy")
         async with session_scope(session_factory) as session:
             after = await build_run_profiles(session)
-            from sqlalchemy import select
-
-            from agent_eval.db.models import DatasetVersion
-
             versions = list(await session.scalars(select(DatasetVersion)))
             cohorts = {version.cohort_key for version in versions}
             hashes = {version.content_hash for version in versions}
@@ -569,3 +576,116 @@ async def test_episode_requires_repo_path(tmp_path: Path) -> None:
             settings=settings,
             client_factory=memory_filesystem_factory,
         )
+
+
+# ---------------------------------------------------------------------------
+# Run creation through runs/service.prepare_evaluation_run (locked profile)
+# ---------------------------------------------------------------------------
+
+
+async def mcp_run_fixture(tmp_path: Path, *, tasks: int = 10):
+    repo = make_fake_repo(tmp_path, tasks=tasks)
+    database_path = tmp_path / "mcp-run.db"
+    await asyncio.to_thread(command.upgrade, migration_config(database_path), "head")
+    settings = Settings(
+        database_url=f"sqlite+aiosqlite:///{database_path}", data_dir=tmp_path
+    )
+    engine = create_engine(settings)
+    session_factory = create_session_factory(engine)
+    async with session_scope(session_factory) as session:
+        await import_mcpmark_filesystem(session, repo_dir=repo, suite="easy")
+        agent = Agent(name="MCP Agent", provider="Provider", status=AgentStatus.ENABLED)
+        session.add(agent)
+        await session.flush()
+        version = AgentVersion(
+            agent_id=agent.id,
+            version=1,
+            endpoint_url="https://agent.example/mcp",
+            auth_type=AuthType.NONE,
+            request_template='{"query":"{{prompt}}"}',
+            answer_jsonpath="$.answer",
+        )
+        judge = JudgeConfig(
+            provider="deepseek", model="deepseek-chat", prompt_version="v1", enabled=True
+        )
+        session.add_all([version, judge])
+        await session.flush()
+        dataset_version_ids = [
+            item.id for item in await session.scalars(select(DatasetVersion))
+        ]
+        ids = (version.id, judge.id, dataset_version_ids)
+    return session_factory, engine, ids
+
+
+async def test_mcp_filesystem_run_creation(tmp_path: Path) -> None:
+    session_factory, engine, (version_id, judge_id, dataset_version_ids) = (
+        await mcp_run_fixture(tmp_path)
+    )
+    try:
+        async with session_scope(session_factory) as session:
+            prepared = await prepare_evaluation_run(
+                session,
+                name="MCP filesystem easy",
+                agent_version_ids=[version_id],
+                dataset_version_ids=dataset_version_ids,
+                judge_config_id=judge_id,
+                score_config_id=None,
+                profile_key=MCP_FILESYSTEM_PROFILE_KEY,
+                run_scope=RunScope.SMOKE,
+                target_ability=None,
+                ranking_eligible=False,
+            )
+        assert prepared.question_count == 10
+        assert prepared.run.ranking_eligible is False
+    finally:
+        await engine.dispose()
+
+
+async def test_mcp_filesystem_run_rejects_incomplete_dataset(tmp_path: Path) -> None:
+    # Only 9 of the 10 easy tasks imported: the locked profile stays hidden and
+    # run creation must fail instead of silently running a partial suite.
+    session_factory, engine, (version_id, judge_id, dataset_version_ids) = (
+        await mcp_run_fixture(tmp_path, tasks=9)
+    )
+    try:
+        async with session_scope(session_factory) as session:
+            with pytest.raises(RunConfigurationError) as excinfo:
+                await prepare_evaluation_run(
+                    session,
+                    name="MCP filesystem partial",
+                    agent_version_ids=[version_id],
+                    dataset_version_ids=dataset_version_ids,
+                    judge_config_id=judge_id,
+                    score_config_id=None,
+                    profile_key=MCP_FILESYSTEM_PROFILE_KEY,
+                    run_scope=RunScope.SMOKE,
+                    target_ability=None,
+                    ranking_eligible=False,
+                )
+            assert excinfo.value.code == "mcp_filesystem_incomplete"
+    finally:
+        await engine.dispose()
+
+
+async def test_mcp_filesystem_run_rejects_ranking_eligible(tmp_path: Path) -> None:
+    session_factory, engine, (version_id, judge_id, dataset_version_ids) = (
+        await mcp_run_fixture(tmp_path)
+    )
+    try:
+        async with session_scope(session_factory) as session:
+            with pytest.raises(RunConfigurationError) as excinfo:
+                await prepare_evaluation_run(
+                    session,
+                    name="MCP filesystem ranked",
+                    agent_version_ids=[version_id],
+                    dataset_version_ids=dataset_version_ids,
+                    judge_config_id=judge_id,
+                    score_config_id=None,
+                    profile_key=MCP_FILESYSTEM_PROFILE_KEY,
+                    run_scope=RunScope.SMOKE,
+                    target_ability=None,
+                    ranking_eligible=True,
+                )
+            assert excinfo.value.code == "mcp_filesystem_incomplete"
+    finally:
+        await engine.dispose()

@@ -34,6 +34,8 @@ from agent_eval.runs.compatibility import analyze_profile_compatibility
 from agent_eval.runs.profiles import (
     BALANCED_V2_PROFILE_KEY,
     HELDOUT_V1_PROFILE_KEY,
+    MCP_PROFILE_KEYS,
+    MCP_PROFILES,
     OFFICIAL_V4_PROFILE_KEY,
     TAU2_PROFILE_KEYS,
     TAU2_PROFILES,
@@ -52,6 +54,11 @@ from agent_eval.scoring.configs import (
     LEGACY_ABILITY_WEIGHTS,
     has_ability_weights,
 )
+
+# Interactive task profiles (tau2 / MCPMark) lock their dataset bundle and
+# never publish to the leaderboards.
+INTERACTIVE_PROFILE_KEYS = TAU2_PROFILE_KEYS | MCP_PROFILE_KEYS
+INTERACTIVE_PROFILES = {**TAU2_PROFILES, **MCP_PROFILES}
 
 
 class RunConfigurationError(ValueError):
@@ -287,7 +294,7 @@ async def prepare_evaluation_run(
     locked_profile = unified_profile or profile_key in {
         OFFICIAL_V4_PROFILE_KEY,
         HELDOUT_V1_PROFILE_KEY,
-        *TAU2_PROFILE_KEYS,
+        *INTERACTIVE_PROFILE_KEYS,
     }
     if locked_profile:
         profile = next(
@@ -303,8 +310,8 @@ async def prepare_evaluation_run(
             or set(profile.dataset_version_ids) != set(dataset_version_ids)
             or profile.scope != run_scope
             or profile.target_ability != target_ability
-            or (not ranking_eligible and profile_key not in TAU2_PROFILE_KEYS)
-            or (profile_key in TAU2_PROFILE_KEYS and ranking_eligible)
+            or (not ranking_eligible and profile_key not in INTERACTIVE_PROFILE_KEYS)
+            or (profile_key in INTERACTIVE_PROFILE_KEYS and ranking_eligible)
         ):
             raise RunConfigurationError(
                 (
@@ -391,8 +398,8 @@ async def prepare_evaluation_run(
         raise RunConfigurationError(
             "heldout_v1_incomplete", "heldout-v1 必须使用完整的 100 题 LiveBench+HLE 私有配置"
         )
-    if profile_key in TAU2_PROFILE_KEYS:
-        benchmark_name, _profile_name, expected = TAU2_PROFILES[profile_key]
+    if profile_key in INTERACTIVE_PROFILE_KEYS:
+        benchmark_name, _profile_name, expected = INTERACTIVE_PROFILES[profile_key]
         if not is_complete_tau2_domain(dataset_versions, benchmark_name, expected):
             raise RunConfigurationError(
                 f"{profile_key.replace('-', '_')}_incomplete",

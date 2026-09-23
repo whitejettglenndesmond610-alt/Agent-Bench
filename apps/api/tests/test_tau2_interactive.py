@@ -29,6 +29,7 @@ tau2 = pytest.importorskip("tau2")
 import httpx  # noqa: E402
 from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
+from sqlalchemy import select  # noqa: E402
 from tau2.data_model.message import AssistantMessage, UserMessage  # noqa: E402
 from tau2.registry import registry  # noqa: E402
 
@@ -52,13 +53,23 @@ from agent_eval.datasets.tau2_importer import (  # noqa: E402
     tau2_benchmark_name,
 )
 from agent_eval.db.engine import create_engine  # noqa: E402
-from agent_eval.db.enums import Ability, AuthType, QuestionType  # noqa: E402
+from agent_eval.db.enums import Ability, AgentStatus, AuthType, QuestionType, RunScope  # noqa: E402
+from agent_eval.db.models import (  # noqa: E402
+    Agent,
+    AgentVersion,
+    DatasetVersion,
+    JudgeConfig,
+)
 from agent_eval.db.session import create_session_factory, session_scope  # noqa: E402
 from agent_eval.runs.profiles import (  # noqa: E402
     TAU2_RETAIL_PROFILE_KEY,
     available_run_profiles,
     build_run_profiles,
     default_profile_key,
+)
+from agent_eval.runs.service import (  # noqa: E402
+    RunConfigurationError,
+    prepare_evaluation_run,
 )
 from agent_eval.worker import interactive_executor  # noqa: E402
 from agent_eval.worker.interactive_executor import (  # noqa: E402
@@ -824,3 +835,98 @@ def test_episode_routes_domain_to_matching_registry_entries(
     assert result.trajectory["task_id"] == "mock-1"
     assert "tasks:telecom" in calls and "env:telecom" in calls
 
+
+
+# ---------------------------------------------------------------------------
+# Run creation through runs/service.prepare_evaluation_run (locked profile)
+# ---------------------------------------------------------------------------
+
+
+async def tau2_run_fixture(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, task_count: int = 114
+):
+    patch_tasks_loader(monkeypatch, [f"task-{index}" for index in range(task_count)])
+    database_path = tmp_path / "tau2-run.db"
+    await asyncio.to_thread(command.upgrade, migration_config(database_path), "head")
+    settings = Settings(
+        database_url=f"sqlite+aiosqlite:///{database_path}", data_dir=tmp_path
+    )
+    engine = create_engine(settings)
+    session_factory = create_session_factory(engine)
+    async with session_scope(session_factory) as session:
+        await import_tau2(session, domain="retail", data_dir=tmp_path, limit=task_count)
+        agent = Agent(name="Tau2 Agent", provider="Provider", status=AgentStatus.ENABLED)
+        session.add(agent)
+        await session.flush()
+        version = AgentVersion(
+            agent_id=agent.id,
+            version=1,
+            endpoint_url="https://agent.example/tau2",
+            auth_type=AuthType.NONE,
+            request_template='{"query":"{{prompt}}"}',
+            answer_jsonpath="$.answer",
+        )
+        judge = JudgeConfig(
+            provider="deepseek", model="deepseek-chat", prompt_version="v1", enabled=True
+        )
+        session.add_all([version, judge])
+        await session.flush()
+        dataset_version_ids = [
+            item.id for item in await session.scalars(select(DatasetVersion))
+        ]
+        ids = (version.id, judge.id, dataset_version_ids)
+    return session_factory, engine, ids
+
+
+async def test_tau2_retail_run_creation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    session_factory, engine, (version_id, judge_id, dataset_version_ids) = (
+        await tau2_run_fixture(monkeypatch, tmp_path)
+    )
+    try:
+        async with session_scope(session_factory) as session:
+            prepared = await prepare_evaluation_run(
+                session,
+                name="Tau2 retail",
+                agent_version_ids=[version_id],
+                dataset_version_ids=dataset_version_ids,
+                judge_config_id=judge_id,
+                score_config_id=None,
+                profile_key=TAU2_RETAIL_PROFILE_KEY,
+                run_scope=RunScope.SMOKE,
+                target_ability=None,
+                ranking_eligible=False,
+            )
+        assert prepared.question_count == 114
+        assert prepared.run.ranking_eligible is False
+    finally:
+        await engine.dispose()
+
+
+async def test_tau2_retail_run_rejects_incomplete_dataset(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Only 113 of the 114 base tasks imported: the locked profile stays hidden
+    # and run creation must fail instead of silently running a partial suite.
+    session_factory, engine, (version_id, judge_id, dataset_version_ids) = (
+        await tau2_run_fixture(monkeypatch, tmp_path, task_count=113)
+    )
+    try:
+        async with session_scope(session_factory) as session:
+            with pytest.raises(RunConfigurationError) as excinfo:
+                await prepare_evaluation_run(
+                    session,
+                    name="Tau2 retail partial",
+                    agent_version_ids=[version_id],
+                    dataset_version_ids=dataset_version_ids,
+                    judge_config_id=judge_id,
+                    score_config_id=None,
+                    profile_key=TAU2_RETAIL_PROFILE_KEY,
+                    run_scope=RunScope.SMOKE,
+                    target_ability=None,
+                    ranking_eligible=False,
+                )
+            assert excinfo.value.code == "tau2_retail_incomplete"
+    finally:
+        await engine.dispose()
