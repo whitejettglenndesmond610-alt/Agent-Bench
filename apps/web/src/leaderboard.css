@@ -8,13 +8,13 @@
 .leaderboard-protocol { display: inline-flex; align-items: center; gap: 6px; }
 .leaderboard-protocol i { width: 6px; height: 6px; background: var(--green); border-radius: 50%; box-shadow: 0 0 8px var(--green-soft); }
 .leaderboard-protocol strong { color: var(--ink); font-weight: 600; }
-.leaderboard-history-link { color: var(--accent); text-decoration: none; white-space: nowrap; }
-.leaderboard-history-link:hover { color: var(--accent-strong); text-decoration: underline; }
+.leaderboard-history-link { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.leaderboard-history-link:hover { color: var(--accent); text-decoration: underline; }
 .protocol-details { position: relative; }
 .protocol-details summary { color: var(--muted); cursor: pointer; font-size: 11px; list-style: none; }
 .protocol-details summary::-webkit-details-marker { display: none; }
 .protocol-details summary:hover { color: var(--ink); }
-.protocol-details[open] summary { color: var(--accent); }
+.protocol-details[open] summary { color: var(--ink); }
 .protocol-pop {
   position: absolute;
   z-index: 20;
@@ -45,9 +45,9 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
 }
-.leader-podium article.is-first { box-shadow: inset 2px 0 0 var(--accent); }
+.leader-podium article.is-first { box-shadow: inset 2px 0 0 var(--line-strong); }
 .leader-podium .podium-rank { flex: 0 0 auto; color: var(--muted); font: 600 13px var(--font-mono); font-variant-numeric: tabular-nums; }
-.leader-podium .is-first .podium-rank { color: var(--accent); }
+.leader-podium .is-first .podium-rank { color: var(--ink); }
 .podium-agent { display: grid; flex: 1; gap: 1px; min-width: 0; }
 .podium-agent small { color: var(--muted); font: 700 8px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; }
 .podium-agent strong { overflow: hidden; color: var(--ink); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
@@ -74,7 +74,7 @@
 .leaderboard-tools .control { width: auto; min-width: 160px; min-height: var(--control-h); padding: 4px 10px; font-size: 12px; }
 .leaderboard-tools select.control { min-width: 120px; }
 .leaderboard-tools > p { display: flex; align-items: baseline; gap: 6px; margin: 0 0 0 auto; padding: 0; color: var(--muted); font-size: 11px; text-align: right; }
-.leaderboard-tools > p strong { color: var(--accent); font: 650 14px var(--font-mono); font-variant-numeric: tabular-nums; }
+.leaderboard-tools > p strong { color: var(--ink); font: 650 14px var(--font-mono); font-variant-numeric: tabular-nums; }
 .leaderboard-tools > p small { color: var(--muted); font-size: 10px; }
 
 /* Dense leaderboard table (on top of .table-frame) */
@@ -82,10 +82,10 @@
 .leaderboard-table td:first-child { min-width: 0; }
 .leaderboard-table th[data-numeric] { text-align: right; }
 .leaderboard-table tbody tr { cursor: pointer; }
-.leaderboard-table tbody tr.is-leading { box-shadow: inset 2px 0 0 var(--accent); }
+.leaderboard-table tbody tr.is-leading { box-shadow: inset 2px 0 0 var(--line-strong); }
 .leaderboard-table .check-cell { width: 40px; text-align: center; }
 .leaderboard-table .rank-cell { color: var(--muted); }
-.leaderboard-table tr.is-leading .rank-cell { color: var(--accent); font-weight: 650; }
+.leaderboard-table tr.is-leading .rank-cell { color: var(--ink); font-weight: 650; }
 .leaderboard-table .agent-cell { min-width: 190px; }
 /* Freeze the agent column while the wide metrics table scrolls horizontally. */
 .leaderboard-table .agent-cell {
@@ -157,7 +157,7 @@
 .unranked-accordion > summary::-webkit-details-marker { display: none; }
 .unranked-accordion > summary::before { content: "▸"; color: var(--muted); font-size: 10px; transition: transform var(--dur-fast) ease; }
 .unranked-accordion[open] > summary::before { transform: rotate(90deg); }
-.unranked-accordion > summary strong { margin-left: auto; color: var(--accent); font: 650 12px var(--font-mono); font-variant-numeric: tabular-nums; }
+.unranked-accordion > summary strong { margin-left: auto; color: var(--ink); font: 650 12px var(--font-mono); font-variant-numeric: tabular-nums; }
 .unranked-accordion > summary small { color: var(--muted); font-size: 10px; }
 .unranked-accordion > div { border-top: 1px solid var(--line); }
 .unranked-accordion article { display: flex; align-items: center; gap: 14px; min-height: var(--row-h); padding: 5px 12px; border-bottom: 1px solid var(--line); font-size: 12px; }
@@ -167,12 +167,12 @@
 .unranked-accordion article > span a:hover { color: var(--accent); }
 .unranked-accordion article small { color: var(--muted); font-size: 10px; }
 .unranked-accordion article b { margin-left: auto; color: var(--muted); font: 500 10px var(--font-mono); }
-.unranked-accordion article > a { color: var(--accent); font-size: 11px; text-decoration: none; white-space: nowrap; }
-.unranked-accordion article > a:hover { color: var(--accent-strong); text-decoration: underline; }
+.unranked-accordion article > a { color: var(--muted); font-size: 11px; text-decoration: none; white-space: nowrap; }
+.unranked-accordion article > a:hover { color: var(--accent); text-decoration: underline; }
 .unranked-accordion > p { margin: 0; padding: 12px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--line); }
 .unranked-accordion footer { padding: 8px 12px; text-align: right; border-top: 1px solid var(--line); }
-.unranked-accordion footer a { color: var(--accent); font-size: 11px; text-decoration: none; }
-.unranked-accordion footer a:hover { color: var(--accent-strong); text-decoration: underline; }
+.unranked-accordion footer a { color: var(--muted); font-size: 11px; text-decoration: none; }
+.unranked-accordion footer a:hover { color: var(--accent); text-decoration: underline; }
 
 /* Scoped .button overrides — styles.css still carries a legacy light-theme
    .button (indigo gradient, 42px, hover translateY) after the tokenized one.
@@ -215,7 +215,7 @@
 }
 .compare-dock.is-visible { display: flex; }
 .compare-dock > div { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.compare-dock > div > span { flex: 0 0 auto; color: var(--accent); font: 700 9px var(--font-mono); letter-spacing: .1em; }
+.compare-dock > div > span { flex: 0 0 auto; color: var(--muted); font: 700 9px var(--font-mono); letter-spacing: .1em; }
 .compare-dock strong { color: var(--ink); font-size: 12px; white-space: nowrap; }
 .compare-dock small { overflow: hidden; max-width: 420px; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .compare-dock-actions { display: flex; align-items: center; gap: 8px; }
@@ -258,7 +258,7 @@
 .drawer-section-heading .eyebrow { margin-bottom: 4px; }
 .drawer-section-heading h3 { margin: 0; color: var(--ink); font-size: 13px; }
 .drawer-section-heading > span { color: var(--muted); font-size: 10px; }
-.drawer-section-heading > strong { color: var(--accent); font: 650 16px var(--font-mono); font-variant-numeric: tabular-nums; }
+.drawer-section-heading > strong { color: var(--ink); font: 650 16px var(--font-mono); font-variant-numeric: tabular-nums; }
 .drawer-radar { width: 100%; height: 300px; }
 .drawer-quality { display: grid; grid-template-columns: repeat(2, 1fr); margin: 12px 0 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-sm); }
 .drawer-quality div { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 10px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }

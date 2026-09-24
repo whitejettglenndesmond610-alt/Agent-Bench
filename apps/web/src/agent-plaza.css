@@ -48,7 +48,7 @@
 .agent-plaza-page .plaza-check:hover { color: var(--ink); }
 .agent-plaza-page .plaza-tools > strong {
   margin-left: auto;
-  color: var(--accent);
+  color: var(--ink);
   font: 650 13px var(--font-mono);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -80,7 +80,7 @@
   place-items: center;
   width: 34px;
   height: 34px;
-  color: var(--accent);
+  color: var(--muted);
   background: var(--surface-overlay);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
@@ -199,7 +199,7 @@
   place-items: center;
   width: 26px;
   height: 26px;
-  color: var(--accent);
+  color: var(--muted);
   background: var(--surface-overlay);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);

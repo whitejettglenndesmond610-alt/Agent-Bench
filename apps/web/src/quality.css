@@ -173,7 +173,7 @@
 .quality-trace { padding: 16px 20px; border-bottom: 1px solid var(--line); }
 .quality-trace > header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
 .quality-trace > header strong { color: var(--ink); font-size: 13px; font-weight: 650; }
-.quality-trace > header small { margin-left: auto; color: var(--accent); font: 700 10px var(--font-mono); }
+.quality-trace > header small { margin-left: auto; color: var(--muted); font: 700 10px var(--font-mono); }
 .quality-trace ol { display: grid; margin: 0; padding: 0; list-style: none; }
 .quality-trace li { position: relative; display: grid; grid-template-columns: 13px minmax(0, 1fr) auto; gap: 12px; min-width: 0; padding-bottom: 16px; }
 .quality-trace li:last-child { padding-bottom: 0; }

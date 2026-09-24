@@ -8,7 +8,7 @@
 /* PageHeader refinements (toolbar header replaces the old hero header) */
 .compare-workspace .compare-header { flex-wrap: wrap; row-gap: 6px; margin-bottom: 14px; }
 .compare-workspace .compare-header .page-header-meta { flex-wrap: wrap; row-gap: 4px; }
-.compare-header-eyebrow { color: var(--accent); font: 700 9px var(--font-mono); letter-spacing: .12em; white-space: nowrap; }
+.compare-header-eyebrow { color: var(--muted); font: 700 9px var(--font-mono); letter-spacing: .12em; white-space: nowrap; }
 .compare-header-result { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .compare-header-result i { width: 6px; height: 6px; background: var(--green); border-radius: 50%; box-shadow: 0 0 8px var(--green-soft); }
 .compare-header-result strong { color: var(--ink); font-weight: 600; }
@@ -38,7 +38,7 @@
 .compare-workspace .compare-primary-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(260px, .55fr); gap: 12px; margin: 0 0 12px; }
 .compare-workspace .radar-panel, .compare-workspace .compare-scorecards { min-height: 0; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
 .compare-workspace .radar-panel > header, .compare-workspace .benchmark-comparison > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
-.compare-workspace .eyebrow { margin: 0 0 3px; color: var(--accent); font: 700 8px var(--font-mono); letter-spacing: .12em; }
+.compare-workspace .eyebrow { margin: 0 0 3px; color: var(--muted); font: 700 8px var(--font-mono); letter-spacing: .12em; }
 .compare-workspace .radar-panel h2, .compare-workspace .compare-scorecards h2, .compare-workspace .benchmark-comparison h2 { margin: 0; max-width: none; color: var(--ink); font-size: 13px; font-weight: 650; letter-spacing: -.01em; }
 .compare-workspace .radar-panel > header span, .compare-workspace .benchmark-comparison > header > small { color: var(--muted); font: 9px var(--font-mono); letter-spacing: .04em; white-space: nowrap; }
 .compare-workspace .ability-radar { width: 100%; height: 340px; }

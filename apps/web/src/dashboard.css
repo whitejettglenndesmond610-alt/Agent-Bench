@@ -68,7 +68,7 @@
   margin: 0;
   color: var(--ink);
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 520;
   letter-spacing: -.01em;
 }
 .dashboard-profile-card > header p,
@@ -82,11 +82,13 @@
 .dashboard-recent-runs > header a,
 .dashboard-agent-readiness > header a {
   flex: 0 0 auto;
-  color: var(--accent);
+  color: var(--muted);
   font-size: 11px;
   font-weight: 600;
   text-decoration: none;
 }
+.dashboard-recent-runs > header a:hover,
+.dashboard-agent-readiness > header a:hover { color: var(--accent); }
 .dashboard-profile-card > header > .status-pill { flex: 0 0 auto; }
 
 /* Profile card body. */
@@ -208,7 +210,7 @@
 }
 .dashboard-cta-strip a:last-child { border-right: 0; }
 .dashboard-cta-strip a:hover { background: var(--surface-raised); }
-.dashboard-cta-strip span { flex: 0 0 auto; color: var(--accent); font: 700 9px var(--font-mono); }
+.dashboard-cta-strip span { flex: 0 0 auto; color: var(--muted); font: 700 9px var(--font-mono); }
 .dashboard-cta-strip strong { color: var(--ink); font-size: 12px; font-weight: 600; white-space: nowrap; }
 .dashboard-cta-strip small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 

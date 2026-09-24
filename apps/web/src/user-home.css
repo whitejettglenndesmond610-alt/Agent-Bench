@@ -23,11 +23,11 @@
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  box-shadow: inset 2px 0 0 var(--accent);
+  box-shadow: inset 2px 0 0 var(--line-strong);
   font-size: 11px;
   line-height: 1.6;
 }
-.user-home-page .persistence-notice strong { color: var(--accent); font-size: 11px; font-weight: 650; white-space: nowrap; }
+.user-home-page .persistence-notice strong { color: var(--ink); font-size: 11px; font-weight: 650; white-space: nowrap; }
 
 /* Panel grid */
 .user-home-page .user-home-grid { display: grid; grid-template-columns: 1.18fr .82fr; gap: 12px; }
@@ -45,8 +45,8 @@
 .user-home-page .user-product-panel > header > div { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
 .user-home-page .user-product-panel > header span { color: var(--muted); font: 700 9px var(--font-mono); letter-spacing: .12em; white-space: nowrap; }
 .user-home-page .user-product-panel > header h2 { margin: 0; color: var(--ink); font-size: 13px; font-weight: 650; white-space: nowrap; }
-.user-home-page .user-product-panel > header a { flex: 0 0 auto; color: var(--accent); font-size: 11px; text-decoration: none; white-space: nowrap; }
-.user-home-page .user-product-panel > header a:hover { color: var(--accent-strong); text-decoration: underline; }
+.user-home-page .user-product-panel > header a { flex: 0 0 auto; color: var(--muted); font-size: 11px; text-decoration: none; white-space: nowrap; }
+.user-home-page .user-product-panel > header a:hover { color: var(--accent); text-decoration: underline; }
 
 /* Section states — loading/empty use shared LoadingState/EmptyState;
    compact them inside panels; error keeps its role="alert" paragraph. */
@@ -101,8 +101,8 @@
   place-items: center;
   width: 32px;
   height: 32px;
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--muted);
+  background: var(--surface-raised);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   font: normal 700 10px var(--font-mono);
@@ -144,12 +144,12 @@
 }
 .user-home-page .current-leaders-panel li:first-child { border-top: 0; }
 .user-home-page .current-leaders-panel li > b { color: var(--muted); font: 600 12px var(--font-mono); font-variant-numeric: tabular-nums; }
-.user-home-page .current-leaders-panel li:first-child > b { color: var(--accent); }
+.user-home-page .current-leaders-panel li:first-child > b { color: var(--ink); }
 .user-home-page .current-leaders-panel li a { display: grid; gap: 2px; min-width: 0; text-decoration: none; }
 .user-home-page .current-leaders-panel li a strong { overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .user-home-page .current-leaders-panel li a:hover strong { color: var(--accent); }
 .user-home-page .current-leaders-panel li a small { color: var(--muted); font-size: 10px; }
-.user-home-page .current-leaders-panel li > span { color: var(--accent); font: 650 13px var(--font-mono); font-variant-numeric: tabular-nums; }
+.user-home-page .current-leaders-panel li > span { color: var(--ink); font: 650 13px var(--font-mono); font-variant-numeric: tabular-nums; }
 
 /* Prompt templates */
 .user-home-page .home-templates-panel li {
@@ -164,8 +164,8 @@
 .user-home-page .home-templates-panel li > div { min-width: 0; }
 .user-home-page .home-templates-panel li strong { color: var(--ink); font-size: 12px; font-weight: 600; }
 .user-home-page .home-templates-panel li p { overflow: hidden; margin: 2px 0 0; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.user-home-page .home-templates-panel li a { color: var(--accent); font-size: 11px; text-decoration: none; white-space: nowrap; }
-.user-home-page .home-templates-panel li a:hover { color: var(--accent-strong); text-decoration: underline; }
+.user-home-page .home-templates-panel li a { color: var(--muted); font-size: 11px; text-decoration: none; white-space: nowrap; }
+.user-home-page .home-templates-panel li a:hover { color: var(--accent); text-decoration: underline; }
 
 /* Experience tasks — full-width panel with 3 compact cards. */
 .user-home-page .home-tasks-panel { grid-column: 1 / -1; }
@@ -183,8 +183,8 @@
 }
 .user-home-page .home-tasks-panel section strong { color: var(--ink); font-size: 12px; font-weight: 600; }
 .user-home-page .home-tasks-panel section p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
-.user-home-page .home-tasks-panel section a { align-self: end; margin-top: 2px; color: var(--accent); font-size: 11px; font-weight: 600; text-decoration: none; }
-.user-home-page .home-tasks-panel section a:hover { color: var(--accent-strong); text-decoration: underline; }
+.user-home-page .home-tasks-panel section a { align-self: end; margin-top: 2px; color: var(--muted); font-size: 11px; font-weight: 600; text-decoration: none; }
+.user-home-page .home-tasks-panel section a:hover { color: var(--accent); text-decoration: underline; }
 .user-home-page .home-tasks-panel > footer { margin-top: 10px; color: var(--muted); font-size: 10px; }
 
 @media (max-width: 900px) {

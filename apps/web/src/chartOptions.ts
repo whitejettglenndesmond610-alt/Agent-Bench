@@ -12,11 +12,11 @@ const tokenFallbacks = {
   violet: "#a78bfa",
   rose: "#ef6a67",
   green: "#6bd89b",
-  muted: "#8a94a6",
-  line: "#232c3b",
-  lineStrong: "#35425a",
-  surface: "#131822",
-  bg: "#0b0e14"
+  muted: "#8f949f",
+  line: "#272b35",
+  lineStrong: "#3a4050",
+  surface: "#14161c",
+  bg: "#0d0e12"
 } as const;
 
 function cssVar(name: string, fallback: string): string {

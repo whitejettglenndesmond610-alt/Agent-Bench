@@ -7,7 +7,7 @@
 .dataset-releases-page { padding-top: 8px; padding-bottom: 80px; }
 
 /* PageHeader meta */
-.dataset-releases-page .dataset-releases-eyebrow { color: var(--accent); font: 700 9px var(--font-mono); letter-spacing: .12em; white-space: nowrap; }
+.dataset-releases-page .dataset-releases-eyebrow { color: var(--muted); font: 700 9px var(--font-mono); letter-spacing: .12em; white-space: nowrap; }
 .dataset-releases-page .page-header-actions .back-link { margin: 0; white-space: nowrap; }
 
 /* Two-column workspace: history rail + detail/builder */
@@ -81,7 +81,7 @@
 .dataset-releases-page .release-manifest > header span, .dataset-releases-page .release-approval-gate span,
 .dataset-releases-page .release-publication-gate span, .dataset-releases-page .released-version-board > header span { color: var(--muted); font: 700 8px var(--font-mono); letter-spacing: .12em; }
 .dataset-releases-page .dataset-release-builder h2, .dataset-releases-page .dataset-release-detail h2 { margin: 0; color: var(--ink); font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
-.dataset-releases-page .dataset-release-builder > header b { color: var(--accent); font: 700 10px var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dataset-releases-page .dataset-release-builder > header b { color: var(--muted); font: 700 10px var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .dataset-releases-page .release-builder-fields { display: grid; grid-template-columns: minmax(220px, .6fr) minmax(0, 1.4fr); gap: 12px; }
 .dataset-releases-page .release-builder-fields label { display: grid; gap: 6px; color: var(--muted); font-size: 11px; }
 .dataset-releases-page .release-builder-fields input, .dataset-releases-page .release-builder-fields textarea {
@@ -178,7 +178,7 @@
   padding: 16px 18px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--amber);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
 }

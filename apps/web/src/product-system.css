@@ -28,8 +28,8 @@
 .shell-breadcrumb > strong { color: var(--ink); font-size: 13px; font-weight: 650; }
 .shell-breadcrumb > small {
   padding: 3px 7px;
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--muted);
+  background: var(--surface-raised);
   border: 1px solid var(--line);
   border-radius: 999px;
   font: 700 8px var(--font-mono);
@@ -76,8 +76,8 @@
   place-items: center;
   width: 26px;
   height: 26px;
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--ink);
+  background: var(--surface-raised);
   border: 1px solid var(--line);
   border-radius: 50%;
   font: 700 10px var(--font-mono);
@@ -161,7 +161,7 @@
   left: 0;
   height: 2px;
   content: "";
-  background: linear-gradient(90deg, transparent, var(--accent), var(--cyan), transparent);
+  background: linear-gradient(90deg, transparent, var(--muted), var(--cyan), transparent);
   background-size: 220% 100%;
   animation: loading-scan 1.8s linear infinite;
 }
@@ -176,7 +176,7 @@
   width: 34px;
   height: 34px;
   border: 3px solid var(--line-strong);
-  border-top-color: var(--accent);
+  border-top-color: var(--muted);
   border-right-color: var(--cyan);
   border-radius: 50%;
   animation: loading-spin .8s linear infinite;
@@ -241,8 +241,8 @@
   place-items: center;
   width: 40px;
   height: 40px;
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--muted);
+  background: var(--surface-raised);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   content: "+";
@@ -277,7 +277,7 @@
 }
 :where(.panel, .radar-panel, .compare-scorecards):hover { border-color: var(--line-strong); box-shadow: var(--shadow-md); }
 details > summary { transition: color var(--dur-fast) ease, background var(--dur-fast) ease; }
-details > summary:hover { color: var(--accent-strong); }
+details > summary:hover { color: var(--ink); }
 input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 
 @keyframes loading-spin { to { transform: rotate(360deg); } }
@@ -325,7 +325,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
   margin: 0 0 16px;
 }
 .page-header-main { display: flex; align-items: baseline; gap: 14px; min-width: 0; }
-.page-header-main h1 { margin: 0; color: var(--ink); font-size: 15px; font-weight: 650; letter-spacing: -.01em; white-space: nowrap; }
+.page-header-main h1 { margin: 0; color: var(--ink); font-size: 15px; font-weight: 500; letter-spacing: -.01em; white-space: nowrap; }
 .page-header-meta { display: flex; align-items: center; gap: 12px; min-width: 0; color: var(--muted); font-size: 11px; }
 .page-header-meta > * { min-width: 0; }
 .page-header-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
@@ -399,7 +399,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
   display: block;
   height: 100%;
   overflow: hidden;
-  background: linear-gradient(90deg, var(--accent), var(--cyan));
+  background: linear-gradient(90deg, var(--cyan), var(--green));
   border-radius: inherit;
   transition: width var(--dur-med) var(--ease-out-expo);
 }

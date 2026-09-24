@@ -6,15 +6,17 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 
-  /* Surfaces — dark professional data-tool palette (default theme) */
-  --bg: #0b0e14;
-  --surface: #131822;
-  --surface-raised: #1a2130;
-  --surface-overlay: #202838;
-  --line: #232c3b;
-  --line-strong: #35425a;
-  --muted: #8a94a6;
-  --ink: #e3e8f2;
+  /* Surfaces — dark professional data-tool palette (default theme).
+     Warm-leaning greys (R nudged up, B nudged down) over a clear 4-step
+     brightness ladder: bg → surface → raised → overlay. */
+  --bg: #0d0e12;
+  --surface: #14161c;
+  --surface-raised: #1c1f27;
+  --surface-overlay: #252932;
+  --line: #272b35;
+  --line-strong: #3a4050;
+  --muted: #8f949f;
+  --ink: #e5e7ee;
 
   /* Accent (amber) + semantic status palette */
   --accent: #ffca63;
@@ -33,8 +35,8 @@
   --danger-bg: #3b2022;
   --danger-line: #733e41;
   --danger-ink: #ffd9d7;
-  --topbar-bg: rgb(11 14 20 / 78%);
-  --scrim: rgb(3 6 9 / 62%);
+  --topbar-bg: rgb(13 14 18 / 78%);
+  --scrim: rgb(4 5 7 / 62%);
 
   /* Typography */
   --font-mono: "SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", monospace;

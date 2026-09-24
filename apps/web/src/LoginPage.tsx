@@ -43,7 +43,7 @@ export function LoginPage({ error, pending, onLogin, onUserLogin, onResetError }
   }
 
   return (
-    <main className="login-shell">
+    <main className="login-shell grain">
       <section className="login-card">
         <header className="login-card-heading">
           <div className="brand login-brand">

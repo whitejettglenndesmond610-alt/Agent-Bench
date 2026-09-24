@@ -51,7 +51,7 @@
 .templates-page .template-card-grid > article:hover { border-color: var(--line-strong); }
 .templates-page .template-card-grid article > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .templates-page .template-card-grid article > header div { display: grid; gap: 3px; min-width: 0; }
-.templates-page .template-card-grid article > header span { color: var(--accent); font: 700 9px var(--font-mono); letter-spacing: .1em; }
+.templates-page .template-card-grid article > header span { color: var(--muted); font: 700 9px var(--font-mono); letter-spacing: .1em; }
 .templates-page .template-card-grid article > header h2 { margin: 0; overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .templates-page .template-card-grid article > header time { flex: 0 0 auto; color: var(--muted); font: 10px var(--font-mono); font-variant-numeric: tabular-nums; }
 .templates-page .template-card-grid pre {

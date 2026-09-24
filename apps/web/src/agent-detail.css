@@ -16,8 +16,8 @@
   width: 26px;
   height: 26px;
   overflow: hidden;
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--ink);
+  background: var(--surface-raised);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   font: 700 10px var(--font-mono);
@@ -124,8 +124,8 @@
 .agent-metric-grid article > header small { grid-column: 2; color: var(--muted); font-size: 9px; }
 .agent-metric-grid article > b { display: block; margin: 8px 0; color: var(--ink); font: 650 18px/1.1 var(--font-mono); font-variant-numeric: tabular-nums; }
 .agent-metric-grid article > footer { display: grid; gap: 3px; padding-top: 8px; color: var(--muted); border-top: 1px solid var(--line); font-size: 10px; }
-.agent-metric-grid article > footer a { color: var(--accent); text-decoration: none; }
-.agent-metric-grid article > footer a:hover { color: var(--accent-strong); text-decoration: underline; }
+.agent-metric-grid article > footer a { color: var(--muted); text-decoration: none; }
+.agent-metric-grid article > footer a:hover { color: var(--accent); text-decoration: underline; }
 /* Metric status tones (tokens only) */
 .agent-metric-grid .is-evaluated > b { color: var(--green); }
 .agent-metric-grid .is-evaluated > header small { color: var(--green); }
@@ -158,14 +158,14 @@
 .agent-version-timeline li { position: relative; display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
 .agent-version-timeline li > i { width: 8px; height: 8px; margin-top: 4px; background: var(--muted); border-radius: 50%; box-shadow: 0 0 0 3px var(--surface-raised); }
 .agent-version-timeline li.is-active > i { background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
-.agent-version-timeline li.is-verified > i, .agent-version-timeline li.is-draft > i { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.agent-version-timeline li.is-verified > i, .agent-version-timeline li.is-draft > i { background: var(--amber); box-shadow: 0 0 0 3px var(--amber-soft); }
 .agent-version-timeline li > div { display: grid; gap: 3px; min-width: 0; }
 .agent-version-timeline li > div strong { color: var(--ink); font-size: 12px; font-weight: 600; }
 .agent-version-timeline li > div span { color: var(--muted); font-size: 10px; }
 .agent-version-timeline li > b { color: var(--muted); font: 650 10px var(--font-mono); font-variant-numeric: tabular-nums; }
 .agent-version-timeline details { grid-column: 2 / -1; }
-.agent-version-timeline summary { color: var(--accent); cursor: pointer; font-size: 10px; transition: color var(--dur-fast) ease; }
-.agent-version-timeline summary:hover { color: var(--accent-strong); }
+.agent-version-timeline summary { color: var(--muted); cursor: pointer; font-size: 10px; transition: color var(--dur-fast) ease; }
+.agent-version-timeline summary:hover { color: var(--ink); }
 .agent-version-timeline details p {
   display: grid;
   grid-template-columns: 1fr auto;

@@ -31,7 +31,7 @@
 .my-api-page .button.is-danger:hover:not(:disabled) { color: var(--danger-ink); background: var(--rose); border-color: var(--rose); }
 
 /* Eyebrow tag inside PageHeader meta. */
-.my-api-header-tag { color: var(--accent); font: 700 9px var(--font-mono); letter-spacing: .12em; white-space: nowrap; }
+.my-api-header-tag { color: var(--muted); font: 700 9px var(--font-mono); letter-spacing: .12em; white-space: nowrap; }
 
 /* Security notice — tokenized amber warning bar. */
 .my-api-security {
@@ -94,16 +94,16 @@
 .my-api-use-links small { flex-basis: 100%; color: var(--muted); font-size: 10px; }
 .my-api-use-links a {
   padding: 4px 9px;
-  color: var(--accent);
-  background: var(--accent-soft);
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  color: var(--muted);
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   font-size: 10px;
   font-weight: 650;
   text-decoration: none;
   transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease, color var(--dur-fast) ease;
 }
-.my-api-use-links a:hover { color: var(--accent-strong); background: color-mix(in srgb, var(--accent) 20%, transparent); border-color: var(--accent); }
+.my-api-use-links a:hover { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
 
 /* Modal form bits (rendered inside .my-api-page). */
 .my-api-form .form-grid.two-column .form-field:last-child { grid-column: 1 / -1; }

@@ -216,7 +216,7 @@ export function DashboardPage() {
       </section>
 
       <section className="dashboard-profile-grid">
-        <article className="dashboard-profile-card">
+        <article className="dashboard-profile-card grain">
           <header>
             <div>
               <h2>评测档案</h2>
@@ -335,7 +335,7 @@ export function DashboardPage() {
         </article>
       </section>
 
-      <section className="dashboard-cta-strip" aria-label="快捷操作">
+      <section className="dashboard-cta-strip grain" aria-label="快捷操作">
         <Link to="/agents"><span>01</span><strong>管理 Agent</strong><small>版本、预检与配置</small></Link>
         <Link to="/compare"><span>02</span><strong>并行在线对比</strong><small>同一问题，多 Agent 作答</small></Link>
         <Link to="/experiments"><span>03</span><strong>查看评测实验</strong><small>聚合进度与能力矩阵</small></Link>

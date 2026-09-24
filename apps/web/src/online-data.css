@@ -32,7 +32,7 @@
 .online-data-workspace .control { border-radius: var(--radius-sm); }
 
 /* Eyebrow tag inside PageHeader meta. */
-.online-data-header-tag { color: var(--accent); font: 700 9px var(--font-mono); letter-spacing: .12em; white-space: nowrap; }
+.online-data-header-tag { color: var(--muted); font: 700 9px var(--font-mono); letter-spacing: .12em; white-space: nowrap; }
 
 /* KPI strip — shared .kpi-card primitive in a six-up grid. */
 .online-data-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
@@ -130,7 +130,7 @@
 }
 .online-data-workspace .quality-severity.is-critical { color: var(--rose); background: var(--rose-soft); border-color: color-mix(in srgb, var(--rose) 40%, var(--line)); }
 .online-data-workspace .quality-severity.is-high { color: var(--amber); background: var(--amber-soft); border-color: color-mix(in srgb, var(--amber) 40%, var(--line)); }
-.online-data-workspace .quality-severity.is-medium { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.online-data-workspace .quality-severity.is-medium { color: var(--amber); background: var(--amber-soft); border-color: color-mix(in srgb, var(--amber) 40%, var(--line)); }
 .online-data-workspace .quality-severity.is-low { color: var(--cyan); background: var(--cyan-soft); border-color: color-mix(in srgb, var(--cyan) 40%, var(--line)); }
 
 /* Filter toolbar. */

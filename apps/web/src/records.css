@@ -41,7 +41,7 @@
   align-items: center;
   min-width: 0;
   margin-left: auto;
-  color: var(--accent);
+  color: var(--ink);
   background: transparent;
   border-radius: 0;
   font: 650 12px var(--font-mono);
@@ -59,8 +59,8 @@
   min-width: 20px;
   height: 20px;
   padding: 0 6px;
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--muted);
+  background: var(--surface-raised);
   border: 1px solid var(--line);
   border-radius: 999px;
   font: 700 10px var(--font-mono);
@@ -84,7 +84,7 @@
 }
 .records-page .record-card:hover { border-color: var(--line-strong); }
 .records-page .record-type-mark { display: grid; gap: 2px; padding-right: 14px; border-right: 1px solid var(--line); }
-.records-page .record-type-mark span { color: var(--accent); font: 700 9px var(--font-mono); letter-spacing: .1em; }
+.records-page .record-type-mark span { color: var(--muted); font: 700 9px var(--font-mono); letter-spacing: .1em; }
 .records-page .record-type-mark b { color: var(--muted); font-size: 10px; font-weight: 500; }
 .records-page .record-main { display: grid; gap: 2px; min-width: 0; }
 .records-page .record-main > a { overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 650; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
@@ -109,8 +109,8 @@
   transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease, background var(--dur-fast) ease;
 }
 .records-page .record-actions a:hover, .records-page .record-actions button:hover { color: var(--ink); background: var(--surface-raised); border-color: var(--muted); }
-.records-page .record-actions > a:first-child { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
-.records-page .record-actions > a:first-child:hover { color: var(--accent-strong); background: var(--accent-soft); border-color: var(--accent); }
+.records-page .record-actions > a:first-child { color: var(--ink); border-color: var(--line-strong); }
+.records-page .record-actions > a:first-child:hover { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
 .records-page .record-actions button:disabled { cursor: wait; opacity: .5; }
 
 /* Empty state (EmptyState component on top of product-system .empty-state) */

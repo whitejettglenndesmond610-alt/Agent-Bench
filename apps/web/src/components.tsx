@@ -262,7 +262,7 @@ export function EmptyState({
   className?: string;
 }) {
   return (
-    <div className={`empty-state ${className}`.trim()}>
+    <div className={`empty-state grain ${className}`.trim()}>
       <strong>{title}</strong>
       {description && <p>{description}</p>}
       {action && <div className="empty-state-action">{action}</div>}

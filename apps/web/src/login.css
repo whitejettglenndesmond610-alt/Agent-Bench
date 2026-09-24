@@ -10,7 +10,7 @@
   padding: clamp(20px, 4vw, 48px);
   overflow: hidden;
   background:
-    radial-gradient(circle at 78% 12%, var(--accent-soft), transparent 34%),
+    radial-gradient(circle at 78% 12%, color-mix(in srgb, var(--violet) 9%, transparent), transparent 34%),
     radial-gradient(circle at 12% 88%, var(--cyan-soft), transparent 30%),
     var(--bg);
 }
@@ -55,13 +55,13 @@
 
 .login-card-heading { display: grid; gap: 12px; }
 .login-brand { margin: 0 0 4px; }
-.login-card-heading h1 { margin: 0; color: var(--ink); font-size: 24px; font-weight: 700; letter-spacing: -.03em; line-height: 1.25; }
+.login-card-heading h1 { margin: 0; color: var(--ink); font-size: 24px; font-weight: 500; letter-spacing: -.03em; line-height: 1.25; }
 .login-intro { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
 
 .login-form { display: grid; }
 .login-form-heading { margin-bottom: 16px; }
 .login-form-heading span { display: block; margin-bottom: 8px; color: var(--muted); font: 700 9px var(--font-mono); letter-spacing: .12em; }
-.login-form-heading h2 { margin: 0; color: var(--ink); font-size: 17px; font-weight: 650; letter-spacing: -.02em; }
+.login-form-heading h2 { margin: 0; color: var(--ink); font-size: 17px; font-weight: 520; letter-spacing: -.02em; }
 
 .login-mode-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 18px; padding: 4px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm); }
 .login-mode-switch button { min-height: var(--control-h); padding: 4px 10px; color: var(--muted); background: transparent; border: 0; border-radius: calc(var(--radius-sm) - 2px); cursor: pointer; font-size: 12px; transition: color var(--dur-fast) ease, background var(--dur-fast) ease; }
@@ -76,7 +76,7 @@
   color: var(--muted);
   text-align: left;
   background: var(--bg);
-  border: 1px solid var(--line);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: border-color var(--dur-fast) ease, background var(--dur-fast) ease;

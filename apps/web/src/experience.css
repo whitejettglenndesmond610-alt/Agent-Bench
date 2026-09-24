@@ -58,7 +58,7 @@
   align-items: center;
   min-width: 0;
   margin-left: auto;
-  color: var(--accent);
+  color: var(--ink);
   background: transparent;
   font: 650 12px var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -116,8 +116,8 @@
   transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease, background var(--dur-fast) ease;
 }
 .experience-page .experience-task-grid footer a:hover { color: var(--ink); background: var(--surface-raised); border-color: var(--muted); }
-.experience-page .experience-task-grid footer a:first-child { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
-.experience-page .experience-task-grid footer a:first-child:hover { color: var(--accent-strong); background: var(--accent-soft); border-color: var(--accent); }
+.experience-page .experience-task-grid footer a:first-child { color: var(--ink); border-color: var(--line-strong); }
+.experience-page .experience-task-grid footer a:first-child:hover { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
 
 /* Task detail */
 .experience-page .experience-detail {
@@ -144,8 +144,8 @@
   font-weight: 600;
   white-space: nowrap;
 }
-.experience-page .experience-detail > section { margin: 18px 0; padding: 14px 16px; background: var(--bg); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); }
-.experience-page .experience-detail > section span { color: var(--accent); font: 700 9px var(--font-mono); letter-spacing: .1em; }
+.experience-page .experience-detail > section { margin: 18px 0; padding: 14px 16px; background: var(--bg); border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: var(--radius-sm); }
+.experience-page .experience-detail > section span { color: var(--muted); font: 700 9px var(--font-mono); letter-spacing: .1em; }
 .experience-page .experience-detail > section p { margin: 10px 0 0; color: var(--ink); font-size: 12px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
 .experience-page .experience-detail > footer { display: flex; flex-wrap: wrap; gap: 8px; }
 .experience-page .experience-detail > footer a { display: inline-flex; text-decoration: none; }
