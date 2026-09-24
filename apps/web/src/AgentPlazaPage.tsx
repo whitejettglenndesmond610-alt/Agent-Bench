@@ -35,6 +35,13 @@ function PlazaCard({
         <FavoriteAgentButton userId={userId} agent={agent} />
       </header>
       <p>{agent.description || "该 Agent 暂未提供公开描述。"}</p>
+      {(overall?.score != null || overall?.latency_p50_ms != null || overall?.success_rate != null) && (
+        <div className="plaza-agent-metrics">
+          <span><small>综合分</small><b>{overall?.score?.toFixed(2) ?? "--"}</b></span>
+          <span><small>P50 延迟</small><b>{overall?.latency_p50_ms == null ? "--" : `${overall.latency_p50_ms} ms`}</b></span>
+          <span><small>成功率</small><b>{overall?.success_rate == null ? "--" : `${overall.success_rate.toFixed(1)}%`}</b></span>
+        </div>
+      )}
       <div className="plaza-agent-badges">
         <StatusPill tone={agent.supports_citations ? "info" : "neutral"}>{agent.supports_citations ? "支持引用" : "纯文本回答"}</StatusPill>
         <StatusPill tone={overall?.score == null ? "neutral" : "success"}>{overall?.score == null ? "暂无正式综合成绩" : "已有正式成绩"}</StatusPill>

@@ -53,6 +53,7 @@
 .podium-agent strong { overflow: hidden; color: var(--ink); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .podium-agent p { margin: 0; color: var(--muted); font-size: 10px; }
 .leader-podium article > b { flex: 0 0 auto; color: var(--ink); font: 600 12px var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.leader-podium .podium-delta { flex: 0 0 auto; }
 .leader-podium .podium-empty { display: grid; gap: 1px; }
 .leader-podium .podium-empty small { color: var(--muted); font: 700 8px var(--font-mono); letter-spacing: .06em; }
 .leader-podium .podium-empty strong { color: var(--muted); font-size: 12px; font-weight: 500; }

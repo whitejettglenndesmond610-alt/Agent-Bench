@@ -488,6 +488,32 @@
 }
 .selected-agent-card > button:hover { background: var(--accent-strong); }
 .selected-agent-card > button:disabled { cursor: wait; opacity: .5; }
+/* Example prompts on the empty-session state: clicking fills the composer. */
+.workspace-example-prompts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
+.workspace-example-prompts > button {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color var(--dur-fast) ease, transform var(--dur-fast) var(--ease-out-expo);
+}
+.workspace-example-prompts > button:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+.workspace-example-prompts small { overflow: hidden; color: var(--muted); font: 700 9px var(--font-mono); letter-spacing: .08em; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-example-prompts span {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
 .workspace-catalog-error {
   margin-top: 14px;
   padding: 8px 12px;
@@ -641,6 +667,7 @@
   .attempt-stage > button, .attempt-stage > .attempt-meta { grid-column: 2 / -1; }
   .selected-agent-card { grid-template-columns: 40px minmax(0, 1fr); }
   .selected-agent-card dl, .selected-agent-card > button { grid-column: 1 / -1; }
+  .workspace-example-prompts { grid-template-columns: 1fr; }
   .composer-resources { justify-content: flex-start; overflow-x: auto; }
   .composer-resources label > span, .composer-resources > a { display: none; }
   .conversation-export-actions { display: none; }
@@ -649,6 +676,7 @@
 @media (prefers-reduced-motion: reduce) {
   .is-streaming .agent-message-header i, .attempt-stage.is-queued > i, .attempt-stage.is-running > i { animation: none; }
   .conversation-rail { transition: none; }
+  .workspace-example-prompts > button { transition: none; }
   .rail-item-actions, .new-conversation-button, .instrument-agent-pinned button, .instrument-mode-link,
   .conversation-export-actions button, .copy-prompt-button, .variant-controls button,
   .agent-message-footer button, .agent-message-footer a, .attempt-stage > button { transition: none; }

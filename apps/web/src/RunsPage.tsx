@@ -146,6 +146,13 @@ function runStatusTone(run: { status: RunStatus; desired_state: string }): Statu
   return "neutral";
 }
 
+/* 状态图标语义：进行中 = 脉冲点，已发布 = 印章徽章。 */
+function runStatusPillClass(run: { status: RunStatus }): string {
+  if (run.status === "running" || run.status === "scoring") return "is-pulsing";
+  if (run.status === "published") return "is-stamp";
+  return "";
+}
+
 function terminalClass(status: RunStatus) {
   if (status === "published" || status === "completed") return "is-success";
   if (status === "system_failed" || status === "canceled") return "is-danger";
@@ -561,7 +568,7 @@ function RunsList() {
                 <tr key={run.id} className={activeStatuses.has(run.status) ? "is-active-run" : ""}>
                   <td><strong style={transitionRunId === run.id ? { viewTransitionName: "run-detail-name" } as CSSProperties : undefined}>{run.name}</strong><small>{runProfileLabel(run)} · {run.agent_count} Agent · {run.total} 执行项</small></td>
                   <td>
-                    <StatusPill tone={runStatusTone(run)}>{runStatusLabel(run)}</StatusPill>
+                    <StatusPill tone={runStatusTone(run)} className={runStatusPillClass(run)}>{runStatusLabel(run)}</StatusPill>
                     <small className="stage-copy">{stageLabels[run.stage]}</small>
                   </td>
                   <td>
@@ -655,7 +662,7 @@ function RunDetail({ runId }: { runId: string }) {
           title={run.name}
           meta={
             <>
-              <StatusPill tone={runStatusTone(run)}>{runStatusLabel(run)}</StatusPill>
+              <StatusPill tone={runStatusTone(run)} className={runStatusPillClass(run)}>{runStatusLabel(run)}</StatusPill>
               <span>{runProfileLabel(run)}</span>
               <span>{stageLabels[run.stage]}</span>
               <span>每题 {run.trial_count} 次</span>

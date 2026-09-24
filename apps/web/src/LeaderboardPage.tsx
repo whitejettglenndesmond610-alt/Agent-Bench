@@ -12,6 +12,8 @@ import {
 import { EmptyState, Input, LoadingState, PageHeader, Select, Table, Tabs } from "./components";
 import { abilityRadarOption } from "./chartOptions";
 import { EChart } from "./EChart";
+import { DeltaMark } from "./DeltaMark";
+import { deltaForMetric, usePreviousLeaderboardSnapshot } from "./leaderboardDelta";
 import { abilityMetrics, leaderboardMetrics, metricByKey, profileKeyForMetric, formatCostUsd, formatScoreWithCi } from "./metrics";
 import { runWithViewTransition } from "./viewTransitions";
 import "./leaderboard.css";
@@ -291,6 +293,7 @@ export function LeaderboardPage({ isOperator = true, workspaceEnabled = true }: 
     queryFn: fetchGlobalLeaderboardOverview,
     retry: 1
   });
+  const previousSnapshot = usePreviousLeaderboardSnapshot();
 
   if (overviewQuery.isPending) {
     return <main className="workspace"><LoadingState label="正在读取全球榜单" /></main>;
@@ -390,6 +393,9 @@ export function LeaderboardPage({ isOperator = true, workspaceEnabled = true }: 
         {[0, 1, 2].map((index) => {
           const agent = leaders[index];
           const result = agent?.metrics[activeMetric];
+          const delta = agent
+            ? deltaForMetric(previousSnapshot, agent.agent_id, activeMetric, { rank: result?.rank ?? null, score: result?.score ?? null })
+            : null;
           return (
             <article key={agent?.agent_id ?? index} className={index === 0 ? "is-first" : ""}>
               <span className="podium-rank">{String(index + 1).padStart(2, "0")}</span>
@@ -401,6 +407,7 @@ export function LeaderboardPage({ isOperator = true, workspaceEnabled = true }: 
                     <p>{agent.provider}{agent.version === null ? "" : ` · V${agent.version}`}</p>
                   </div>
                   <b>{result?.score === null || result?.score === undefined ? "—" : formatScoreWithCi(result.score, result.ci_low, result.ci_high)}</b>
+                  <DeltaMark delta={delta} className="podium-delta" />
                 </>
               ) : (
                 <div className="podium-empty"><small>等待补位</small><strong>暂无 Agent</strong></div>

@@ -479,3 +479,20 @@
 @media (prefers-reduced-motion: reduce) {
   .run-detail-page-header .page-header-main h1 { view-transition-name: none; }
 }
+
+/* 状态图标语义：进行中 = 脉冲点（info tone），已发布 = 印章徽章。 */
+.status-pill.is-pulsing .status-pill-dot { animation: run-pill-pulse 1.5s ease-in-out infinite; }
+@keyframes run-pill-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--cyan-soft); opacity: 1; }
+  50% { box-shadow: 0 0 0 5px var(--cyan-soft); opacity: .5; }
+}
+.status-pill.is-stamp {
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+@media (prefers-reduced-motion: reduce) {
+  .status-pill.is-pulsing .status-pill-dot { animation: none; }
+}

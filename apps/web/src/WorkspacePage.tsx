@@ -19,6 +19,7 @@ import {
   fetchWorkspaceConversation,
   fetchWorkspaceConversations,
   fetchWorkspaceExperienceTask,
+  fetchWorkspaceExperienceTasks,
   fetchWorkspacePromptTemplates,
   regenerateWorkspaceMessage,
   sendWorkspaceMessage,
@@ -486,6 +487,12 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
     queryKey: userQueryKeys.task(userId, requestedTaskSlug || "none"),
     queryFn: () => fetchWorkspaceExperienceTask(requestedTaskSlug),
     enabled: Boolean(requestedTaskSlug),
+    retry: false
+  });
+  const exampleTasksQuery = useQuery({
+    queryKey: userQueryKeys.tasks(userId),
+    queryFn: fetchWorkspaceExperienceTasks,
+    enabled: !conversationId,
     retry: false
   });
   const conversationQuery = useQuery({
@@ -1069,6 +1076,24 @@ export function WorkspacePage({ userId, canDraft }: { userId: string; canDraft: 
               <p className="empty-state-copy">
                 选择已验证版本。消息、生成尝试、引用与 Token 指标将写入服务端账本。
               </p>
+              {!draft.trim() && (exampleTasksQuery.data ?? []).length > 0 && (
+                <div className="workspace-example-prompts" aria-label="示例问题">
+                  {(exampleTasksQuery.data ?? []).slice(0, 3).map((task) => (
+                    <button
+                      key={task.slug}
+                      type="button"
+                      onClick={() => {
+                        draftTouchedRef.current = true;
+                        setDraft(task.prompt);
+                        textareaRef.current?.focus();
+                      }}
+                    >
+                      <small>{task.title}</small>
+                      <span>{task.prompt}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               {catalogQuery.isError && <div className="workspace-catalog-error">Agent 目录读取失败，请稍后重试。</div>}
               {selectedAgent && (
                 <article className="selected-agent-card">

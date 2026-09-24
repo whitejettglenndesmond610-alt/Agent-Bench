@@ -219,7 +219,10 @@ test("switches to a specialist board without fetching a second leaderboard", asy
   expect(retrievalTab).toHaveAttribute("aria-pressed", "true");
   expect(await screen.findByText("Retrieval Arena")).toBeInTheDocument();
   expect(screen.getAllByText("72.00").length).toBeGreaterThan(0);
-  expect(fetchMock).toHaveBeenCalledTimes(1);
+  // 榜单本体只取一次 overview；历史/快照请求用于 podium delta，不算第二张榜。
+  const boardCalls = fetchMock.mock.calls.filter(([input]) => String(input).startsWith("/api/v1/leaderboards/global/"));
+  expect(boardCalls).toHaveLength(1);
+  expect(String(boardCalls[0][0])).toContain("/leaderboards/global/overview");
 });
 
 test("opens the detail drawer and builds a global multi-agent comparison", async () => {

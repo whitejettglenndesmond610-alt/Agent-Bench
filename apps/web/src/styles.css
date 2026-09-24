@@ -2016,6 +2016,20 @@ h2 { color: var(--ink); font-weight: 520; letter-spacing: -.02em; }
 .status-pill--danger { color: var(--rose); background: var(--rose-soft); border-color: transparent; }
 .status-pill--info { color: var(--cyan); background: var(--cyan-soft); border-color: transparent; }
 
+/* Leaderboard delta marker (leaderboardDelta.tsx) — tabular, tone by direction. */
+.delta-mark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font: 600 10px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.delta-mark i { font-style: normal; }
+.delta-mark.is-up { color: var(--green); }
+.delta-mark.is-down { color: var(--rose); }
+.delta-mark.is-flat { color: var(--muted); }
+
 .skeleton {
   display: block;
   width: 100%;

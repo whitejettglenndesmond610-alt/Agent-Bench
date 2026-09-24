@@ -63,9 +63,9 @@ export function Table({ children, className = "" }: { children: ReactNode; class
 
 export type StatusTone = "success" | "warning" | "danger" | "info" | "neutral";
 
-export function StatusPill({ tone = "neutral", children }: { tone?: StatusTone; children: ReactNode }) {
+export function StatusPill({ tone = "neutral", className = "", children }: { tone?: StatusTone; className?: string; children: ReactNode }) {
   return (
-    <span className={`status-pill status-pill--${tone}`}>
+    <span className={`status-pill status-pill--${tone} ${className}`.replace(/\s+/g, " ").trim()}>
       <i className="status-pill-dot" aria-hidden="true" />
       {children}
     </span>
