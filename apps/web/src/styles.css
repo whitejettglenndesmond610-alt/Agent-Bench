@@ -504,10 +504,6 @@ button.row-link:hover { text-decoration: underline; }
 .evaluation-case-history li a { grid-template-columns: 1fr auto; }
 .evaluation-case-history li strong { min-width: 0; }
 .evaluation-case-history li small, .evaluation-case-history li time { grid-column: 1 / -1; }
-.case-status { padding: 4px 6px; color: #9da8b2; border: 1px solid #3b4651; font: 7px "SFMono-Regular", Consolas, monospace !important; white-space: nowrap; }
-.case-status.is-draft { color: var(--accent); border-color: #5b4c31; }
-.case-status.is-reviewed { color: var(--cyan); border-color: #345957; }
-.case-status.is-published { color: var(--green); border-color: #315843; }
 .evaluation-case-placeholder { min-height: 360px; padding: 70px 50px; background: linear-gradient(135deg, rgb(99 217 208 / 3%), transparent 42%), #0e141a; border: 1px dashed #35414c; }
 .evaluation-case-placeholder span { color: #4f7775; font: 8px "SFMono-Regular", Consolas, monospace; letter-spacing: .12em; }
 .evaluation-case-placeholder h2 { margin-top: 27px; font-size: 24px; }
@@ -562,10 +558,6 @@ button.row-link:hover { text-decoration: underline; }
 .case-publish-gate > small { color: #d9b66d; font-size: 9px; }
 .evaluation-header-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 
-.dataset-releases-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 36px; margin-bottom: 28px; }
-.dataset-releases-header h1 { font-size: clamp(38px, 4vw, 58px); }
-.dataset-releases-header > div > p:last-child { max-width: 760px; margin: 15px 0 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
-.dataset-releases-header .back-link { flex: 0 0 auto; margin-top: 5px; padding: 9px 11px; border: 1px solid var(--line); }
 .dataset-releases-layout { display: grid; grid-template-columns: 255px minmax(0, 1fr); align-items: start; gap: 16px; }
 .dataset-release-history { position: sticky; top: 18px; max-height: calc(100vh - 36px); overflow-y: auto; background: #0e141a; border: 1px solid var(--line); }
 .dataset-release-history > header { position: sticky; z-index: 2; top: 0; display: grid; gap: 7px; padding: 18px; background: #0e141af2; border-bottom: 1px solid var(--line); backdrop-filter: blur(9px); }
@@ -579,10 +571,6 @@ button.row-link:hover { text-decoration: underline; }
 .dataset-release-history li a { display: grid; grid-template-columns: 1fr auto; gap: 6px; padding: 15px 16px; color: inherit; text-decoration: none; }
 .dataset-release-history li strong { overflow: hidden; min-width: 0; color: #c6ced5; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .dataset-release-history li small, .dataset-release-history li time { grid-column: 1 / -1; color: #64717e; font: 7px "SFMono-Regular", Consolas, monospace; }
-.release-status { padding: 4px 6px; color: #9da8b2; border: 1px solid #3b4651; font: 7px "SFMono-Regular", Consolas, monospace; white-space: nowrap; }
-.release-status.is-draft { color: var(--accent); border-color: #5b4c31; }
-.release-status.is-approved { color: var(--cyan); border-color: #345957; }
-.release-status.is-published { color: var(--green); border-color: #315843; }
 .dataset-release-builder { display: grid; gap: 18px; padding: clamp(22px, 3vw, 34px); background: #10171e; border: 1px solid #303b46; border-top: 2px solid var(--cyan); }
 .dataset-release-builder > header, .dataset-release-detail > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
 .dataset-release-builder > header div, .dataset-release-detail > header > div { display: grid; gap: 6px; }

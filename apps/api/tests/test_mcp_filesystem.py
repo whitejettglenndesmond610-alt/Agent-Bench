@@ -276,6 +276,16 @@ def test_build_mcpmark_records_limit_and_suite(tmp_path: Path) -> None:
         build_mcpmark_filesystem_records(repo, "standard")
 
 
+def test_build_mcpmark_records_standard_uses_own_benchmark(tmp_path: Path) -> None:
+    repo = make_fake_repo(tmp_path, tasks=2)
+    for index in range(2):
+        make_task_dir(repo, suite="standard", task_id=f"std_{index:02d}")
+    records = build_mcpmark_filesystem_records(repo, "standard")
+    assert len(records) == 2
+    assert {record.benchmark for record in records} == {"MCPMark-Filesystem-Standard"}
+    assert records[0].external_id.startswith("standard/")
+
+
 def test_mcpmark_commit_pin_requires_pin(tmp_path: Path) -> None:
     repo = tmp_path / "bare"
     repo.mkdir()

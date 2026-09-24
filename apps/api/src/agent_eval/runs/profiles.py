@@ -74,9 +74,15 @@ TAU2_PROFILES: dict[str, tuple[str, str, int]] = {
 TAU2_PROFILE_KEYS = frozenset(TAU2_PROFILES)
 MCP_FILESYSTEM_PROFILE_KEY = "mcp-filesystem"
 # Locked MCPMark filesystem profiles: benchmark, display name, expected tasks.
-# Only the easy suite (10 tasks) ships in M1; standard (30) lands with M2.
+# The standard suite lives in its own benchmark so the easy profile keeps
+# resolving to the 10-question version.
 MCP_PROFILES: dict[str, tuple[str, str, int]] = {
     MCP_FILESYSTEM_PROFILE_KEY: ("MCPMark-Filesystem", "MCPMark Filesystem Easy", 10),
+    "mcp-filesystem-standard": (
+        "MCPMark-Filesystem-Standard",
+        "MCPMark Filesystem Standard",
+        30,
+    ),
 }
 MCP_PROFILE_KEYS = frozenset(MCP_PROFILES)
 

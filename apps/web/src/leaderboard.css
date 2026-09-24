@@ -87,6 +87,16 @@
 .leaderboard-table .rank-cell { color: var(--muted); }
 .leaderboard-table tr.is-leading .rank-cell { color: var(--accent); font-weight: 650; }
 .leaderboard-table .agent-cell { min-width: 190px; }
+/* Freeze the agent column while the wide metrics table scrolls horizontally. */
+.leaderboard-table .agent-cell {
+  position: sticky;
+  z-index: 2;
+  left: 0;
+  background: var(--surface);
+  box-shadow: 1px 0 0 var(--line);
+}
+.leaderboard-table thead .agent-cell { z-index: 4; }
+.leaderboard-table tbody tr:hover .agent-cell { background: var(--surface-raised); }
 .leaderboard-table .agent-cell a { text-decoration: none; }
 .leaderboard-table .agent-cell a strong { display: block; color: var(--ink); font-size: 12px; }
 .leaderboard-table .agent-cell a:hover strong { color: var(--accent); }

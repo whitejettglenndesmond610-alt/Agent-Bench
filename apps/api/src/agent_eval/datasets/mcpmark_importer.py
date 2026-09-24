@@ -28,6 +28,10 @@ from agent_eval.datasets.schema import QuestionRecord
 from agent_eval.db.enums import Ability, Language, QuestionType
 
 MCPMARK_FILESYSTEM_BENCHMARK = "MCPMark-Filesystem"
+MCPMARK_SUITE_BENCHMARKS = {
+    "easy": MCPMARK_FILESYSTEM_BENCHMARK,
+    "standard": f"{MCPMARK_FILESYSTEM_BENCHMARK}-Standard",
+}
 MCPMARK_SOURCE = "mcpmark"
 SUPPORTED_SUITES = ("easy", "standard")
 DEFAULT_IMPORT_LIMIT: int | None = None
@@ -104,7 +108,7 @@ def build_mcpmark_filesystem_records(
         task_id = task_dir.name
         records.append(
             QuestionRecord(
-                benchmark=MCPMARK_FILESYSTEM_BENCHMARK,
+                benchmark=MCPMARK_SUITE_BENCHMARKS[suite],
                 source=MCPMARK_SOURCE,
                 source_version=f"mcpmark-{commit}",
                 license_note="MCPMark (eval-sys), Apache-2.0 license",
