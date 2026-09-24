@@ -41,12 +41,14 @@
   /* Typography */
   --font-mono: "SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", monospace;
 
-  /* Layout + density */
+  /* Layout + density — airy rhythm: looser sections, taller data rows. */
   --topbar-h: 48px;
   --content-max: 1480px;
   --content-max-form: 960px;
   --page-pad: clamp(24px, 3.5vw, 58px);
-  --row-h: 32px;
+  --row-h: 40px;
+  --section-gap: 40px;
+  --card-pad: 22px;
   --control-h: 32px;
   --control-h-sm: 28px;
 

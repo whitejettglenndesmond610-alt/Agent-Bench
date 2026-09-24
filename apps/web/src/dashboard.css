@@ -29,34 +29,34 @@
 .dashboard-workspace .button.is-ghost:hover { color: var(--ink); background: var(--surface-raised); border-color: var(--muted); }
 
 /* Asymmetric bento grid — tile size follows data priority: two hero tiles
-   (当前榜单概览 / 活跃 run 实时进度) span two rows, KPI 三合一卡 fill one
-   row with uneven spans, secondary panels split 7/5 below. */
+   (评测档案 / 最近评测运行) span two rows, the three KPI cards split one row
+   evenly, secondary panels split 7/5 below. Airy 20px gutters. */
 .dashboard-bento {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: 12px;
+  gap: 20px;
 }
 .bento-profile { grid-column: span 5; grid-row: span 2; }
 .bento-runs { grid-column: span 7; grid-row: span 2; }
-.bento-kpi-a, .bento-kpi-b { grid-column: span 3; }
-.bento-kpi-c, .bento-kpi-d, .bento-kpi-e { grid-column: span 2; }
+.bento-kpi-a, .bento-kpi-b, .bento-kpi-d { grid-column: span 4; }
 .bento-ability { grid-column: span 7; }
 .bento-readiness { grid-column: span 5; }
 .bento-cta { grid-column: 1 / -1; margin-top: 0; }
 .dashboard-bento .kpi-card.is-ready > strong { color: var(--green); }
 .dashboard-bento .kpi-card.is-blocked > strong { color: var(--amber); }
-.dashboard-bento .kpi-card .kpi-spark { width: 68px; }
+.dashboard-bento .kpi-card .kpi-spark { width: 84px; }
 .kpi-spark-chart { width: 100%; height: 100%; }
 
 /* Hero tile emphasis: grain + slightly raised surface, no extra accent. */
 .dashboard-bento .bento-profile,
 .dashboard-bento .bento-runs { background: linear-gradient(180deg, var(--surface-raised), var(--surface) 38%); }
 
-/* Dense token-based panels. */
+/* Token-based panels — surface brightness separates them from the page, so
+   the border is dropped (border discipline: borders stay on data + inputs). */
 .dashboard-profile-card, .dashboard-ability-card, .dashboard-recent-runs, .dashboard-agent-readiness {
-  padding: 14px 16px;
+  padding: 22px 24px;
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: var(--radius-md);
 }
 
@@ -68,7 +68,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 .dashboard-profile-card > header h2,
 .dashboard-ability-card > header h2,
@@ -117,7 +117,7 @@
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
 }
-.dashboard-language-counts div { display: grid; gap: 4px; min-width: 0; padding: 10px 12px; border-right: 1px solid var(--line); }
+.dashboard-language-counts div { display: grid; gap: 5px; min-width: 0; padding: 13px 14px; border-right: 1px solid var(--line); }
 .dashboard-language-counts div:last-child { border-right: 0; }
 .dashboard-language-counts dt { color: var(--muted); font-size: 9px; }
 .dashboard-language-counts dd { margin: 0; color: var(--ink); font: 650 13px var(--font-mono); font-variant-numeric: tabular-nums; }
@@ -130,7 +130,7 @@
   grid-template-columns: 88px minmax(60px, 1fr) 50px 36px;
   align-items: center;
   gap: 10px;
-  padding: 8px 0;
+  padding: 11px 0;
   border-top: 1px solid var(--line);
 }
 .dashboard-ability-row:first-child { border-top: 0; }
@@ -159,27 +159,27 @@
 }
 .dashboard-recent-runs li small, .dashboard-agent-readiness li small { color: var(--muted); font-size: 10px; }
 
-/* Recent runs — 32–40px rows with an inline progress column. */
+/* Recent runs — 44px rows with an inline progress column. */
 .dashboard-recent-runs li {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 96px auto 40px;
   align-items: center;
-  gap: 12px;
-  min-height: 40px;
-  padding: 5px 0;
+  gap: 14px;
+  min-height: 44px;
+  padding: 8px 0;
   border-top: 1px solid var(--line);
 }
 .dashboard-recent-runs li:first-child { border-top: 0; }
 .dashboard-recent-runs li > b { color: var(--muted); font: 650 10px var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
 
-/* Agent readiness — compact rows with StatusPill badges. */
+/* Agent readiness — airy rows with StatusPill badges. */
 .dashboard-agent-readiness li {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
-  min-height: 40px;
-  padding: 5px 0;
+  gap: 14px;
+  min-height: 44px;
+  padding: 8px 0;
   border-top: 1px solid var(--line);
 }
 .dashboard-agent-readiness li:first-child { border-top: 0; }
@@ -197,22 +197,22 @@
   line-height: 1.6;
 }
 
-/* CTA strip — thin-border toolbar. */
+/* CTA strip — quiet surface band, no border. */
 .dashboard-cta-strip {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  margin-top: 12px;
+  margin-top: 20px;
   overflow: hidden;
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: var(--radius-md);
 }
 .dashboard-cta-strip a {
   display: flex;
   align-items: baseline;
-  gap: 9px;
-  min-height: 44px;
-  padding: 10px 14px;
+  gap: 10px;
+  min-height: 56px;
+  padding: 14px 18px;
   border-right: 1px solid var(--line);
   text-decoration: none;
   transition: background var(--dur-fast) ease;
@@ -225,22 +225,21 @@
 
 @media (max-width: 1100px) {
   .bento-profile, .bento-runs { grid-column: span 6; }
-  .bento-kpi-a, .bento-kpi-b { grid-column: span 6; }
-  .bento-kpi-c, .bento-kpi-d, .bento-kpi-e { grid-column: span 4; }
+  .bento-kpi-a, .bento-kpi-b, .bento-kpi-d { grid-column: span 4; }
   .dashboard-cta-strip { grid-template-columns: repeat(2, 1fr); }
   .dashboard-cta-strip a:nth-child(2) { border-right: 0; }
   .dashboard-cta-strip a:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
 }
 
 @media (max-width: 900px) {
-  /* Bento collapses: heroes stack full-width, KPI tiles pair up. */
+  /* Bento collapses: heroes stack full-width, KPI tiles stack too. */
   .bento-profile, .bento-runs { grid-column: 1 / -1; grid-row: auto; }
   .bento-ability, .bento-readiness { grid-column: 1 / -1; }
 }
 
 @media (max-width: 620px) {
   /* Narrowest: full single-column collapse. */
-  .bento-kpi-a, .bento-kpi-b, .bento-kpi-c, .bento-kpi-d, .bento-kpi-e { grid-column: 1 / -1; }
+  .bento-kpi-a, .bento-kpi-b, .bento-kpi-d { grid-column: 1 / -1; }
   .dashboard-recent-runs li { grid-template-columns: minmax(0, 1fr) auto; }
   .dashboard-recent-runs li > .progress, .dashboard-recent-runs li > b { display: none; }
   .dashboard-ability-row { grid-template-columns: 80px minmax(50px, 1fr) 46px; }

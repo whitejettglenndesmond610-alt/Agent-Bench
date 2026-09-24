@@ -174,6 +174,32 @@ test("renders a compact podium and the six-metric overview matrix", async () => 
   expect(screen.getByRole("button", { name: "按长上下文排序" })).toBeInTheDocument();
 });
 
+test("collapses extended metrics behind an instant toggle", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(response(overview()));
+  vi.stubGlobal("fetch", fetchMock);
+  renderPage();
+
+  await screen.findByRole("heading", { name: "Agent 排行榜" });
+  // 默认主表收敛为 名次/Agent/六能力/稳定性，扩展指标列不可见。
+  expect(screen.queryByRole("columnheader", { name: "pass@1" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("columnheader", { name: "CI 区间" })).not.toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "稳定性" })).toBeInTheDocument();
+
+  const toggle = screen.getByRole("button", { name: "展开全部指标" });
+  expect(toggle).toHaveAttribute("aria-pressed", "false");
+  const callsBefore = fetchMock.mock.calls.length;
+  fireEvent.click(toggle);
+
+  expect(toggle).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("columnheader", { name: "pass@1" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "pass^k" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "CI 区间" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "成本/题" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "延迟 P50/P95" })).toBeInTheDocument();
+  // 切换即时完成，不触发任何新请求。
+  expect(fetchMock.mock.calls.length).toBe(callsBefore);
+});
+
 test("sorts the overview table by clicking ability column headers", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(overview())));
   const page = renderPage();

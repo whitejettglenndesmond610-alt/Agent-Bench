@@ -236,11 +236,11 @@
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent;
 }
-.ledger-turn { width: min(880px, 100%); min-width: 0; margin: 0 auto 28px; }
+.ledger-turn { width: min(880px, 100%); min-width: 0; margin: 0 auto 42px; }
 
 .ledger-user-message {
-  margin-bottom: 14px;
-  padding: 10px 12px;
+  margin-bottom: 20px;
+  padding: 14px 16px;
   background: var(--surface-raised);
   border: 1px solid var(--line);
   border-left: 2px solid var(--line-strong);
@@ -290,7 +290,7 @@
 .variant-controls span { display: grid; place-items: center; min-width: 38px; align-self: stretch; color: var(--muted); border-right: 1px solid var(--line); border-left: 1px solid var(--line); font: 9px var(--font-mono); text-align: center; }
 
 /* Markdown body + code surfaces (token overrides of the shared dark rules) */
-.workspace-markdown { min-width: 0; padding: 14px 16px; color: var(--ink); font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+.workspace-markdown { min-width: 0; padding: 18px 20px; color: var(--ink); font-size: 13px; line-height: 1.75; overflow-wrap: anywhere; }
 .workspace-markdown > :first-child { margin-top: 0; }
 .workspace-markdown > :last-child { margin-bottom: 0; }
 .workspace-markdown h1, .workspace-markdown h2, .workspace-markdown h3, .workspace-markdown h4 { max-width: none; margin: 1.2em 0 .5em; color: var(--ink); font-weight: 600; letter-spacing: -.01em; line-height: 1.3; }
@@ -525,19 +525,20 @@
 }
 .workspace-conversation-empty { width: min(880px, 100%); margin: 6vh auto 0; }
 
-/* — Composer (docked bottom toolbar) — */
+/* — Composer (docked bottom toolbar) — quieter: no hard border/frame, the
+   prompt box separates itself with surface brightness alone. */
 .workspace-composer {
   position: relative;
   z-index: 4;
-  padding: 10px clamp(16px, 4vw, 56px) 12px;
-  background: var(--surface);
-  border-top: 1px solid var(--line);
+  padding: 12px clamp(16px, 4vw, 56px) 14px;
+  background: var(--bg);
+  border-top: 0;
 }
 .workspace-composer > * { width: min(880px, 100%); margin-inline: auto; }
 .composer-error, .composer-notice { margin-bottom: 6px; padding: 7px 10px; border-radius: var(--radius-sm); font-size: 11px; }
 .composer-error { color: var(--danger-ink); background: var(--danger-bg); border: 1px solid var(--danger-line); }
 .composer-notice { color: var(--amber); background: var(--amber-soft); border: 1px solid color-mix(in srgb, var(--amber) 40%, var(--line)); }
-.composer-resources { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-bottom: 6px; }
+.composer-resources { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-bottom: 8px; }
 .composer-resources label { display: flex; align-items: center; gap: 7px; }
 .composer-resources label > span { color: var(--muted); font: 600 10px var(--font-mono); }
 .composer-resources select {
@@ -557,8 +558,8 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: end;
   min-height: 44px;
-  background: var(--bg);
-  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: var(--radius-md);
 }
 .composer-grid:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }

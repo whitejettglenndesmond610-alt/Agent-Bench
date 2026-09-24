@@ -48,7 +48,7 @@ h2 { margin: 0; font-size: 18px; font-weight: 520; letter-spacing: -.015em; }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--rose); }
 .status-chip.is-online .status-dot { background: var(--green); box-shadow: 0 0 10px var(--green-soft); }
 
-.panel { min-height: 280px; padding: 28px; background: var(--surface); border: 1px solid var(--line); }
+.panel { min-height: 280px; padding: 40px; background: var(--surface); border: 1px solid var(--line); }
 
 .auth-loading { min-height: 100vh; display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--muted); font: 11px "SFMono-Regular", Consolas, monospace; }
 .auth-loading .status-dot { background: var(--muted); animation: pulse 1.2s ease-in-out infinite; }
@@ -78,8 +78,8 @@ h2 { margin: 0; font-size: 18px; font-weight: 520; letter-spacing: -.015em; }
 
 .table-frame { max-width: 100%; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
 .table-frame table { width: 100%; border-collapse: collapse; }
-.table-frame th { position: sticky; z-index: 3; top: 0; padding: 8px 14px; color: var(--muted); background: var(--surface); border-bottom: 1px solid var(--line-strong); font: 600 10px var(--font-mono); letter-spacing: .08em; text-align: left; text-transform: uppercase; }
-.table-frame td { min-height: var(--row-h); padding: 7px 14px; color: var(--ink); border-bottom: 1px solid var(--line); font-size: 12px; }
+.table-frame th { position: sticky; z-index: 3; top: 0; padding: 11px 16px; color: var(--muted); background: var(--surface); border-bottom: 1px solid var(--line-strong); font: 600 10px var(--font-mono); letter-spacing: .08em; text-align: left; text-transform: uppercase; }
+.table-frame td { min-height: var(--row-h); padding: 11px 16px; color: var(--ink); border-bottom: 1px solid var(--line); font-size: 12px; }
 .table-frame tbody tr:last-child td { border-bottom: 0; }
 .table-frame tbody tr { transition: background var(--dur-fast) ease; }
 .table-frame tbody tr:hover { background: var(--surface-raised); }

@@ -32,11 +32,11 @@
 .quality-workspace .button.is-danger { color: var(--danger-ink); background: var(--danger-bg); border-color: var(--danger-line); }
 .quality-workspace .button.is-danger:hover:not(:disabled) { color: var(--danger-ink); background: var(--rose); border-color: var(--rose); }
 
-/* KPI strip — shared .kpi-card primitive in a six-up grid. */
-.quality-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+/* KPI strip — shared .kpi-card primitive in a four-up grid. */
+.quality-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 28px; }
 .quality-kpis .kpi-card {
-  min-height: 78px;
-  padding: 10px 12px;
+  min-height: 96px;
+  padding: 16px 18px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -53,11 +53,11 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 14px;
-  padding: 10px 12px;
+  gap: 10px;
+  margin-bottom: 24px;
+  padding: 14px 16px;
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: var(--radius-md);
 }
 .quality-filter-bar form { display: flex; flex: 1 1 320px; gap: 8px; min-width: 0; }
@@ -71,8 +71,8 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin-bottom: 14px;
-  padding: 10px 12px;
+  margin-bottom: 24px;
+  padding: 12px 16px;
   background: var(--surface);
   border: 1px dashed var(--line-strong);
   border-radius: var(--radius-md);
@@ -131,10 +131,10 @@
 /* Detail panel. */
 .quality-detail {
   min-height: 0;
-  margin-top: 16px;
+  margin-top: 32px;
   overflow: hidden;
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: var(--radius-md);
 }
 .quality-detail .quality-detail-empty { min-height: 320px; border: 0; border-radius: 0; }
@@ -202,7 +202,7 @@
 .quality-mutation-error { margin: 10px 0 0; color: var(--rose); font-size: 11px; }
 
 /* Detection rules — compact card grid. */
-.quality-rules { margin-top: 16px; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); }
+.quality-rules { margin-top: 32px; overflow: hidden; background: var(--surface); border: 0; border-radius: var(--radius-md); }
 .quality-rules > header, .quality-rule-form > header {
   display: flex;
   align-items: baseline;
@@ -240,7 +240,7 @@
 .quality-rule-list .button { justify-self: start; }
 
 /* Rule create form. */
-.quality-rule-form { margin-bottom: 16px; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); }
+.quality-rule-form { margin-bottom: 24px; overflow: hidden; background: var(--surface); border: 0; border-radius: var(--radius-md); }
 .quality-rule-form > header strong { color: var(--ink); font-size: 13px; font-weight: 650; }
 .quality-rule-form > div { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 16px 20px; }
 .quality-rule-form > div .form-field:nth-last-child(2), .quality-rule-form > div .form-field:last-child { grid-column: span 2; }
@@ -248,7 +248,7 @@
 .quality-rule-form > .quality-mutation-error { margin: 0; padding: 0 20px 12px; }
 
 /* Judge calibration — dense dl grid with thin dividers. */
-.quality-calibration { margin-top: 16px; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); }
+.quality-calibration { margin-top: 32px; overflow: hidden; background: var(--surface); border: 0; border-radius: var(--radius-md); }
 .quality-calibration > header {
   display: flex;
   align-items: baseline;
@@ -297,7 +297,7 @@
 .quality-calibration-list > .empty-state { margin: 14px 20px 16px; }
 
 /* Failure clusters — compact card grid with staggered entrance. */
-.quality-clusters { margin-top: 16px; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); }
+.quality-clusters { margin-top: 32px; overflow: hidden; background: var(--surface); border: 0; border-radius: var(--radius-md); }
 .quality-clusters > header {
   display: flex;
   align-items: baseline;
@@ -331,7 +331,7 @@
 .quality-clusters > .empty-state { margin: 14px 20px 16px; }
 
 @media (max-width: 900px) {
-  .quality-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .quality-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .quality-calibration-report dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .quality-calibration-report dl div:nth-child(2n) { border-right: 0; }
   .quality-calibration-report dl div:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }

@@ -127,7 +127,7 @@
 
 /* ---------- 列表页 ---------- */
 
-.runs-page-body { display: grid; gap: 14px; }
+.runs-page-body { display: grid; gap: 20px; }
 .runs-page-body .page-header { margin-bottom: 0; }
 .runs-page-body .page-header-meta b { color: var(--ink); font: 650 11px var(--font-mono); font-variant-numeric: tabular-nums; }
 .runs-poll-note { color: var(--muted); font-size: 10px; }
@@ -198,7 +198,7 @@
 
 /* ---------- 详情页头部 ---------- */
 
-.run-detail-body { display: grid; gap: 14px; }
+.run-detail-body { display: grid; gap: 24px; }
 .run-detail-workspace .back-link { margin-bottom: 0; color: var(--muted); font-family: var(--font-mono); font-weight: 500; }
 .run-detail-workspace .back-link:hover { color: var(--ink); }
 .run-detail-page-header { align-items: flex-start; flex-wrap: wrap; margin-bottom: 0; }
@@ -207,43 +207,35 @@
 .run-detail-page-header .page-header-meta { flex-wrap: wrap; row-gap: 6px; }
 .run-id-copy { font-family: var(--font-mono); }
 
-/* ---------- 终态横幅 ---------- */
+/* ---------- 详情页 hero：状态 + 进度/最终分主角区 ---------- */
 
-.run-terminal {
-  display: none;
-  gap: 6px;
-  margin-bottom: 0;
-  padding: 13px 16px;
+.run-hero {
+  display: grid;
+  gap: 18px;
+  padding: 26px 30px 24px;
   background: var(--surface);
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--line-strong);
-  border-radius: var(--radius-md);
+  border: 0;
+  border-radius: var(--radius-lg);
 }
-.run-terminal.is-visible { display: grid; }
-.run-terminal.is-success { border-left-color: var(--green); }
-.run-terminal.is-danger { border-left-color: var(--rose); }
-.run-terminal span { color: var(--muted); font: 600 9px var(--font-mono); letter-spacing: .12em; }
-.run-terminal strong { color: var(--ink); font-size: 13px; }
-.run-terminal small { color: var(--rose); font: 10px var(--font-mono); }
-
-/* ---------- 整体进度面板 ---------- */
-
-.run-progress-panel { padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); }
-.run-progress-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
-.run-progress-panel header > div { display: grid; gap: 5px; }
-.run-progress-panel header span { color: var(--muted); font: 600 9px var(--font-mono); letter-spacing: .1em; }
-.run-progress-panel header strong { color: var(--ink); font: 650 26px/1.1 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
-.run-progress-panel header p { margin: 0; color: var(--muted); font: 10px var(--font-mono); }
-.run-detail-progress { height: 8px; margin: 14px 0; }
-.run-progress-panel dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; border-top: 1px solid var(--line); }
-.run-progress-panel dl div { display: flex; justify-content: space-between; gap: 10px; padding: 10px 16px 0 0; }
-.run-progress-panel dt { color: var(--muted); font-size: 10px; }
-.run-progress-panel dd { margin: 0; color: var(--ink); font: 11px var(--font-mono); font-variant-numeric: tabular-nums; }
+.run-hero.is-success { box-shadow: inset 3px 0 0 var(--green); }
+.run-hero.is-danger { box-shadow: inset 3px 0 0 var(--rose); }
+.run-hero-status { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; }
+.run-hero-status strong { color: var(--ink); font-size: 13px; font-weight: 550; }
+.run-hero-status small { flex-basis: 100%; color: var(--rose); font: 10px var(--font-mono); }
+.run-hero-metric { display: grid; gap: 6px; }
+.run-hero-metric span { color: var(--muted); font: 600 10px var(--font-mono); letter-spacing: .12em; }
+.run-hero-metric strong { color: var(--ink); font: 650 46px/1.05 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
+.run-hero-metric p { margin: 0; color: var(--muted); font: 11px var(--font-mono); }
+.run-hero .run-detail-progress { height: 8px; margin: 0; }
+.run-hero dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; padding-top: 16px; border-top: 1px solid var(--line); }
+.run-hero dl div { display: flex; justify-content: space-between; gap: 10px; padding-right: 16px; }
+.run-hero dt { color: var(--muted); font-size: 10px; }
+.run-hero dd { margin: 0; color: var(--muted); font: 11px var(--font-mono); font-variant-numeric: tabular-nums; }
 
 /* ---------- Agent 进度卡片 ---------- */
 
-.agent-progress-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 0; }
-.agent-progress-grid article { padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); }
+.agent-progress-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 0; }
+.agent-progress-grid article { padding: 18px 20px; background: var(--surface); border: 0; border-radius: var(--radius-md); }
 .agent-progress-grid article > header { display: flex; align-items: center; gap: 12px; }
 .agent-progress-grid article > header > span { color: var(--muted); font: 10px var(--font-mono); }
 .agent-progress-grid article > header div { display: grid; gap: 4px; min-width: 0; }
@@ -455,7 +447,7 @@
   .review-metrics,
   .independent-task-list,
   .run-profile-review > div,
-  .run-progress-panel dl { grid-template-columns: 1fr; }
+  .run-hero dl { grid-template-columns: 1fr; }
   .review-metrics div { border-right: 0; border-bottom: 1px solid var(--line); }
   .review-metrics div:last-child { border-bottom: 0; }
   .independent-task-list article,

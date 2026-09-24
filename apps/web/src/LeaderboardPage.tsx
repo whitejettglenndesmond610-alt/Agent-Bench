@@ -288,6 +288,7 @@ export function LeaderboardPage({ isOperator = true, workspaceEnabled = true }: 
   const [statusFilter, setStatusFilter] = useState("all");
   const [selected, setSelected] = useState<string[]>([]);
   const [detailAgent, setDetailAgent] = useState<GlobalOverviewAgent | null>(null);
+  const [showAllMetrics, setShowAllMetrics] = useState(false);
   const overviewQuery = useQuery({
     queryKey: ["leaderboard-global-overview"],
     queryFn: fetchGlobalLeaderboardOverview,
@@ -421,6 +422,16 @@ export function LeaderboardPage({ isOperator = true, workspaceEnabled = true }: 
         <label><span>搜索</span><Input value={search} placeholder="Agent 或提供方" aria-label="搜索 Agent" onChange={(event) => setSearch(event.target.value)} /></label>
         <label><span>提供方</span><Select value={provider} aria-label="筛选提供方" onChange={(event) => setProvider(event.target.value)}><option value="all">全部提供方</option>{providers.map((item) => <option key={item}>{item}</option>)}</Select></label>
         <label><span>状态</span><Select value={statusFilter} aria-label="筛选评测状态" onChange={(event) => setStatusFilter(event.target.value)}><option value="all">全部状态</option><option value="ranked">已有成绩</option><option value="incomplete">成绩不完整</option><option value="needs_retest">待复测</option></Select></label>
+        {view === "overview" && (
+          <button
+            type="button"
+            className="button is-ghost leaderboard-metrics-toggle"
+            aria-pressed={showAllMetrics}
+            onClick={() => setShowAllMetrics((current) => !current)}
+          >
+            {showAllMetrics ? "收起扩展指标" : "展开全部指标"}
+          </button>
+        )}
         <p><strong>{ranked.length}</strong> 个当前结果<small>按{metricByKey[activeMetric].shortLabel}排名</small></p>
       </section>
 
@@ -432,7 +443,7 @@ export function LeaderboardPage({ isOperator = true, workspaceEnabled = true }: 
         />
       ) : view === "overview" ? (
         <section aria-label="Agent 能力总览">
-          <Table className="leaderboard-table">
+          <Table className={`leaderboard-table${showAllMetrics ? "" : " is-compact"}`}>
             <thead>
               <tr>
                 <th className="check-cell">选择</th>
@@ -452,12 +463,16 @@ export function LeaderboardPage({ isOperator = true, workspaceEnabled = true }: 
                     </button>
                   </th>
                 ))}
-                <th data-numeric>pass@1</th>
-                <th data-numeric>pass^k</th>
-                <th data-numeric>CI 区间</th>
-                <th data-numeric>成本/题</th>
-                <th data-numeric>延迟 P50/P95</th>
                 <th data-numeric>稳定性</th>
+                {showAllMetrics && (
+                  <>
+                    <th data-numeric>pass@1</th>
+                    <th data-numeric>pass^k</th>
+                    <th data-numeric>CI 区间</th>
+                    <th data-numeric>成本/题</th>
+                    <th data-numeric>延迟 P50/P95</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -470,12 +485,16 @@ export function LeaderboardPage({ isOperator = true, workspaceEnabled = true }: 
                     <td className="rank-cell" data-numeric>{rank === null ? "—" : `#${String(rank).padStart(2, "0")}`}</td>
                     <AgentIdentityCell agent={agent} nameActive={detailAgent === null} onOpenDetail={() => openDetail(agent)} />
                     {leaderboardMetrics.map((metric) => <MetricTableCell key={metric.key} metric={metric.key} agent={agent} isOperator={isOperator} />)}
-                    <td data-numeric>{formatPercent(quality?.pass_at_1)}</td>
-                    <td data-numeric>{formatPercent(quality?.pass_pow_k)}</td>
-                    <td data-numeric>{quality?.score === null || quality?.score === undefined ? "—" : formatScoreWithCi(quality.score, quality.ci_low, quality.ci_high)}</td>
-                    <td data-numeric>{formatCostUsd(quality?.cost_per_task_usd ?? quality?.total_cost_usd)}</td>
-                    <td data-numeric>{quality ? formatLatency(quality) : "—"}</td>
                     <td data-numeric>{formatPercent(quality?.success_rate, 1)}</td>
+                    {showAllMetrics && (
+                      <>
+                        <td data-numeric>{formatPercent(quality?.pass_at_1)}</td>
+                        <td data-numeric>{formatPercent(quality?.pass_pow_k)}</td>
+                        <td data-numeric>{quality?.score === null || quality?.score === undefined ? "—" : formatScoreWithCi(quality.score, quality.ci_low, quality.ci_high)}</td>
+                        <td data-numeric>{formatCostUsd(quality?.cost_per_task_usd ?? quality?.total_cost_usd)}</td>
+                        <td data-numeric>{quality ? formatLatency(quality) : "—"}</td>
+                      </>
+                    )}
                   </tr>
                 );
               })}

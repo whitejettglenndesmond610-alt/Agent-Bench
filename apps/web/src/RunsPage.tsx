@@ -645,6 +645,10 @@ function RunDetail({ runId }: { runId: string }) {
   if (progressQuery.isPending) return <main className="workspace"><LoadingState label="正在读取运行状态" /></main>;
   if (progressQuery.error || !run) return <main className="workspace"><div className="table-state is-error">{progressQuery.error?.message ?? "评测任务不存在"}</div></main>;
 
+  /* Hero 主角：终态单 Agent 运行突出最终分，其余时刻突出整体进度。 */
+  const singleAgentResult = run.agents.length === 1 ? run.agents[0].result : null;
+  const heroScore = terminalStatuses.has(run.status) && singleAgentResult ? singleAgentResult.overall_score : null;
+
   return (
     <main className="workspace run-detail-workspace">
       <div className="stagger-in run-detail-body">
@@ -662,7 +666,6 @@ function RunDetail({ runId }: { runId: string }) {
           title={run.name}
           meta={
             <>
-              <StatusPill tone={runStatusTone(run)} className={runStatusPillClass(run)}>{runStatusLabel(run)}</StatusPill>
               <span>{runProfileLabel(run)}</span>
               <span>{stageLabels[run.stage]}</span>
               <span>每题 {run.trial_count} 次</span>
@@ -679,14 +682,17 @@ function RunDetail({ runId }: { runId: string }) {
           }
         />
 
-        <section className={`run-terminal ${terminalStatuses.has(run.status) ? "is-visible" : ""} ${terminalClass(run.status)}`}>
-          <span>{run.status === "published" ? "PUBLISHED" : run.status === "system_failed" ? "SYSTEM FAILURE" : run.status === "canceled" ? "CANCELED" : "IN PROGRESS"}</span>
-          <strong>{run.status === "published" ? publishedMessage(run) : run.status === "system_failed" ? "平台处理发生系统异常，旧榜单未受影响。" : run.status === "canceled" ? "任务已取消，未发布任何结果。" : `当前阶段：${stageLabels[run.stage]}`}</strong>
-          {run.system_error && <small>{run.system_error}</small>}
-        </section>
-
-        <section className="run-progress-panel">
-          <header><div><span>OVERALL PROGRESS</span><strong>{run.progress_percent.toFixed(2)}%</strong></div><p>{run.processed} / {run.total} 执行项已处理</p></header>
+        <section className={`run-hero ${terminalClass(run.status)}`}>
+          <div className="run-hero-status">
+            <StatusPill tone={runStatusTone(run)} className={runStatusPillClass(run)}>{runStatusLabel(run)}</StatusPill>
+            <strong>{run.status === "published" ? publishedMessage(run) : run.status === "system_failed" ? "平台处理发生系统异常，旧榜单未受影响。" : run.status === "canceled" ? "任务已取消，未发布任何结果。" : `当前阶段：${stageLabels[run.stage]}`}</strong>
+            {run.system_error && <small>{run.system_error}</small>}
+          </div>
+          <div className="run-hero-metric">
+            <span>{heroScore === null ? "OVERALL PROGRESS" : "最终分 · 综合"}</span>
+            <strong>{heroScore === null ? `${run.progress_percent.toFixed(2)}%` : heroScore.toFixed(2)}</strong>
+            <p>{run.processed} / {run.total} 执行项已处理</p>
+          </div>
           <ProgressBar className="run-detail-progress" value={run.progress_percent} active={activeStatuses.has(run.status)} label="整体处理进度" />
           <dl><div><dt>成功</dt><dd>{run.completed}</dd></div><div><dt>失败</dt><dd>{run.failed}</dd></div><div><dt>重试</dt><dd>{run.retried}</dd></div><div><dt>心跳</dt><dd>{formatDate(run.heartbeat_at)}</dd></div></dl>
         </section>

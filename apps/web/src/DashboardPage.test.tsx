@@ -138,19 +138,18 @@ test("renders the page header with profile meta and primary actions", async () =
   expect(screen.getByRole("link", { name: "在线运行 Agent" })).toHaveAttribute("href", "/workspace");
 });
 
-test("renders KPI cards with counted values and derived sparklines", async () => {
+test("renders the three primary KPI cards with counted values and sparklines", async () => {
   renderPage();
 
-  await waitFor(() => expect(screen.getByText("50%")).toBeInTheDocument(), { timeout: 2500 });
+  // 收敛后只保留三张主角卡：档案就绪 / 题目规模 / 已发布运行。
   await waitFor(() => expect(screen.getAllByText("70").length).toBeGreaterThanOrEqual(1), { timeout: 2500 });
-  // 执行中 2（运行 + 排队）/ 已发布 2：两张小卡片数字都是 2
-  await waitFor(() => expect(screen.getAllByText("2").length).toBeGreaterThanOrEqual(2), { timeout: 2500 });
-  expect(screen.getByText("3 / 6 项有效")).toBeInTheDocument();
+  await waitFor(() => expect(screen.getAllByText("2").length).toBeGreaterThanOrEqual(1), { timeout: 2500 });
+  expect(screen.getByText("当前评测档案")).toBeInTheDocument();
+  expect(screen.getByText("题目规模")).toBeInTheDocument();
+  expect(screen.getByText("已发布运行")).toBeInTheDocument();
 
   expect(screen.getByRole("img", { name: "各能力维度的题目数量分布" })).toBeInTheDocument();
-  expect(screen.getByRole("img", { name: "执行中运行随时间的累计数量" })).toBeInTheDocument();
   expect(screen.getByRole("img", { name: "已发布运行随时间的累计数量" })).toBeInTheDocument();
-  expect(screen.getByRole("img", { name: "已评测能力项随时间的累计数量" })).toBeInTheDocument();
 });
 
 test("lists recent runs with status pills and progress bars", async () => {
@@ -184,5 +183,5 @@ test("shows empty states when there are no runs or agents", async () => {
   expect(screen.getByText("发起一次评测以建立第一条能力记录。")).toBeInTheDocument();
   expect(screen.getByText("尚无可评测 Agent")).toBeInTheDocument();
   // 没有运行数据时不渲染运行趋势图
-  expect(screen.queryByRole("img", { name: "执行中运行随时间的累计数量" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("img", { name: "已发布运行随时间的累计数量" })).not.toBeInTheDocument();
 });

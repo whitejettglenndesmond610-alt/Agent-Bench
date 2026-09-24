@@ -141,7 +141,7 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <header className={`page-header ${className}`.trim()}>
+    <header className={`page-header grain ${className}`.replace(/\s+/g, " ").trim()}>
       <div className="page-header-main">
         <h1>{title}</h1>
         {meta && <div className="page-header-meta">{meta}</div>}

@@ -72,24 +72,11 @@ function formatDate(value: string) {
 }
 
 // Cumulative count of matching runs ordered by creation time — the trend of
-// how the queue/backlog built up, derived only from the runs query.
+// how published results built up, derived only from the runs query.
 function cumulativeRunCounts(runs: RunListItem[], predicate: (run: RunListItem) => boolean): number[] {
   return runs
     .filter(predicate)
     .sort((left, right) => Date.parse(left.created_at) - Date.parse(right.created_at))
-    .map((_, index) => index + 1);
-}
-
-// Cumulative evaluated-metric count ordered by each metric's last update.
-function coverageTrend(statuses: AgentEvaluationStatus[]): number[] {
-  return statuses
-    .flatMap((agent) =>
-      evaluationKeys
-        .filter((key) => agent[key].status === "evaluated")
-        .map((key) => agent[key].updated_at)
-    )
-    .filter((value): value is string => Boolean(value))
-    .sort()
     .map((_, index) => index + 1);
 }
 
@@ -124,35 +111,19 @@ export function DashboardPage() {
   const runs = useMemo(() => runsQuery.data ?? [], [runsQuery.data]);
   const statuses = useMemo(() => statusesQuery.data ?? [], [statusesQuery.data]);
 
-  const activeRuns = useMemo(
-    () => runs.filter((run) => ACTIVE_RUN_STATUSES.includes(run.status)),
-    [runs]
-  );
   const publishedRuns = useMemo(
     () => runs.filter((run) => run.status === "published"),
     [runs]
   );
 
-  const activeRunTrend = useMemo(
-    () => cumulativeRunCounts(runs, (run) => ACTIVE_RUN_STATUSES.includes(run.status)),
-    [runs]
-  );
   const publishedRunTrend = useMemo(
     () => cumulativeRunCounts(runs, (run) => run.status === "published"),
     [runs]
   );
-  const evaluatedMetricTrend = useMemo(() => coverageTrend(statuses), [statuses]);
   const abilityDistribution = useMemo(
     () => abilityMetrics.map((metric) => summaryQuery.data?.active_profile.ability_counts[metric.key] ?? 0),
     [summaryQuery.data]
   );
-
-  const evaluatedMetrics = statuses.reduce(
-    (count, agent) => count + evaluationKeys.filter((key) => agent[key].status === "evaluated").length,
-    0
-  );
-  const totalMetrics = statuses.length * evaluationKeys.length;
-  const coverage = totalMetrics ? Math.round(evaluatedMetrics * 100 / totalMetrics) : 0;
 
   if (summaryQuery.isPending) {
     return <main className="workspace"><LoadingState label="正在读取评测总览" /></main>;
@@ -252,23 +223,11 @@ export function DashboardPage() {
           <small>{profile.dataset_version_count} 个数据集版本</small>
           <KpiSpark values={abilityDistribution} ariaLabel="各能力维度的题目数量分布" />
         </article>
-        <article className="kpi-card bento-kpi-c">
-          <span>执行中运行</span>
-          <strong>{runsQuery.isPending ? "—" : <CountUp value={activeRuns.length} />}</strong>
-          <small>排队、运行、暂停或评分</small>
-          <KpiSpark values={activeRunTrend} ariaLabel="执行中运行随时间的累计数量" />
-        </article>
         <article className="kpi-card bento-kpi-d">
           <span>已发布运行</span>
           <strong>{runsQuery.isPending ? "—" : <CountUp value={publishedRuns.length} />}</strong>
           <small>正式结果记录</small>
           <KpiSpark values={publishedRunTrend} ariaLabel="已发布运行随时间的累计数量" />
-        </article>
-        <article className="kpi-card bento-kpi-e">
-          <span>能力评测覆盖</span>
-          <strong>{statusesQuery.isPending ? "—" : <CountUp value={coverage} format={(current) => `${Math.round(current)}%`} />}</strong>
-          <small>{evaluatedMetrics} / {totalMetrics || 0} 项有效</small>
-          <KpiSpark values={evaluatedMetricTrend} ariaLabel="已评测能力项随时间的累计数量" />
         </article>
 
         <article className="dashboard-ability-card bento-ability">

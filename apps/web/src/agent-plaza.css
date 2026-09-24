@@ -12,12 +12,12 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px 14px;
-  margin: 0 0 12px;
-  padding: 8px 12px;
+  gap: 10px 16px;
+  margin: 0 0 24px;
+  padding: 12px 16px;
   background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border: 0;
+  border-radius: var(--radius-md);
 }
 .agent-plaza-page .plaza-tools label {
   display: inline-flex;
@@ -53,16 +53,16 @@
   white-space: nowrap;
 }
 
-/* ---------- List page: agent card grid ---------- */
-.agent-plaza-page .plaza-agent-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+/* ---------- List page: agent card grid — one fewer column, bigger cards ---------- */
+.agent-plaza-page .plaza-agent-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 .agent-plaza-page .plaza-agent-card {
   display: grid;
   grid-template-rows: auto auto auto auto 1fr auto;
-  gap: 10px;
+  gap: 14px;
   min-width: 0;
-  padding: 14px;
+  padding: 22px;
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
   transition: border-color var(--dur-fast) ease, transform var(--dur-fast) var(--ease-out-expo);
@@ -132,10 +132,10 @@
 }
 .agent-plaza-page .plaza-agent-badges { display: flex; flex-wrap: wrap; gap: 6px; }
 .agent-plaza-page .plaza-agent-badges .status-pill { min-height: 20px; padding: 1px 8px; font-size: 10px; }
-/* Real-metric strip: official score / P50 latency / success rate (tabular). */
+/* Real-metric strip: official score / P50 latency (tabular). */
 .agent-plaza-page .plaza-agent-metrics {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
@@ -381,7 +381,6 @@
 
 /* ---------- Responsive (mirrors the retired styles.css breakpoints) ---------- */
 @media (max-width: 1200px) {
-  .agent-plaza-page .plaza-agent-grid { grid-template-columns: repeat(2, 1fr); }
   .plaza-detail-page .plaza-public-metrics { grid-template-columns: repeat(3, 1fr); }
   .plaza-detail-page .plaza-public-metrics article:nth-child(3n) { border-right: 0; }
   .plaza-detail-page .plaza-public-metrics article:nth-child(n+4) { border-top: 1px solid var(--line); }

@@ -275,9 +275,7 @@ export function QualityPage() {
         <article className="kpi-card"><span>待处理命中</span><strong>{kpiValue(summary?.open_findings)}</strong><small>进入人工质检队列</small></article>
         <article className="kpi-card is-critical"><span>严重待处理</span><strong>{kpiValue(summary?.critical_open_findings)}</strong><small>需要优先处置</small></article>
         <article className="kpi-card"><span>已确认问题</span><strong>{kpiValue(summary?.confirmed_findings)}</strong><small>可进入训练或修复集</small></article>
-        <article className="kpi-card"><span>已质检样本</span><strong>{kpiValue(summary?.reviewed_items)}</strong><small>带人工结论的执行项</small></article>
-        <article className="kpi-card"><span>待分配任务</span><strong>{kpiValue(summary?.unassigned_tasks)}</strong><small>尚无质检责任人</small></article>
-        <article className="kpi-card"><span>处理中任务</span><strong>{kpiValue(summary?.active_tasks)}</strong><small>已分配或质检中</small></article>
+        <article className="kpi-card"><span>待分配任务</span><strong>{kpiValue(summary?.unassigned_tasks)}</strong><small>处理中 {summary?.active_tasks ?? "—"} · 已质检 {summary?.reviewed_items ?? "—"}</small></article>
       </section>
 
       {showRuleForm && <RuleCreatePanel onCreated={async () => {
