@@ -59,11 +59,14 @@ flowchart LR
 | 场景 | 你可以做什么 |
 | --- | --- |
 | **Agent 接入** | HTTP API、Bearer、请求模板、答案与引用 JSONPath；连接测试、候选版本和预检通过后再上线 |
-| **在线工作区** | 持久化多轮会话、重新生成，2–5 个 Agent 对同一 Prompt 并行作答 |
+| **在线工作区** | 持久化多轮会话、重新生成，2–5 个 Agent 对同一 Prompt 并行作答，回答流式输出 |
 | **用户自带 API** | 百炼、DeepSeek、OpenAI、智谱、xAI Grok、Claude、小米 MiMo；展示名自动规范化为官方 model ID |
 | **评测实验** | 多个独立运行固化为同协议实验，统一看进度、能力分、名次、失败和质量 |
-| **质量与回流** | 版本化 Bad Pattern 规则、人工质检、生产轨迹幂等回流与跨批次去重 |
-| **证据与排行** | 单题回答、Judge 理由、HTTP Attempt、Token、引用校验；默认 Official V4，保留 unified-v3 五维专项 |
+| **交互任务评测** | τ²-bench 三域 278 个客服任务 + MCPMark 40 个文件操作任务；文本协议让哑 HTTP Agent 也能调用工具，状态断言程序化判分 |
+| **统计可信度** | 每题多次运行、pass@1 / pass^k、1000 次 bootstrap 置信区间；认证/欠费/配置错误触发有效性门禁 |
+| **质量与回流** | 版本化 Bad Pattern 规则、失败自动聚类、人工质检、裁判一致性校准（Cohen's kappa）、生产轨迹幂等回流 |
+| **证据与排行** | 单题回答、Judge 理由、HTTP Attempt、Token、引用校验、交互轨迹回放；默认 Official V4，保留 unified-v3 五维专项 |
+| **成本维度** | 七家 35 个模型内置价格表，总成本、每题成本与输入/输出 Token 占比贯通运行与榜单 |
 | **用户资产** | 收藏、Prompt 模板、点赞点踩、私人笔记、记录历史、Markdown / JSON 导出 |
 
 ## 评测协议
@@ -101,6 +104,24 @@ flowchart LR
 超时、输入超限和错误答案作为能力证据计 0 分；认证失败、响应结构错误和大规模客户端配置错误
 由有效性门禁拦截，不允许错误配置污染正式榜单。
 
+### Held-out V1（防污染档）
+
+100 道模型训练语料中不存在的题：LiveBench（数学/推理/数据分析各 20，半年轮换）+ HLE
+纯文本子集（40）。题目原文在所有界面和 API 一律遮蔽，Worker 内部执行照常见
+[数据](#数据) 一节导入。这是分数可信度最高的一档。
+
+### 交互任务档（τ²-bench / MCPMark，实验档不进总榜）
+
+被测 Agent 与模拟用户多轮对话、调用工具完成任务，最终按数据库状态断言程序化判分：
+
+| Profile | 题量 | 场景 |
+| --- | ---: | --- |
+| tau2-retail / tau2-telecom / tau2-airline | 114 / 114 / 50 | τ²-bench 客服任务（零售/电信/航司），DeepSeek 扮演用户 |
+| mcp-filesystem / mcp-filesystem-standard | 10 / 30 | MCPMark 文件操作任务，真实 MCP server + verify.py 校验 |
+
+哑 HTTP Agent 通过文本协议（每轮渲染工具 Schema + 对话历史，Agent 返回 JSON 动作）参与，
+协议失败的 episode 记 0 分。每个任务的完整对话轨迹可在证据页回放。
+
 ## 私人 API，默认安全
 
 - **密钥不回显**：API Key 绑定用户与版本，AES-GCM 加密；接口不返回 Key、Endpoint、请求模板或原始响应。
@@ -122,7 +143,8 @@ flowchart LR
 
 ## 快速开始
 
-需要 Python 3.12、`uv`、Node 24、pnpm 11。
+需要 Python 3.12、`uv`、Node 24、pnpm 11。**从零部署（含 Docker 一体化、密钥生成、演示数据）见
+[`deploy/QUICKSTART.md`](deploy/QUICKSTART.md)。**
 
 ### 1. 安装依赖
 
@@ -197,6 +219,32 @@ worker 侧需要 `TAU2_DATA_DIR` 和 `AGENT_EVAL_DEEPSEEK_API_KEY`（用户模�
 `AGENT_EVAL_INTERACTIVE_CONCURRENCY` 与 `AGENT_EVAL_INTERACTIVE_TIMEOUT_SECONDS` 控制单题
 并发与超时。`--limit` 子集仅供开发调试：题目数不足各自全量时对应 profile 不会出现。
 
+heldout-v1 防污染档（100 题，原文全端点遮蔽）由两部分组成。LiveBench 公开可拉；HLE 是
+gated 数据集，需要先在 HuggingFace 接受条款、用自己的 token 构建，且 HLE 要求不得公开
+转存数据（canary 需从训练语料过滤）：
+
+```bash
+uv run python -m agent_eval.maintenance.main build-livebench
+uv run python -m agent_eval.maintenance.main import-livebench data/livebench-heldout
+HF_TOKEN=<your-hf-token> uv run python -m agent_eval.maintenance.main build-hle
+uv run python -m agent_eval.maintenance.main import-hle data/hle-heldout
+```
+
+两部分各 60 / 40 题齐备后 `heldout-v1` profile 才会出现。更新 pin 的 revision 重新构建
+导入即可轮换（同 benchmark 自动 version+1，profile 取最新）。
+
+MCPMark 文件操作评测（`mcp-filesystem` easy 10 题 / `mcp-filesystem-standard` 30 题）
+使用独立依赖组和本地任务快照；执行时下载初始状态、起 stdio MCP server、verify.py 程序化
+判分。worker 镜像已内置 Node.js 与预热的 filesystem server：
+
+```bash
+uv sync --group mcp
+git clone https://github.com/eval-sys/mcpmark /tmp/mcpmark-src   # 建议 pin 到具体 commit
+export MCPMARK_REPO_PATH=/path/to/mcpmark   # 内含 tasks/ 与 .mcpmark-commit
+uv run python -m agent_eval.maintenance.main import-mcpmark-filesystem --suite easy
+uv run python -m agent_eval.maintenance.main import-mcpmark-filesystem --suite standard
+```
+
 ## 验证
 
 ```bash
@@ -206,9 +254,13 @@ uv run pytest
 pnpm lint:web
 pnpm test:web
 pnpm build:web
+pnpm test:e2e    # Playwright 端到端（独立 sqlite + fake services，无需外部 API）
 ```
 
 ## 部署
+
+第三方从零部署（Docker 一体化、密钥、演示数据、常见能力配置）见
+[`deploy/QUICKSTART.md`](deploy/QUICKSTART.md)。最小本地栈：
 
 ```bash
 docker compose -f deploy/compose.yaml up --build
@@ -233,10 +285,18 @@ original answer, HTTP attempt, judge rationale, citation check, and immutable ar
 ### Capabilities
 
 - Operator-managed Agent integration with connection tests, immutable versions, and preflight gates
-- Persistent workspace: multi-turn chat, regeneration, and 2–5 Agent live comparison
+- Persistent workspace: multi-turn chat, regeneration, and 2–5 Agent live comparison with streaming
 - Bring-your-own-key presets: DashScope, DeepSeek, OpenAI, Zhipu, xAI Grok, Claude, Xiaomi MiMo
-- Official V4 default ranking (100 questions) plus unified-v3 five-ability protocol (175 questions)
-- Per-question evidence, Bad Pattern review, and idempotent production-trace ingest
+- Official V4 default ranking (100 questions), unified-v3 five-ability protocol (175 questions),
+  and the contamination-resistant heldout-v1 profile (LiveBench + HLE, prompts masked everywhere)
+- Interactive task evaluation: tau2-bench retail/telecom/airline (278 tasks) and MCPMark
+  filesystem (40 tasks) with a text protocol that lets plain HTTP agents call tools, scored by
+  programmatic state assertions with full trajectory replay
+- Statistical rigor: repeated trials per question, pass@1 / pass^k, bootstrap confidence
+  intervals, and a validity gate that invalidates runs on auth/billing/config failures
+- Cost reporting with built-in pricing for 35 models across 7 providers
+- Per-question evidence, Bad Pattern review, LLM-assisted failure clustering, judge calibration
+  (Cohen's kappa), and idempotent production-trace ingest
 - Private agents stay owner-scoped and never appear on public boards
 
 ### Official V4
@@ -261,5 +321,7 @@ pnpm dev:web
 
 Web: `http://localhost:5173` · API: `http://localhost:8000`
 
-Verification, dataset licenses, production TLS, and backup procedure live in
+A from-zero third-party deployment guide (Docker, secrets, demo data, optional capabilities)
+lives in [`deploy/QUICKSTART.md`](deploy/QUICKSTART.md). Verification, dataset licenses,
+production TLS, and backup procedure live in
 [`deploy/runbook.md`](deploy/runbook.md) and [`AGENTS.md`](AGENTS.md).

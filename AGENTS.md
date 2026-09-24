@@ -28,3 +28,4 @@
 ## Deployment
 
 - The base Compose stack is local-only and binds web to loopback. For production, use `deploy/manage.sh` with `.env.production` and its base-plus-production Compose overlay; do not expose the base stack directly.
+- `deploy/QUICKSTART.md` is the from-zero guide for third-party deployments (secrets, Docker, demo data); keep it in sync when deployment commands or required variables change.
