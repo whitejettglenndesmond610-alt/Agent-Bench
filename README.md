@@ -2,11 +2,10 @@
 
 # Agent Bench
 
-### Agent Evaluation Platform
+**同一个问题，让它们并排作答。**
+**同一套题，让分数自己说话。**
 
-**把“这个 Agent 好不好”，变成可复现、可追踪、可发布的工程结论。**
-
-统一协议评测 · 线上轨迹回流 · Bad Pattern 检测 · Agent 质检 · 逐题证据链 · 可信排行榜
+第三方 Agent 评测与运行平台：统一协议评测 · 线上轨迹回流 · 逐题证据链 · 可信排行榜
 
 <p>
   <img src="https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.12" />
@@ -15,65 +14,77 @@
   <img src="https://img.shields.io/badge/PostgreSQL-Multi--Worker-4169E1?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL" />
 </p>
 
-[产品概览](#产品概览) · [评测协议](#评测协议) · [快速开始](#快速开始) · [English](#english) · [生产部署](deploy/runbook.md)
+[产品截图](#产品截图) · [快速开始](#快速开始) · [能力一览](#能力一览) · [评测协议](#评测协议) · [English](#english) · [生产部署](deploy/runbook.md)
 
 </div>
 
 ---
 
-## 产品概览
+## 产品截图
 
-Agent Bench 是一套面向真实第三方 Agent API 的评测与运行平台。它不是一次性跑分脚本，
-而是把 **接入、体验、评测、证据、发布和运维** 串成一条完整链路，让模型能力比较从主观印象
-升级为可审计的数据资产。
+<p align="center">
+  <img src="docs/assets/home-hero.png" width="100%" alt="Agent Bench 首页：aurora 动态背景与三个动作入口" />
+</p>
+<p align="center"><strong>首页</strong>：三个入口——对话、对比、广场。背后是同一条评测流水线。</p>
 
-> 同一份 Prompt、同一套协议、同一条证据链。每一个分数都能回到原始回答、HTTP Attempt、
-> Judge 理由、引用验证和 Artifact。
+<p align="center">
+  <img src="docs/assets/leaderboard.png" width="100%" alt="Agent Bench 排行榜：能力矩阵与逐题证据" />
+</p>
+<p align="center"><strong>排行榜</strong>：每个分数都能下钻到原始回答、HTTP Attempt、Judge 理由和不可变 Artifact。</p>
 
-### 为什么选择 Agent Bench
+## 这是什么
 
-<table>
-  <tr>
-    <td width="25%" valign="top"><strong>真实 API，不是静态样例</strong><br /><sub>直接接入第三方 Agent，记录延迟、Token、错误类型和完整执行状态。</sub></td>
-    <td width="25%" valign="top"><strong>同协议横向比较</strong><br /><sub>冻结数据、评分配置与协议版本，避免不同测试口径制造虚假排名。</sub></td>
-    <td width="25%" valign="top"><strong>结果有证据可追溯</strong><br /><sub>从榜单分数下钻到单题回答、Judge 解释、引用与不可变 Artifact。</sub></td>
-    <td width="25%" valign="top"><strong>评测之外也能直接使用</strong><br /><sub>持久化多轮对话、2-5 Agent 实时对比，以及七家提供方的自带 API Key。</sub></td>
-  </tr>
-</table>
+评测一个 Agent 很容易沦为玄学：换个 Prompt 分数就变，换套题排名就翻，跑出来的数字谁也说不清从哪来的。
+Agent Bench 把这件事工程化——**接入、体验、评测、证据、发布、运维**串成一条流水线，
+让"这个 Agent 好不好"从主观印象变成可审计的数据资产。
 
-### 从接入到发布
+它不是一次性跑分脚本。同一份 Prompt、同一套协议、同一条证据链：
+你今天跑的分，三个月后还能复现、还能对比、还能拿出证据。
 
-```mermaid
-flowchart LR
-    A[接入 Agent API] --> B[连接测试与预检]
-    B --> C[在线对话与实时对比]
-    B --> D[统一协议评测]
-    D --> E[逐题证据与有效性门禁]
-    E --> F[综合榜与专项榜]
-    D --> G[Bad Pattern 与人工质检]
-    G --> H[确认问题或排除误报]
+## 快速开始
+
+从零到跑起来只要四步（Docker 一体化、密钥生成、演示数据的完整版见
+[`deploy/QUICKSTART.md`](deploy/QUICKSTART.md)）：
+
+```bash
+uv sync && pnpm install
+uv run alembic upgrade head
+uv run uvicorn agent_eval.api.main:app --reload   # API  http://localhost:8000
+uv run python -m agent_eval.worker.main           # Worker（评测是异步的，必须单独跑）
+pnpm dev:web                                       # Web  http://localhost:5173
 ```
 
-### 能力一览
+没有真实 Agent 和 API Key 也能体验全链路——内置假 Agent / 假裁判演示服务：
 
-| 场景 | 你可以做什么 |
-| --- | --- |
-| **Agent 接入** | HTTP API、Bearer、请求模板、答案与引用 JSONPath；连接测试、候选版本和预检通过后再上线 |
-| **在线工作区** | 持久化多轮会话、重新生成，2–5 个 Agent 对同一 Prompt 并行作答，回答流式输出 |
-| **用户自带 API** | 百炼、DeepSeek、OpenAI、智谱、xAI Grok、Claude、小米 MiMo；展示名自动规范化为官方 model ID |
-| **评测实验** | 多个独立运行固化为同协议实验，统一看进度、能力分、名次、失败和质量 |
-| **交互任务评测** | τ²-bench 三域 278 个客服任务 + MCPMark 40 个文件操作任务；文本协议让哑 HTTP Agent 也能调用工具，状态断言程序化判分 |
-| **统计可信度** | 每题多次运行、pass@1 / pass^k、1000 次 bootstrap 置信区间；认证/欠费/配置错误触发有效性门禁 |
-| **质量与回流** | 版本化 Bad Pattern 规则、失败自动聚类、人工质检、裁判一致性校准（Cohen's kappa）、生产轨迹幂等回流 |
-| **证据与排行** | 单题回答、Judge 理由、HTTP Attempt、Token、引用校验、交互轨迹回放；默认 Official V4，保留 unified-v3 五维专项 |
-| **成本维度** | 七家 35 个模型内置价格表，总成本、每题成本与输入/输出 Token 占比贯通运行与榜单 |
-| **用户资产** | 收藏、Prompt 模板、点赞点踩、私人笔记、记录历史、Markdown / JSON 导出 |
+```bash
+uv run python -m agent_eval.maintenance.main seed-fake-agents
+uv run python -m agent_eval.maintenance.main queue-fake-run --questions 20
+```
+
+> [!IMPORTANT]
+> 不要提交 `.env`、真实数据集、数据库、Artifact、备份、登录凭据、Agent Token 或第三方 API Key。
+> 公开部署必须使用 HTTPS，且不得将 PostgreSQL 或 MinIO 端口暴露到公网。
+
+## 能力一览
+
+- **Agent 接入，先体检再上岗**。HTTP API、Bearer、请求模板、答案 JSONPath；连接测试、候选版本、预检全通过才允许进评测。
+- **在线工作区，流式作答**。持久化多轮会话、重新生成，2–5 个 Agent 对同一 Prompt 并排打字机输出。
+- **自带 Key，七家直连**。百炼、DeepSeek、OpenAI、智谱、xAI Grok、Claude、小米 MiMo；AES-GCM 加密落库，接口永不回显。
+- **交互任务评测，测办事不测背书**。τ²-bench 三域 278 个客服任务 + MCPMark 40 个文件操作任务；文本协议让哑 HTTP Agent 也能调用工具，状态断言程序化判分。
+- **统计上不出假名次**。每题多次运行、pass@1 / pass^k、1000 次 bootstrap 置信区间；认证失败、欠费、配置错误直接判 run 无效。
+- **成本摊开来算**。七家 35 个模型内置价格表，总成本、每题成本、输入/输出 Token 占比贯通运行与榜单。
+- **分数必须有证据**。单题回答、Judge 理由、HTTP Attempt、Token、引用校验、交互轨迹逐轮回放。
+- **质量形成闭环**。版本化 Bad Pattern 规则、失败自动聚类、人工质检、裁判一致性校准（Cohen's kappa）、生产轨迹幂等回流。
+- **你的东西只属于你**。收藏、Prompt 模板、点赞点踩、私人笔记、记录历史、Markdown / JSON 导出；私人 Agent 永不上公共榜单。
 
 ## 评测协议
 
-### Official V4
+题库分两类：**静态答题**（选择/简答/开放题，进总榜）和**交互任务**（多轮对话 + 工具调用，实验档）。
+每档冻结数据版本与评分配置，避免不同测试口径制造虚假排名。
 
-当前默认档。新题来自独立 `official-v4` cohort，再与已冻结的 BrowseComp / BrowseComp-ZH / FinQA
+### Official V4（默认档）
+
+新题来自独立 `official-v4` cohort，再与已冻结的 BrowseComp / BrowseComp-ZH / FinQA
 组合，共 **100 道题**。综合权重：推理 40 / 检索 35 / 数据推理 25。
 
 | 数据集 | 题量 | 维度 | 说明 |
@@ -106,9 +117,9 @@ flowchart LR
 
 ### Held-out V1（防污染档）
 
-100 道模型训练语料中不存在的题：LiveBench（数学/推理/数据分析各 20，半年轮换）+ HLE
-纯文本子集（40）。题目原文在所有界面和 API 一律遮蔽，Worker 内部执行照常见
-[数据](#数据) 一节导入。这是分数可信度最高的一档。
+公开题库模型可能背过，分数必然虚高——这一档的 100 道题来自模型训练语料之外：
+LiveBench（数学/推理/数据分析各 20，半年轮换）+ HLE 纯文本子集（40）。
+题目原文在所有界面和 API 一律遮蔽，Worker 内部执行照常。**想看真本事，跑这一档。**
 
 ### 交互任务档（τ²-bench / MCPMark，实验档不进总榜）
 
@@ -119,8 +130,9 @@ flowchart LR
 | tau2-retail / tau2-telecom / tau2-airline | 114 / 114 / 50 | τ²-bench 客服任务（零售/电信/航司），DeepSeek 扮演用户 |
 | mcp-filesystem / mcp-filesystem-standard | 10 / 30 | MCPMark 文件操作任务，真实 MCP server + verify.py 校验 |
 
-哑 HTTP Agent 通过文本协议（每轮渲染工具 Schema + 对话历史，Agent 返回 JSON 动作）参与，
-协议失败的 episode 记 0 分。每个任务的完整对话轨迹可在证据页回放。
+哑 HTTP Agent 通过文本协议参与：每轮把工具 Schema + 对话历史渲染成文本，Agent 返回
+JSON 动作（回应 / 调工具 / 结束），平台真实执行工具并回写结果。协议失败的 episode 记 0 分，
+每个任务的完整轨迹可在证据页逐轮回放。
 
 ## 私人 API，默认安全
 
@@ -132,57 +144,33 @@ flowchart LR
 
 ## 技术架构
 
+```mermaid
+flowchart LR
+    Web[React SPA] -->|HTTP /api/v1| API[FastAPI]
+    API --> DB[(PostgreSQL / SQLite)]
+    DB -->|任务队列与租约| Worker[Worker ×N]
+    Worker -->|逐题调用| Agents[第三方 Agent API]
+    Worker -->|判分 / 模拟用户| Judge[DeepSeek]
+    Worker -->|不可变证据 + SHA-256| Artifacts[MinIO / 本地 FS]
+    Worker -->|调用过程追踪 OTLP| Langfuse[Langfuse（可选）]
+```
+
 | 层级 | 技术与职责 |
 | --- | --- |
-| Web | React、TypeScript、Vite、TanStack Query |
+| Web | React、TypeScript、Vite、TanStack Query、ECharts |
 | API | Python 3.12、FastAPI、SQLAlchemy、Alembic |
-| Worker | 异步推理、Bad Pattern、Judge、引用抓取、Workspace Attempt、排行榜发布 |
+| Worker | 异步推理、τ²/MCP 交互执行、Bad Pattern、Judge、引用抓取、排行榜发布 |
 | Data | SQLite 本地开发；PostgreSQL 多 Worker 生产部署 |
 | Artifact | 本地文件系统或 S3 / MinIO；索引记录大小、SHA-256 与保留期限 |
 | Runtime | Docker Compose、Nginx、数据库租约、全局请求槽、备份与监控 |
 
-## 快速开始
-
-需要 Python 3.12、`uv`、Node 24、pnpm 11。**从零部署（含 Docker 一体化、密钥生成、演示数据）见
-[`deploy/QUICKSTART.md`](deploy/QUICKSTART.md)。**
-
-### 1. 安装依赖
-
-```bash
-uv sync
-pnpm install
-```
-
-### 2. 初始化数据库
-
-```bash
-uv run alembic upgrade head
-```
-
-### 3. 分别启动 API、Worker 与 Web
-
-```bash
-uv run uvicorn agent_eval.api.main:app --reload
-uv run python -m agent_eval.worker.main
-pnpm dev:web
-```
-
-| 服务 | 地址 |
-| --- | --- |
-| Web | `http://localhost:5173` |
-| API | `http://localhost:8000` |
-
-首次启动需生成登录密码哈希、`AGENT_EVAL_ENCRYPTION_KEY` 并配置 Judge API Key。完整配置、
-备份、恢复与生产发布见 [`deploy/runbook.md`](deploy/runbook.md)。
-
-> [!IMPORTANT]
-> 不要提交 `.env`、真实数据集、数据库、Artifact、备份、登录凭据、Agent Token 或第三方 API Key。
-> 公开部署必须使用 HTTPS，且不得将 PostgreSQL 或 MinIO 端口暴露到公网。
-
 ## 数据
 
-`data/` 已忽略。构建产物不要入库或外传。BrowseComp 作者要求不得公开解密样本；C-Eval、
+`data/` 已忽略，构建产物不要入库或外传。BrowseComp 作者要求不得公开解密样本；C-Eval、
 BizFinBench、CMMLU 含非商业条款。
+
+<details>
+<summary><strong>演示数据集（150 题，最快上手）</strong></summary>
 
 ```bash
 uv run python -m agent_eval.maintenance.main build-demo-dataset
@@ -197,31 +185,13 @@ uv run python -m agent_eval.maintenance.main import-official-v4 data/official-v4
 六个冻结版本齐备后，API 才会把 `official-v4` 设为默认档。balanced-v2 只能走
 `import-balanced-v2`，不要混进 `legacy-v1`。
 
-tau2-bench 交互评测（`tau2-retail` / `tau2-telecom` / `tau2-airline` profile，base split
-分别为 114 / 114 / 50 题）使用独立的依赖组和数据目录；数据不随 wheel 分发，同样不要
-入库或外传：
+</details>
 
-```bash
-uv sync --group tau2
-git clone --depth 1 --branch v1.0.1 https://github.com/sierra-research/tau2-bench.git /tmp/tau2-src
-export TAU2_DATA_DIR=/path/to/tau2-data   # 内含 tau2/domains/{retail,telecom,airline}
-uv run python -m agent_eval.maintenance.main import-tau2 --domain retail    # 全量 114 题
-uv run python -m agent_eval.maintenance.main import-tau2 --domain telecom
-uv run python -m agent_eval.maintenance.main import-tau2 --domain airline   # 全量 50 题
-uv run python -m agent_eval.maintenance.main import-tau2 --domain retail --limit 5  # 冒烟子集
-```
+<details>
+<summary><strong>heldout-v1 防污染题库（LiveBench + HLE）</strong></summary>
 
-`import-tau2-retail` 保留为 `--domain retail` 的兼容别名。telecom 域的用户模拟器带
-user tools（按 tau2 官方 runner 的方式装配），airline 与 retail 不带。
-
-worker 侧需要 `TAU2_DATA_DIR` 和 `AGENT_EVAL_DEEPSEEK_API_KEY`（用户模拟器固定走
-`deepseek/deepseek-chat`，与裁判共享 `AGENT_EVAL_DEEPSEEK_CONCURRENCY` 并发槽位）；
-`AGENT_EVAL_INTERACTIVE_CONCURRENCY` 与 `AGENT_EVAL_INTERACTIVE_TIMEOUT_SECONDS` 控制单题
-并发与超时。`--limit` 子集仅供开发调试：题目数不足各自全量时对应 profile 不会出现。
-
-heldout-v1 防污染档（100 题，原文全端点遮蔽）由两部分组成。LiveBench 公开可拉；HLE 是
-gated 数据集，需要先在 HuggingFace 接受条款、用自己的 token 构建，且 HLE 要求不得公开
-转存数据（canary 需从训练语料过滤）：
+LiveBench 公开可拉；HLE 是 gated 数据集，需要先在 HuggingFace 接受条款、用自己的 token
+构建，且 HLE 要求不得公开转存数据（canary 需从训练语料过滤）：
 
 ```bash
 uv run python -m agent_eval.maintenance.main build-livebench
@@ -233,9 +203,33 @@ uv run python -m agent_eval.maintenance.main import-hle data/hle-heldout
 两部分各 60 / 40 题齐备后 `heldout-v1` profile 才会出现。更新 pin 的 revision 重新构建
 导入即可轮换（同 benchmark 自动 version+1，profile 取最新）。
 
-MCPMark 文件操作评测（`mcp-filesystem` easy 10 题 / `mcp-filesystem-standard` 30 题）
-使用独立依赖组和本地任务快照；执行时下载初始状态、起 stdio MCP server、verify.py 程序化
-判分。worker 镜像已内置 Node.js 与预热的 filesystem server：
+</details>
+
+<details>
+<summary><strong>τ²-bench 交互任务（278 题）</strong></summary>
+
+数据不随 wheel 分发，同样不要入库或外传：
+
+```bash
+uv sync --group tau2
+git clone --depth 1 --branch v1.0.1 https://github.com/sierra-research/tau2-bench.git /tmp/tau2-src
+export TAU2_DATA_DIR=/path/to/tau2-data   # 内含 tau2/domains/{retail,telecom,airline}
+uv run python -m agent_eval.maintenance.main import-tau2 --domain retail    # 全量 114 题
+uv run python -m agent_eval.maintenance.main import-tau2 --domain telecom
+uv run python -m agent_eval.maintenance.main import-tau2 --domain airline   # 全量 50 题
+```
+
+`import-tau2-retail` 保留为 `--domain retail` 的兼容别名。worker 侧需要 `TAU2_DATA_DIR` 和
+`AGENT_EVAL_DEEPSEEK_API_KEY`（用户模拟器固定走 `deepseek/deepseek-chat`，与裁判共享并发槽位）。
+`--limit` 子集仅供开发调试：题目数不足全量时对应 profile 不会出现。
+
+</details>
+
+<details>
+<summary><strong>MCPMark 文件操作任务（40 题）</strong></summary>
+
+执行时下载初始状态、起 stdio MCP server、verify.py 程序化判分。worker 镜像已内置
+Node.js 与预热的 filesystem server：
 
 ```bash
 uv sync --group mcp
@@ -244,6 +238,8 @@ export MCPMARK_REPO_PATH=/path/to/mcpmark   # 内含 tasks/ 与 .mcpmark-commit
 uv run python -m agent_eval.maintenance.main import-mcpmark-filesystem --suite easy
 uv run python -m agent_eval.maintenance.main import-mcpmark-filesystem --suite standard
 ```
+
+</details>
 
 ## 验证
 
@@ -257,20 +253,20 @@ pnpm build:web
 pnpm test:e2e    # Playwright 端到端（独立 sqlite + fake services，无需外部 API）
 ```
 
+每次 push 都会过一遍上面的全部检查（GitHub Actions）。
+
 ## 部署
 
-第三方从零部署（Docker 一体化、密钥、演示数据、常见能力配置）见
-[`deploy/QUICKSTART.md`](deploy/QUICKSTART.md)。最小本地栈：
+第三方从零部署见 [`deploy/QUICKSTART.md`](deploy/QUICKSTART.md)。最小本地栈：
 
 ```bash
 docker compose -f deploy/compose.yaml up --build
 ```
 
 本地栈只绑回环。生产用 [`deploy/manage.sh`](deploy/runbook.md) 和 fail-closed overlay，
-不要把基础 Compose 暴露到公网。
-
-可信内网 HTTP 可设 `WEB_BIND` / `WEB_PORT`，并加上 `deploy/compose.http-lan.yaml`。
-`deploy/compose.src-mount.yaml` 会把 API 源码挂进容器，免重建镜像。两者都不是公网配置。
+不要把基础 Compose 暴露到公网。可信内网 HTTP 可设 `WEB_BIND` / `WEB_PORT`，并加上
+`deploy/compose.http-lan.yaml`。`deploy/compose.src-mount.yaml` 会把 API 源码挂进容器，
+免重建镜像。两者都不是公网配置。
 
 ---
 
@@ -299,15 +295,6 @@ original answer, HTTP attempt, judge rationale, citation check, and immutable ar
   (Cohen's kappa), and idempotent production-trace ingest
 - Private agents stay owner-scoped and never appear on public boards
 
-### Official V4
-
-Default ranking profile. Frozen GPQA Diamond 20, CMMLU 20, GSM8K 20, plus legacy BrowseComp 10,
-BrowseComp-ZH 20, and FinQA 10. Weights: reasoning 40 / retrieval 35 / data reasoning 25.
-Sampled with a fixed seed for platform comparison — not a full public-leaderboard reproduction.
-CMMLU is CC BY-NC.
-
-`unified-v3` remains available and still owns the global current snapshot.
-
 ### Local development
 
 ```bash
@@ -321,7 +308,15 @@ pnpm dev:web
 
 Web: `http://localhost:5173` · API: `http://localhost:8000`
 
-A from-zero third-party deployment guide (Docker, secrets, demo data, optional capabilities)
-lives in [`deploy/QUICKSTART.md`](deploy/QUICKSTART.md). Verification, dataset licenses,
-production TLS, and backup procedure live in
+A from-zero third-party deployment guide lives in [`deploy/QUICKSTART.md`](deploy/QUICKSTART.md).
+Verification, dataset licenses, production TLS, and backup procedure live in
 [`deploy/runbook.md`](deploy/runbook.md) and [`AGENTS.md`](AGENTS.md).
+
+---
+
+<div align="center">
+
+读到这里说明你是认真的 README 读者——这个平台就是为你这种人造的。
+证据链已就位，去跑一个 run 吧。
+
+</div>
