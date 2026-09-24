@@ -14,9 +14,10 @@ import {
   reviewEvaluationCase,
   updateEvaluationCase
 } from "./api";
-import { LoadingState } from "./components";
+import { EmptyState, LoadingState, PageHeader, StatusPill, StatusTone } from "./components";
 import { Citations, MarkdownContent } from "./markdown";
 import { abilityMetrics } from "./metrics";
+import "./evaluation-cases.css";
 
 const evaluationCasesKey = (userId: string) => ["workspace", userId, "evaluation-cases"] as const;
 const evaluationCaseKey = (userId: string, caseId: string) =>
@@ -26,6 +27,12 @@ const statusLabels: Record<EvaluationCase["status"], string> = {
   draft: "草稿",
   reviewed: "已复核",
   published: "已发布"
+};
+
+const statusTones: Record<EvaluationCase["status"], StatusTone> = {
+  draft: "warning",
+  reviewed: "info",
+  published: "success"
 };
 
 function formatTime(value: string | null): string {
@@ -68,7 +75,7 @@ function CaseHistory({
           <li className={item.id === activeId ? "is-active" : ""} key={item.id}>
             <Link to={`/evaluation-cases/${item.id}`}>
               <strong>{item.prompt}</strong>
-              <span className={`case-status is-${item.status}`}>{statusLabels[item.status]}</span>
+              <StatusPill tone={statusTones[item.status]}>{statusLabels[item.status]}</StatusPill>
               <small>{item.source.agent.name} · REV {item.revision}</small>
               <time dateTime={item.updated_at}>{formatTime(item.updated_at)}</time>
             </Link>
@@ -220,7 +227,7 @@ function CaseEditor({
           <h2>评测案例编辑器</h2>
           <small>REV {evaluationCase.revision} · 更新于 {formatTime(evaluationCase.updated_at)}</small>
         </div>
-        <b className={`case-status is-${evaluationCase.status}`}>{statusLabels[evaluationCase.status]}</b>
+        <b className="case-editor-status"><StatusPill tone={statusTones[evaluationCase.status]}>{statusLabels[evaluationCase.status]}</StatusPill></b>
       </header>
 
       {actionError && <div className="result-banner is-error" role="alert">{actionError}</div>}
@@ -382,10 +389,21 @@ export function EvaluationCasesPage({ userId, canPublish }: { userId: string; ca
 
   return (
     <main className="workspace evaluation-cases-page">
-      <header className="evaluation-cases-header">
-        <div><p className="eyebrow">CURATED EVALUATION CASES</p><h1>精选评测案例</h1><p>从真实 Agent 回答建立独立、可复核、可追溯的精选案例。</p></div>
-        <div className="evaluation-header-actions"><Link className="back-link" to="/dataset-releases">正式数据集发布 →</Link><Link className="back-link" to="/workspace">← 返回 Agent 在线运行</Link></div>
-      </header>
+      <PageHeader
+        title="精选评测案例"
+        meta={
+          <>
+            <span className="evaluation-cases-eyebrow">CURATED EVALUATION CASES</span>
+            <span>从真实 Agent 回答建立独立、可复核、可追溯的精选案例。</span>
+          </>
+        }
+        actions={
+          <div className="evaluation-header-actions">
+            <Link className="back-link" to="/dataset-releases">正式数据集发布 →</Link>
+            <Link className="back-link" to="/workspace">← 返回 Agent 在线运行</Link>
+          </div>
+        }
+      />
       {pageError && <div className="result-banner is-error" role="alert">{pageError}</div>}
       <div className="evaluation-cases-layout">
         <CaseHistory
@@ -395,7 +413,11 @@ export function EvaluationCasesPage({ userId, canPublish }: { userId: string; ca
           error={casesQuery.error?.message ?? null}
         />
         {!caseId ? (
-          <section className="evaluation-case-placeholder"><span>NO CASE SELECTED</span><h2>选择一条案例开始编辑</h2><p>新的草稿从 Agent 在线运行中的成功回答创建。</p></section>
+          <EmptyState
+            className="evaluation-case-placeholder"
+            title="选择一条案例开始编辑"
+            description="新的草稿从 Agent 在线运行中的成功回答创建。"
+          />
         ) : caseQuery.isPending ? (
           <LoadingState label="正在装载案例" />
         ) : caseQuery.error || !evaluationCase ? (

@@ -1,0 +1,205 @@
+/* EvaluationCasesPage — Phase 3 dense data-tool restyle.
+   Loaded after styles.css / product-system.css (lazy route chunk), so equal
+   specificity overrides win. Fully self-contained: layout, density and
+   responsive behavior for every page-scoped class live here. Colors come
+   from design tokens only. Mirrors dataset-releases.css. */
+
+.evaluation-cases-page { --content-max: 1660px; padding-top: 8px; padding-bottom: 80px; }
+
+/* PageHeader meta + actions */
+.evaluation-cases-page .evaluation-cases-eyebrow { color: var(--accent); font: 700 9px var(--font-mono); letter-spacing: .12em; white-space: nowrap; }
+.evaluation-cases-page .evaluation-header-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.evaluation-cases-page .evaluation-header-actions .back-link { margin: 0; white-space: nowrap; }
+
+/* Two-column workspace: history rail + editor */
+.evaluation-cases-page .evaluation-cases-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); align-items: start; gap: 14px; }
+
+/* Case history rail — dense list */
+.evaluation-cases-page .evaluation-case-history {
+  position: sticky;
+  top: 14px;
+  max-height: calc(100vh - 28px);
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.evaluation-cases-page .evaluation-case-history > header {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: grid;
+  gap: 5px;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(9px);
+}
+.evaluation-cases-page .evaluation-case-history > header span { color: var(--muted); font: 700 8px var(--font-mono); letter-spacing: .12em; }
+.evaluation-cases-page .evaluation-case-history > header strong { color: var(--ink); font-size: 12px; }
+.evaluation-cases-page .evaluation-case-history > p { margin: 0; padding: 16px 14px; color: var(--muted); font-size: 11px; }
+.evaluation-cases-page .evaluation-case-history > p.is-error { color: var(--rose); }
+.evaluation-cases-page .evaluation-case-history ol { margin: 0; padding: 0; list-style: none; }
+.evaluation-cases-page .evaluation-case-history li { border-bottom: 1px solid var(--line); }
+.evaluation-cases-page .evaluation-case-history li:last-child { border-bottom: 0; }
+.evaluation-cases-page .evaluation-case-history li.is-active { background: var(--surface-raised); box-shadow: inset 2px 0 0 var(--cyan); }
+.evaluation-cases-page .evaluation-case-history li a { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 8px; padding: 10px 12px; color: inherit; text-decoration: none; transition: background var(--dur-fast) ease; }
+.evaluation-cases-page .evaluation-case-history li a:hover { background: var(--surface-raised); }
+.evaluation-cases-page .evaluation-case-history li strong { overflow: hidden; min-width: 0; color: var(--ink); font-size: 11px; font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
+.evaluation-cases-page .evaluation-case-history li .status-pill { min-height: 18px; padding: 1px 7px; font-size: 9px; }
+.evaluation-cases-page .evaluation-case-history li small, .evaluation-cases-page .evaluation-case-history li time { grid-column: 1 / -1; color: var(--muted); font: 9px var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* Empty selection placeholder (EmptyState component) */
+.evaluation-cases-page .evaluation-case-placeholder { min-height: 380px; margin: 0; }
+
+/* Case editor */
+.evaluation-cases-page .evaluation-case-editor { min-width: 0; }
+.evaluation-cases-page .case-editor-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--cyan);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+.evaluation-cases-page .case-editor-header > div { display: grid; gap: 4px; min-width: 0; }
+.evaluation-cases-page .case-editor-header span, .evaluation-cases-page .evaluation-source-record > header span,
+.evaluation-cases-page .case-review-gate header > span, .evaluation-cases-page .case-publish-gate header > span { color: var(--muted); font: 700 8px var(--font-mono); letter-spacing: .12em; }
+.evaluation-cases-page .case-editor-header h2 { margin: 0; color: var(--ink); font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+.evaluation-cases-page .case-editor-header small { color: var(--muted); font: 9px var(--font-mono); font-variant-numeric: tabular-nums; }
+.evaluation-cases-page .case-editor-status { flex: 0 0 auto; font-weight: 400; }
+.evaluation-cases-page .published-immutable-notice { margin-bottom: 12px; padding: 10px 14px; color: var(--green); background: var(--green-soft); border: 1px solid color-mix(in srgb, var(--green) 35%, var(--line)); border-radius: var(--radius-sm); font-size: 11px; }
+
+.evaluation-cases-page .evaluation-editor-columns { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(340px, .95fr); gap: 12px; align-items: start; }
+.evaluation-cases-page .evaluation-edit-form { display: grid; gap: 14px; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
+.evaluation-cases-page .evaluation-edit-form > label, .evaluation-cases-page .evaluation-field-grid > label { display: grid; gap: 6px; color: var(--muted); font-size: 11px; }
+.evaluation-cases-page .evaluation-edit-form textarea, .evaluation-cases-page .evaluation-edit-form input, .evaluation-cases-page .evaluation-edit-form select {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  resize: vertical;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  outline: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color-scheme: dark;
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+}
+.evaluation-cases-page .evaluation-edit-form :is(textarea, input, select):focus { border-color: var(--accent); box-shadow: inset 2px 0 0 var(--accent); }
+.evaluation-cases-page .evaluation-edit-form :is(textarea, input, select):disabled { color: var(--muted); background: var(--surface-raised); cursor: not-allowed; }
+.evaluation-cases-page .evaluation-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.evaluation-cases-page .evaluation-field-grid .case-checkbox-field { grid-template-columns: auto 1fr; align-content: end; align-items: center; min-height: 56px; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.evaluation-cases-page .evaluation-field-grid .case-checkbox-field input { width: 14px; accent-color: var(--accent); }
+.evaluation-cases-page .evaluation-edit-form > .button { justify-self: end; }
+
+/* Immutable source record */
+.evaluation-cases-page .evaluation-source-record { min-width: 0; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-top: 2px solid var(--accent); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
+.evaluation-cases-page .evaluation-source-record > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
+.evaluation-cases-page .evaluation-source-record > header > div { display: grid; gap: 4px; }
+.evaluation-cases-page .evaluation-source-record > header strong { color: var(--ink); font-size: 12px; }
+.evaluation-cases-page .evaluation-source-record > header b { color: var(--accent); font: 700 9px var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.evaluation-cases-page .source-question { padding: 13px 16px; border-bottom: 1px solid var(--line); }
+.evaluation-cases-page .source-question span, .evaluation-cases-page .source-candidate > span { color: var(--amber); font: 700 8px var(--font-mono); letter-spacing: .1em; }
+.evaluation-cases-page .source-question p { margin: 8px 0 0; color: var(--ink); font-size: 11px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.evaluation-cases-page .source-candidate > span { display: block; padding: 13px 16px 0; }
+.evaluation-cases-page .evaluation-source-record .workspace-markdown { padding: 13px 16px 16px; font-size: 11px; }
+.evaluation-cases-page .evaluation-source-record .workspace-citations { padding-inline: 16px; }
+.evaluation-cases-page .evaluation-source-record dl { display: grid; grid-template-columns: repeat(3, 1fr); margin: 0; border-top: 1px solid var(--line); }
+.evaluation-cases-page .evaluation-source-record dl div { display: grid; gap: 4px; min-width: 0; padding: 10px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.evaluation-cases-page .evaluation-source-record dl div:nth-child(3n) { border-right: 0; }
+.evaluation-cases-page .evaluation-source-record dt { color: var(--muted); font: 700 8px var(--font-mono); letter-spacing: .06em; }
+.evaluation-cases-page .evaluation-source-record dd { overflow: hidden; margin: 0; color: var(--ink); font: 10px var(--font-mono); font-variant-numeric: tabular-nums; text-overflow: ellipsis; }
+.evaluation-cases-page .evaluation-source-record details { padding: 11px 14px; }
+.evaluation-cases-page .evaluation-source-record summary { color: var(--muted); cursor: pointer; font-size: 10px; }
+.evaluation-cases-page .evaluation-source-record code { display: block; margin-top: 7px; overflow-wrap: anywhere; color: var(--muted); font: 9px/1.5 var(--font-mono); }
+
+/* Review / publish gates */
+.evaluation-cases-page .case-review-gate, .evaluation-cases-page .case-publish-gate {
+  display: grid;
+  grid-template-columns: minmax(210px, .7fr) minmax(340px, 1.3fr) auto;
+  align-items: center;
+  gap: 20px;
+  margin-top: 12px;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+.evaluation-cases-page .case-review-gate header, .evaluation-cases-page .case-publish-gate header { display: grid; gap: 5px; min-width: 0; }
+.evaluation-cases-page .case-review-gate h3, .evaluation-cases-page .case-publish-gate h3 { margin: 0; color: var(--ink); font-size: 13px; font-weight: 650; }
+.evaluation-cases-page .case-review-gate header p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.evaluation-cases-page .case-save-first-hint { color: var(--accent) !important; font: 10px/1.5 var(--font-mono); }
+.evaluation-cases-page .case-review-gate > div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; }
+.evaluation-cases-page .case-review-gate label, .evaluation-cases-page .case-publish-gate label { display: flex; align-items: flex-start; gap: 8px; color: var(--ink); font-size: 11px; line-height: 1.5; }
+.evaluation-cases-page .case-review-gate input, .evaluation-cases-page .case-publish-gate input { margin-top: 2px; accent-color: var(--accent); }
+.evaluation-cases-page .case-publish-gate { grid-template-columns: minmax(190px, .6fr) minmax(240px, 1fr) minmax(280px, 1fr) auto; border-left-color: var(--rose); }
+.evaluation-cases-page .case-publish-gate > p { margin: 0; color: var(--rose); font-size: 11px; line-height: 1.6; }
+.evaluation-cases-page .case-publish-gate > p strong { color: var(--rose); }
+.evaluation-cases-page .case-publish-gate > small { color: var(--amber); font-size: 10px; }
+
+/* Scoped .button refinement — mirrors records.css; covers form/gate buttons. */
+.evaluation-cases-page .button {
+  min-height: var(--control-h);
+  padding: 6px 14px;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: none;
+  transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+.evaluation-cases-page .button:hover { color: var(--accent-ink); background: var(--accent-strong); border-color: var(--accent-strong); box-shadow: none; transform: none; }
+.evaluation-cases-page .button:active { box-shadow: none; transform: none; }
+.evaluation-cases-page .button.is-ghost { color: var(--muted); background: transparent; border-color: var(--line-strong); box-shadow: none; }
+.evaluation-cases-page .button.is-ghost:hover { color: var(--ink); background: var(--surface-raised); border-color: var(--muted); }
+.evaluation-cases-page .button.is-quiet { min-height: var(--control-h-sm); padding: 4px 10px; color: var(--accent); background: transparent; border-color: var(--line-strong); box-shadow: none; font-size: 11px; }
+.evaluation-cases-page .button.is-quiet:hover { color: var(--accent-strong); background: var(--accent-soft); border-color: var(--accent); }
+.evaluation-cases-page .button.is-danger { color: var(--danger-ink); background: var(--danger-bg); border-color: var(--danger-line); box-shadow: none; }
+.evaluation-cases-page .button.is-danger:hover { color: #fff; background: var(--rose); border-color: var(--rose); }
+.evaluation-cases-page .button:disabled { box-shadow: none; transform: none; }
+
+@media (max-width: 1350px) {
+  .evaluation-cases-page .case-publish-gate { grid-template-columns: minmax(190px, .7fr) minmax(280px, 1.3fr); }
+  .evaluation-cases-page .case-publish-gate > .button { justify-self: start; }
+}
+
+@media (max-width: 900px) {
+  .evaluation-cases-page .evaluation-cases-layout { grid-template-columns: 1fr; }
+  .evaluation-cases-page .evaluation-case-history { position: static; max-height: none; }
+  .evaluation-cases-page .evaluation-case-history ol { display: flex; overflow-x: auto; }
+  .evaluation-cases-page .evaluation-case-history li { flex: 0 0 220px; border-right: 1px solid var(--line); border-bottom: 0; }
+  .evaluation-cases-page .evaluation-editor-columns { grid-template-columns: 1fr; }
+  .evaluation-cases-page .case-review-gate, .evaluation-cases-page .case-publish-gate { grid-template-columns: 1fr; align-items: start; }
+  .evaluation-cases-page .case-review-gate > .button, .evaluation-cases-page .case-publish-gate > .button { justify-self: start; }
+}
+
+@media (max-width: 620px) {
+  .evaluation-cases-page { padding-inline: 14px; }
+  .evaluation-cases-page .page-header { flex-wrap: wrap; }
+  .evaluation-cases-page .evaluation-field-grid { grid-template-columns: 1fr; }
+  .evaluation-cases-page .evaluation-edit-form { padding: 14px; }
+  .evaluation-cases-page .evaluation-source-record dl { grid-template-columns: repeat(2, 1fr); }
+  .evaluation-cases-page .evaluation-source-record dl div, .evaluation-cases-page .evaluation-source-record dl div:nth-child(3n) { border-right: 1px solid var(--line); }
+  .evaluation-cases-page .evaluation-source-record dl div:nth-child(2n) { border-right: 0; }
+  .evaluation-cases-page .case-review-gate > div { grid-template-columns: 1fr; }
+  .evaluation-cases-page .case-review-gate, .evaluation-cases-page .case-publish-gate { padding: 14px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .evaluation-cases-page .evaluation-case-history li a,
+  .evaluation-cases-page .evaluation-edit-form :is(textarea, input, select),
+  .evaluation-cases-page .button { transition: none; }
+}

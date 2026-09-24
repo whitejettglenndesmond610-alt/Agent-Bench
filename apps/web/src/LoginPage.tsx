@@ -1,6 +1,7 @@
 import { FormEvent, useState } from "react";
 
 import { SessionRole } from "./api";
+import "./login.css";
 
 interface LoginPageProps {
   error?: string;
@@ -43,22 +44,18 @@ export function LoginPage({ error, pending, onLogin, onUserLogin, onResetError }
 
   return (
     <main className="login-shell">
-      <section className="login-context">
-        <div className="brand login-brand">
-          <span className="brand-glyph">AB</span>
-          <div><strong>Agent Bench</strong><small>Internal evaluation</small></div>
-        </div>
-        <div>
-          <p className="eyebrow">CONTROLLED ACCESS</p>
-          <h1>统一评测，<br />让选择有据可依。</h1>
+      <section className="login-card">
+        <header className="login-card-heading">
+          <div className="brand login-brand">
+            <span className="brand-glyph">AB</span>
+            <div><strong>Agent Bench</strong><small>Internal evaluation</small></div>
+          </div>
+          <h1>统一评测，让选择有据可依。</h1>
           <p className="login-intro">
-            使用内部共享密码进入第三方 Agent 评测与排行榜平台。
+            第三方 Agent 评测与排行榜平台：正式评测、在线运行、多 Agent 对比与精选案例策展，一站完成。
           </p>
-        </div>
-        <div className="login-signal"><span />INTERNAL ONLY</div>
-      </section>
+        </header>
 
-      <section className="login-form-panel">
         <form className="login-form" onSubmit={submit}>
           <div className="login-form-heading">
             <span>01 / AUTHENTICATE</span>
@@ -138,6 +135,8 @@ export function LoginPage({ error, pending, onLogin, onUserLogin, onResetError }
                 : "普通用户会话将在 7 天后失效"}
           </p>
         </form>
+
+        <footer className="login-signal"><span />INTERNAL ONLY</footer>
       </section>
     </main>
   );

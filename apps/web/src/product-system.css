@@ -4,7 +4,9 @@
   min-height: 100vh;
 }
 .shell-route { display: grid; min-width: 0; min-height: 0; }
-.shell-route > .agent-workspace-page { height: 100%; min-height: 0; }
+.route-transition { display: grid; min-width: 0; min-height: 0; animation: route-in var(--dur-fast) var(--ease-out-expo) both; }
+@keyframes route-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.shell-route .agent-workspace-page { height: 100%; min-height: 0; }
 .shell-topbar {
   position: sticky;
   z-index: 14;
@@ -150,7 +152,7 @@
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  animation: product-state-in .3s var(--ease-product) both;
+  animation: product-state-in var(--dur-med) var(--ease-product) both;
 }
 .loading-state::before {
   position: absolute;
@@ -205,7 +207,7 @@
   padding: 11px 14px;
   border-radius: var(--radius-md);
   box-shadow: 0 5px 16px rgb(15 23 42 / 5%);
-  animation: product-banner-in .28s var(--ease-product) both;
+  animation: product-banner-in var(--dur-med) var(--ease-product) both;
 }
 .result-banner::before {
   display: grid;
@@ -271,10 +273,10 @@
 
 :where(.panel, .table-frame, .radar-panel, .compare-scorecards,
   .comparison-builder, .evaluation-edit-form, .dataset-release-builder) {
-  transition: border-color .2s ease, box-shadow .2s ease;
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
 }
 :where(.panel, .radar-panel, .compare-scorecards):hover { border-color: var(--line-strong); box-shadow: var(--shadow-md); }
-details > summary { transition: color .18s ease, background .18s ease; }
+details > summary { transition: color var(--dur-fast) ease, background var(--dur-fast) ease; }
 details > summary:hover { color: var(--accent-strong); }
 input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 
@@ -294,7 +296,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 @media (max-width: 1100px) {
   .shell-content { display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; }
   .shell-topbar { display: none; }
-  .shell-route > .agent-workspace-page { height: calc(100dvh - 59px); min-height: 560px; }
+  .shell-route .agent-workspace-page { height: calc(100dvh - 59px); min-height: 560px; }
   .dashboard-header { grid-template-columns: 1fr; gap: 28px; }
   .dashboard-health { min-height: 0; }
 }
@@ -443,4 +445,5 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
   .progress.is-active > i::after { animation: none; }
   .stream-cursor { animation: none; }
   .stagger-in > * { animation: none; }
+  .route-transition { animation: none; }
 }

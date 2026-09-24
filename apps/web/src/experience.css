@@ -1,1 +1,192 @@
-/* Placeholder; the Phase 3 finishing pass writes the real rules. */
+/* ExperiencePage — Phase 3 dense data-tool restyle.
+   Loaded after styles.css / product-system.css (lazy route chunk), so equal
+   specificity overrides win. Fully self-contained: layout, density and
+   responsive behavior for every page-scoped class live here. Colors come
+   from design tokens only. */
+
+.experience-page { --content-max: 1400px; padding-top: 8px; padding-bottom: 80px; }
+.experience-page .page-header-meta p { margin: 0; }
+
+/* Practice-isolation notice */
+.experience-page .experience-policy {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 18px;
+  align-items: center;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  color: var(--muted);
+  background: var(--amber-soft);
+  border: 1px solid color-mix(in srgb, var(--amber) 35%, var(--line));
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.experience-page .experience-policy strong { color: var(--amber); font-size: 11px; white-space: nowrap; }
+
+/* Single-row filter toolbar (32px controls) */
+.experience-page .experience-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+}
+.experience-page .experience-filters label { display: inline-flex; flex: 1; align-items: center; gap: 8px; min-width: 180px; padding: 0; }
+.experience-page .experience-filters label > span { flex: 0 0 auto; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.experience-page .experience-filters select {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-h);
+  padding: 4px 10px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  outline: 0;
+  font-size: 12px;
+  color-scheme: dark;
+}
+.experience-page .experience-filters select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.experience-page .experience-filters > strong {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin-left: auto;
+  color: var(--accent);
+  background: transparent;
+  font: 650 12px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Task card grid */
+.experience-page .experience-task-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.experience-page .experience-task-grid article {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto auto;
+  min-width: 0;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+  transition: border-color var(--dur-fast) ease;
+}
+.experience-page .experience-task-grid article:hover { border-color: var(--line-strong); }
+.experience-page .experience-task-grid article > header { display: flex; align-items: center; gap: 6px; }
+.experience-page .experience-task-grid article > header b { margin-right: auto; color: var(--muted); font: 650 15px var(--font-mono); font-variant-numeric: tabular-nums; }
+.experience-page .experience-task-grid article > header span,
+.experience-page .experience-task-grid article > header small {
+  padding: 2px 8px;
+  color: var(--cyan);
+  background: var(--cyan-soft);
+  border-radius: 999px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.experience-page .experience-task-grid article > header small { color: var(--violet); background: color-mix(in srgb, var(--violet) 12%, transparent); }
+.experience-page .experience-task-grid h2 { margin: 10px 0 0; font-size: 13px; font-weight: 650; letter-spacing: -.01em; }
+.experience-page .experience-task-grid h2 a { color: var(--ink); text-decoration: none; }
+.experience-page .experience-task-grid h2 a:hover { color: var(--accent); }
+.experience-page .experience-task-grid article > p { margin: 6px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.experience-page .experience-task-grid dl { display: grid; grid-template-columns: 1fr 1fr; margin: 12px 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.experience-page .experience-task-grid dl div { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border-right: 1px solid var(--line); }
+.experience-page .experience-task-grid dl div:last-child { border: 0; }
+.experience-page .experience-task-grid dt { color: var(--muted); font-size: 10px; }
+.experience-page .experience-task-grid dd { margin: 0; color: var(--ink); font: 600 10px var(--font-mono); font-variant-numeric: tabular-nums; }
+.experience-page .experience-task-grid footer { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
+.experience-page .experience-task-grid footer a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h-sm);
+  padding: 3px 10px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 550;
+  text-decoration: none;
+  transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease, background var(--dur-fast) ease;
+}
+.experience-page .experience-task-grid footer a:hover { color: var(--ink); background: var(--surface-raised); border-color: var(--muted); }
+.experience-page .experience-task-grid footer a:first-child { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.experience-page .experience-task-grid footer a:first-child:hover { color: var(--accent-strong); background: var(--accent-soft); border-color: var(--accent); }
+
+/* Task detail */
+.experience-page .experience-detail {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: clamp(18px, 3vw, 30px);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+.experience-page .experience-detail .back-link { margin-bottom: 16px; }
+.experience-page .experience-detail > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.experience-page .experience-detail > header span { color: var(--cyan); font: 600 10px var(--font-mono); letter-spacing: .08em; }
+.experience-page .experience-detail > header h2 { margin: 8px 0 0; color: var(--ink); font-size: 19px; font-weight: 650; letter-spacing: -.015em; }
+.experience-page .experience-detail > header p { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.experience-page .experience-detail > header b {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  color: var(--violet);
+  background: color-mix(in srgb, var(--violet) 12%, transparent);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.experience-page .experience-detail > section { margin: 18px 0; padding: 14px 16px; background: var(--bg); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); }
+.experience-page .experience-detail > section span { color: var(--accent); font: 700 9px var(--font-mono); letter-spacing: .1em; }
+.experience-page .experience-detail > section p { margin: 10px 0 0; color: var(--ink); font-size: 12px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.experience-page .experience-detail > footer { display: flex; flex-wrap: wrap; gap: 8px; }
+.experience-page .experience-detail > footer a { display: inline-flex; text-decoration: none; }
+.experience-page .experience-detail > small { display: block; margin-top: 14px; color: var(--muted); font-size: 10px; }
+
+/* Scoped .button refinement — mirrors records.css; covers detail footer links. */
+.experience-page .button {
+  min-height: var(--control-h);
+  padding: 6px 14px;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: none;
+  transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+.experience-page .button:hover { color: var(--accent-ink); background: var(--accent-strong); border-color: var(--accent-strong); box-shadow: none; transform: none; }
+.experience-page .button:active { box-shadow: none; transform: none; }
+.experience-page .button.is-ghost { color: var(--muted); background: transparent; border-color: var(--line-strong); box-shadow: none; }
+.experience-page .button.is-ghost:hover { color: var(--ink); background: var(--surface-raised); border-color: var(--muted); }
+
+@media (max-width: 1200px) {
+  .experience-page .experience-task-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 900px) {
+  .experience-page .experience-filters { display: grid; grid-template-columns: repeat(2, 1fr); }
+  .experience-page .experience-filters > strong { margin-left: 0; }
+}
+@media (max-width: 620px) {
+  .experience-page .experience-policy { grid-template-columns: 1fr; }
+  .experience-page .experience-task-grid { grid-template-columns: 1fr; }
+  .experience-page .experience-filters { grid-template-columns: 1fr; }
+  .experience-page .experience-detail > header { display: grid; }
+  .experience-page .experience-detail > header b { justify-self: start; }
+  .experience-page .experience-detail > footer { display: grid; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .experience-page .experience-task-grid article, .experience-page .experience-task-grid footer a,
+  .experience-page .button { transition: none; }
+}

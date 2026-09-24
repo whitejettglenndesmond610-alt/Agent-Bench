@@ -41,5 +41,5 @@ export function EChart({
     };
   }, [option, fallbackHeight]);
 
-  return <div ref={chartRef} className={className} role="img" aria-label={ariaLabel} />;
+  return <div ref={chartRef} className={["echart-frame", className].filter(Boolean).join(" ")} role="img" aria-label={ariaLabel} />;
 }

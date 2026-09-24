@@ -131,7 +131,7 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
-  animation: product-state-in .3s var(--ease-product) both;
+  animation: product-state-in var(--dur-med) var(--ease-product) both;
 }
 .snapshot-trend-panel > header {
   display: flex;

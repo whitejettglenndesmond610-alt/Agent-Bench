@@ -226,6 +226,7 @@ function ShellTopbar({
 
 function AuthenticatedApp({ session }: { session: SessionInfo }) {
   const queryClient = useQueryClient();
+  const location = useLocation();
   const { theme, toggleTheme } = useTheme();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const logoutMutation = useMutation({
@@ -276,7 +277,7 @@ function AuthenticatedApp({ session }: { session: SessionInfo }) {
       <AppNavigation session={session} loggingOut={logoutMutation.isPending} onLogout={() => logoutMutation.mutate()} />
       <div className="shell-content">
         <ShellTopbar session={session} theme={theme} onToggleTheme={toggleTheme} onOpenPalette={() => setPaletteOpen(true)} />
-        <div className="shell-route"><Suspense fallback={pageFallback}><Routes>
+        <div className="shell-route"><div key={location.pathname} className="route-transition"><Suspense fallback={pageFallback}><Routes>
         <Route path="/" element={operator ? <DashboardPage /> : <Navigate to={workspaceEnabled ? "/home" : "/leaderboard"} replace />} />
         <Route path="/agents" element={operator ? <AgentsPage /> : <Navigate to="/" replace />} />
         <Route path="/agents/:agentId" element={operator ? <AgentDetailPage /> : <Navigate to="/" replace />} />
@@ -312,7 +313,7 @@ function AuthenticatedApp({ session }: { session: SessionInfo }) {
         <Route path="/workspace/compare/:comparisonId" element={<LegacyCompareRedirect />} />
         <Route path="/workspace/:conversationId" element={workspaceEnabled ? <Suspense fallback={workspaceFallback}><WorkspacePage userId={session.user_id} canDraft={operator && !session.is_shared} /></Suspense> : <Navigate to="/" replace />} />
         <Route path="*" element={<NotFoundPage operator={operator} />} />
-        </Routes></Suspense></div>
+        </Routes></Suspense></div></div>
       </div>
       <CommandPalette open={paletteOpen} items={paletteItems} onClose={() => setPaletteOpen(false)} />
     </div>
