@@ -25,6 +25,7 @@ from uuid import UUID
 
 import httpx
 
+from agent_eval.agents.errors import classify_episode_exception
 from agent_eval.agents.inference import (
     AgentPromptError,
     AttemptCompletion,
@@ -578,7 +579,7 @@ async def _run_interactive_item(
     except Exception as error:
         result = EpisodeResult(
             success=False,
-            error_type=f"interactive_episode_{type(error).__name__}"[:80],
+            error_type=classify_episode_exception(error, prefix="interactive_episode"),
             task_reward=None,
             answer=None,
             trajectory=None,

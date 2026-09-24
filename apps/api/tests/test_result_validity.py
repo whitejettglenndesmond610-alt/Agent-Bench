@@ -55,3 +55,11 @@ def test_empty_result_is_invalid() -> None:
     assert result.status == ResultValidityStatus.INVALID
     assert result.reason == NO_EXECUTION_ITEMS_REASON
     assert result.configuration_failure_rate == 0
+
+
+def test_billing_immediately_invalidates_result() -> None:
+    result = classify_result_validity(["agent_billing", *([None] * 99)])
+
+    assert result.status == ResultValidityStatus.INVALID
+    assert result.configuration_failure_count == 1
+    assert result.reason == AUTHENTICATION_FAILURE_REASON

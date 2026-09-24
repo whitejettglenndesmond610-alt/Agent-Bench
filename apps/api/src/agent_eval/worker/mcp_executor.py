@@ -45,6 +45,7 @@ from uuid import UUID
 
 import httpx
 
+from agent_eval.agents.errors import classify_episode_exception
 from agent_eval.agents.inference import (
     AgentPromptError,
     AgentPromptResult,
@@ -720,13 +721,9 @@ async def _run_mcp_item(
             latency_ms=elapsed_ms(started_at),
         )
     except Exception as error:
-        # anyio task groups surface failures as ExceptionGroup; unwrap the first
-        # leaf so error_type stays a meaningful classification.
-        if isinstance(error, ExceptionGroup) and error.exceptions:
-            error = error.exceptions[0]
         result = EpisodeResult(
             success=False,
-            error_type=f"mcp_episode_{type(error).__name__}"[:80],
+            error_type=classify_episode_exception(error, prefix="mcp_episode"),
             task_reward=None,
             answer=None,
             trajectory=None,

@@ -5,7 +5,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from agent_eval.db.enums import ResultValidityStatus
 
 AUTHENTICATION_FAILURES = frozenset(
-    {"agent_authentication", "agent_circuit_authentication"}
+    {"agent_authentication", "agent_circuit_authentication", "agent_billing"}
 )
 CONFIGURATION_FAILURES = AUTHENTICATION_FAILURES | frozenset(
     {
