@@ -148,8 +148,53 @@
 .runs-table tbody tr:hover td:first-child { background: var(--surface-raised); }
 .stage-copy { display: block; margin-top: 5px; color: var(--muted); font: 10px var(--font-mono); }
 
+/* 活跃 run 行：冷色内嵌指示条（琥珀只留给 CTA/焦点），进度条本身已有
+   ProgressBar.is-active 的流光 shimmer。 */
+.runs-table tbody tr.is-active-run { box-shadow: inset 2px 0 0 var(--cyan); }
+.runs-table tbody tr.is-active-run td:first-child strong { color: var(--ink); }
+
 .run-progress-cell { display: grid; gap: 6px; min-width: 160px; }
 .run-progress-copy { color: var(--muted); font: 10px var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ---------- 运行控制台（阶段时间线 + 日志式状态行） ---------- */
+
+.run-console {
+  display: grid;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+.run-console > header { display: flex; align-items: baseline; gap: 10px; }
+.run-console > header span { color: var(--muted); font: 700 9px var(--font-mono); letter-spacing: .12em; }
+.run-console > header strong { color: var(--ink); font-size: 12px; font-weight: 650; }
+
+.run-stage-timeline { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; }
+.run-stage-timeline li { position: relative; display: grid; justify-items: center; gap: 7px; min-width: 0; padding-top: 2px; text-align: center; }
+.run-stage-timeline li::before {
+  position: absolute;
+  top: 6px;
+  right: 50%;
+  left: -50%;
+  height: 1px;
+  content: "";
+  background: var(--line-strong);
+}
+.run-stage-timeline li:first-child::before { content: none; }
+.run-stage-timeline li > i { position: relative; z-index: 1; width: 9px; height: 9px; background: var(--surface-raised); border: 1px solid var(--line-strong); border-radius: 50%; }
+.run-stage-timeline li > span { overflow: hidden; max-width: 100%; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.run-stage-timeline li.is-done > i { background: var(--green); border-color: var(--green); }
+.run-stage-timeline li.is-done::before { background: var(--green); }
+.run-stage-timeline li.is-done > span { color: var(--muted); }
+/* 当前阶段 = 激活态，按琥珀纪律使用 accent。 */
+.run-stage-timeline li.is-current > i { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.run-stage-timeline li.is-current > span { color: var(--ink); font-weight: 650; }
+
+.run-console-log { display: grid; gap: 2px; margin: 0; padding: 10px 12px; overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.run-console-log p { display: flex; gap: 12px; margin: 0; color: var(--ink); font: 10px/1.8 var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.run-console-log time { flex: 0 0 auto; color: var(--muted); }
+.run-console-log p.is-error span { color: var(--rose); }
 
 /* ---------- 详情页头部 ---------- */
 
@@ -427,3 +472,10 @@
 
 /* 动画降级：product-system.css 已对 .stagger-in / .progress 做全局
    prefers-reduced-motion 处理，本页不再重复声明。 */
+
+/* View Transition 共享元素：列表行任务名（点击时由 JS 临时挂名）飞入
+   详情页标题。仅在 JS 判定支持且未要求减少动态时才会触发过渡。 */
+.run-detail-page-header .page-header-main h1 { view-transition-name: run-detail-name; }
+@media (prefers-reduced-motion: reduce) {
+  .run-detail-page-header .page-header-main h1 { view-transition-name: none; }
+}

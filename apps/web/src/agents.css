@@ -6,7 +6,7 @@
    (stepper, candidate/preflight, connection test). Shared modal primitives
    (.modal, .modal-form, .form-grid, .modal-actions) stay in styles.css. */
 
-.agents-workspace { --content-max: 1440px; padding-top: 8px; padding-bottom: 96px; }
+.agents-workspace { padding-top: 8px; padding-bottom: 96px; }
 
 .agents-workspace .page-header-meta > span {
   overflow: hidden;

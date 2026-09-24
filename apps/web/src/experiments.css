@@ -3,7 +3,7 @@
    specificity overrides win. Colors come from design tokens only. All rules
    are scoped to the page root classes so this file is fully self-contained. */
 
-.experiments-workspace, .experiment-detail-workspace { --content-max: 1450px; padding-top: 8px; padding-bottom: 120px; }
+.experiments-workspace, .experiment-detail-workspace { padding-top: 8px; padding-bottom: 120px; }
 
 /* Eyebrow label inside PageHeader meta */
 .experiments-eyebrow { color: var(--muted); font: 700 9px var(--font-mono); letter-spacing: .12em; white-space: nowrap; }

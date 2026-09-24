@@ -97,7 +97,6 @@
 .workspace-compare-page .comparison-builder legend span { color: var(--muted); font: 650 10px var(--font-mono); font-variant-numeric: tabular-nums; }
 .workspace-compare-page .comparison-builder-state { margin: 8px 0 0; padding: 10px 12px; color: var(--muted); background: var(--surface-raised); border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); font-size: 11px; }
 .workspace-compare-page .comparison-builder-state.is-error { color: var(--rose); }
-.workspace-compare-page .comparison-builder > .button { justify-self: end; min-width: 190px; }
 
 /* Template / task pickers inside the builder */
 .workspace-compare-page .comparison-resource-pickers { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -120,6 +119,53 @@
 .workspace-compare-page .comparison-resource-pickers select:disabled { cursor: not-allowed; opacity: .5; }
 .workspace-compare-page .comparison-resource-pickers a { color: var(--muted); font-size: 10px; text-decoration: none; white-space: nowrap; }
 .workspace-compare-page .comparison-resource-pickers a:hover { color: var(--accent); text-decoration: underline; }
+
+/* Sticky prompt editor bar — collapses to a one-line summary so the builder
+   no longer pushes a tall empty textarea above the fold. */
+.workspace-compare-page .comparison-prompt-bar {
+  position: sticky;
+  z-index: 6;
+  top: calc(var(--topbar-h) + 10px);
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(10px);
+}
+.workspace-compare-page .comparison-prompt-bar-head { display: flex; align-items: baseline; gap: 10px; }
+.workspace-compare-page .comparison-prompt-bar-head > span { color: var(--ink); font-size: 12px; font-weight: 600; }
+.workspace-compare-page .comparison-prompt-bar-head > small { color: var(--muted); font: 9px var(--font-mono); font-variant-numeric: tabular-nums; }
+.workspace-compare-page .prompt-bar-toggle,
+.workspace-compare-page .prompt-readonly-toggle {
+  margin-left: auto;
+  padding: 3px 9px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: calc(var(--radius-sm) - 2px);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease;
+}
+.workspace-compare-page .prompt-bar-toggle:hover,
+.workspace-compare-page .prompt-readonly-toggle:hover { color: var(--ink); border-color: var(--muted); }
+.workspace-compare-page .comparison-prompt-summary {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+.workspace-compare-page .comparison-prompt-bar > .button { justify-self: end; min-width: 190px; }
 
 /* Prompt textarea */
 .workspace-compare-page .comparison-prompt-field { display: grid; gap: 6px; }
@@ -181,10 +227,17 @@
 .workspace-compare-page .comparison-detail-status dd { margin: 0; color: var(--ink); font: 600 13px var(--font-mono); font-variant-numeric: tabular-nums; }
 .workspace-compare-page .comparison-detail-status > .button { align-self: center; margin: 8px 12px; }
 
-/* Immutable prompt block */
-.workspace-compare-page .comparison-prompt-readonly { padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-left: 2px solid var(--line-strong); border-radius: var(--radius-md); }
+/* Immutable prompt block — collapsed by default to a two-line abstract. */
+.workspace-compare-page .comparison-prompt-readonly { position: relative; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-left: 2px solid var(--line-strong); border-radius: var(--radius-md); }
 .workspace-compare-page .comparison-prompt-readonly span { color: var(--muted); font: 700 8px var(--font-mono); letter-spacing: .12em; }
 .workspace-compare-page .comparison-prompt-readonly p { margin: 8px 0 0; color: var(--ink); font-size: 12px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.workspace-compare-page .comparison-prompt-readonly.is-collapsed p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.workspace-compare-page .comparison-prompt-readonly .prompt-readonly-toggle { position: absolute; top: 8px; right: 10px; margin-left: 0; }
 
 /* Metrics matrix — dense table with sticky first column */
 .workspace-compare-page .workspace-compare-matrix { max-width: 100%; overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); }
@@ -200,31 +253,57 @@
 .workspace-compare-page .workspace-compare-matrix tbody th { color: var(--muted); font: 600 9px var(--font-mono); letter-spacing: .06em; }
 .workspace-compare-page .workspace-compare-matrix td { color: var(--ink); font: 11px var(--font-mono); font-variant-numeric: tabular-nums; }
 
-/* Answer cards */
-.workspace-compare-page .comparison-answer-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
-.workspace-compare-page .comparison-answer { min-width: 0; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
+/* Answer columns — full-height independent cards in one horizontally
+   scrolling canvas, so every column stays aligned while scrolling sideways. */
+.workspace-compare-page .comparison-answer-grid {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  max-width: 100%;
+  padding-bottom: 6px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scroll-snap-type: x proximity;
+}
+.workspace-compare-page .comparison-answer {
+  flex: 0 0 clamp(340px, 34vw, 520px);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  scroll-snap-align: start;
+}
 .workspace-compare-page .comparison-answer.is-succeeded { border-top: 2px solid var(--green); }
 .workspace-compare-page .comparison-answer.is-failed { border-top: 2px solid var(--rose); }
 .workspace-compare-page .comparison-answer.is-queued { border-top: 2px solid var(--amber); }
 .workspace-compare-page .comparison-answer.is-running { border-top: 2px solid var(--cyan); }
 .workspace-compare-page .comparison-answer.is-canceled { border-top: 2px solid var(--line-strong); }
-.workspace-compare-page .comparison-answer > header { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 12px; background: var(--surface-raised); border-bottom: 1px solid var(--line); }
+/* Column header carries status + latency + ops in one fixed block (the grid
+   scrolls horizontally, so sticky would pin against the grid scrollport and
+   overlap the answer body — keep it static). */
+.workspace-compare-page .comparison-answer > header {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 8px 12px;
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--line);
+}
 .workspace-compare-page .comparison-answer > header > span { color: var(--muted); font: 600 11px var(--font-mono); font-variant-numeric: tabular-nums; }
-.workspace-compare-page .comparison-answer > header div { display: grid; gap: 2px; min-width: 0; }
+.workspace-compare-page .comparison-answer > header > div { display: grid; gap: 2px; min-width: 0; }
 .workspace-compare-page .comparison-answer > header strong { overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-compare-page .comparison-answer > header small { overflow: hidden; color: var(--muted); font: 9px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 .workspace-compare-page .comparison-answer > header .status-pill { min-height: 20px; padding: 1px 8px; font-size: 10px; }
-.workspace-compare-page .comparison-answer .workspace-markdown { min-height: 150px; }
-.workspace-compare-page .comparison-answer-streaming { min-height: 150px; }
-.workspace-compare-page .comparison-answer-state { display: grid; place-items: center; align-content: center; gap: 8px; min-height: 190px; padding: 20px; color: var(--muted); font-size: 12px; }
-.workspace-compare-page .comparison-answer-state strong { color: var(--ink); font-size: 12px; font-weight: 600; }
-.workspace-compare-page .comparison-answer-state .status-dot { background: var(--amber); animation: pulse 1.2s ease-in-out infinite; }
-.workspace-compare-page .comparison-answer-state small { color: var(--rose); font: 9px var(--font-mono); }
-.workspace-compare-page .comparison-answer > footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; padding: 7px 12px; background: var(--surface-raised); border-top: 1px solid var(--line); }
-.workspace-compare-page .comparison-answer > footer > span { color: var(--muted); font: 9px var(--font-mono); font-variant-numeric: tabular-nums; }
-.workspace-compare-page .comparison-answer > footer div { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 6px; }
-.workspace-compare-page .comparison-answer > footer button,
-.workspace-compare-page .comparison-answer > footer a {
+.workspace-compare-page .comparison-answer-meta { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.workspace-compare-page .comparison-answer-meta > span { color: var(--muted); font: 9px var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.workspace-compare-page .comparison-answer-ops { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.workspace-compare-page .comparison-answer-ops button,
+.workspace-compare-page .comparison-answer-ops a {
   min-height: var(--control-h-sm);
   padding: 4px 9px;
   color: var(--cyan);
@@ -237,9 +316,15 @@
   text-decoration: none;
   transition: color var(--dur-fast) ease, background var(--dur-fast) ease, border-color var(--dur-fast) ease;
 }
-.workspace-compare-page .comparison-answer > footer button:hover:not(:disabled),
-.workspace-compare-page .comparison-answer > footer a:hover { color: var(--ink); background: var(--cyan-soft); border-color: var(--cyan); }
-.workspace-compare-page .comparison-answer > footer button:disabled { cursor: not-allowed; opacity: .45; }
+.workspace-compare-page .comparison-answer-ops button:hover:not(:disabled),
+.workspace-compare-page .comparison-answer-ops a:hover { color: var(--ink); background: var(--cyan-soft); border-color: var(--cyan); }
+.workspace-compare-page .comparison-answer-ops button:disabled { cursor: not-allowed; opacity: .45; }
+.workspace-compare-page .comparison-answer .workspace-markdown { flex: 1; min-height: 150px; }
+.workspace-compare-page .comparison-answer-streaming { flex: 1; min-height: 150px; }
+.workspace-compare-page .comparison-answer-state { display: grid; flex: 1; place-items: center; align-content: center; gap: 8px; min-height: 190px; padding: 20px; color: var(--muted); font-size: 12px; }
+.workspace-compare-page .comparison-answer-state strong { color: var(--ink); font-size: 12px; font-weight: 600; }
+.workspace-compare-page .comparison-answer-state .status-dot { background: var(--amber); animation: pulse 1.2s ease-in-out infinite; }
+.workspace-compare-page .comparison-answer-state small { color: var(--rose); font: 9px var(--font-mono); }
 
 @media (max-width: 900px) {
   .workspace-compare-page .workspace-compare-layout { grid-template-columns: 1fr; }
@@ -248,7 +333,8 @@
   .workspace-compare-page .comparison-history ol { display: flex; overflow-x: auto; }
   .workspace-compare-page .comparison-history li { flex: 0 0 210px; border-right: 1px solid var(--line); border-bottom: 0; }
   .workspace-compare-page .comparison-history-state { align-self: center; }
-  .workspace-compare-page .comparison-answer-grid { grid-template-columns: 1fr; }
+  .workspace-compare-page .comparison-answer { flex-basis: min(420px, 86vw); }
+  .workspace-compare-page .comparison-prompt-bar { top: calc(var(--topbar-h) + 6px); }
   .workspace-compare-page .comparison-resource-pickers { grid-template-columns: 1fr; }
 }
 
@@ -258,13 +344,13 @@
   .workspace-compare-page .comparison-history ol { border-top: 1px solid var(--line); }
   .workspace-compare-page .comparison-history li { flex-basis: 190px; }
   .workspace-compare-page .comparison-builder { padding: 12px; }
-  .workspace-compare-page .comparison-builder > .button { width: 100%; }
+  .workspace-compare-page .comparison-prompt-bar > .button { width: 100%; }
   .workspace-compare-page .comparison-detail-status { grid-template-columns: 1fr; }
   .workspace-compare-page .comparison-detail-status dl { border-top: 1px solid var(--line); border-left: 0; }
   .workspace-compare-page .comparison-detail-status dl div { flex: 1; }
   .workspace-compare-page .comparison-detail-status > .button { width: calc(100% - 24px); }
   .workspace-compare-page .comparison-detail-actions { justify-content: flex-start; }
-  .workspace-compare-page .comparison-answer > footer { display: grid; }
+  .workspace-compare-page .comparison-answer-meta { flex-wrap: wrap; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -276,6 +362,8 @@
   .workspace-compare-page .comparison-prompt-field textarea,
   .workspace-compare-page .comparison-detail-actions a,
   .workspace-compare-page .comparison-detail-actions button,
-  .workspace-compare-page .comparison-answer > footer button,
-  .workspace-compare-page .comparison-answer > footer a { transition: none; }
+  .workspace-compare-page .prompt-bar-toggle,
+  .workspace-compare-page .prompt-readonly-toggle,
+  .workspace-compare-page .comparison-answer-ops button,
+  .workspace-compare-page .comparison-answer-ops a { transition: none; }
 }

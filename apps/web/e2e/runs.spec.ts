@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAsRole } from "./helpers";
+import { clickNavLeaf, loginAsRole } from "./helpers";
 
 test.describe("评测运行", () => {
   test("发起评测表单流程到配置校验提示", async ({ page }) => {
     await loginAsRole(page, "operator");
-    await page.getByRole("link", { name: "评测运行" }).click();
+    await clickNavLeaf(page, "管理台", "评测运行");
     await expect(page).toHaveURL(/\/runs$/);
 
     await page.getByRole("button", { name: "+ 发起评测" }).click();

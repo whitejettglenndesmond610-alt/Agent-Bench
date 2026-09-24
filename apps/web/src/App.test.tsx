@@ -272,7 +272,7 @@ test.each([
 
   expect(await screen.findByRole("heading", { name: "我的 API" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "我的 API" })).toHaveAttribute("href", "/my-api");
-  expect(screen.getByText("PRIVATE API")).toBeInTheDocument();
+  expect(screen.getByText("BRING YOUR OWN KEY")).toBeInTheDocument();
   if (session.is_shared) expect(screen.getByText("共享会话风险")).toBeInTheDocument();
 });
 

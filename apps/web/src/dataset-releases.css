@@ -4,7 +4,7 @@
    responsive behavior for every page-scoped class live here. Colors come
    from design tokens only. */
 
-.dataset-releases-page { padding-top: 8px; padding-bottom: 80px; }
+.dataset-releases-page { --content-max: 1660px; padding-top: 8px; padding-bottom: 80px; }
 
 /* PageHeader meta */
 .dataset-releases-page .dataset-releases-eyebrow { color: var(--muted); font: 700 9px var(--font-mono); letter-spacing: .12em; white-space: nowrap; }

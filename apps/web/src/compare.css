@@ -3,7 +3,7 @@
    lazy route chunk, so these rules must carry the whole page (layout, density,
    responsive) on their own. Colors come from design tokens only. */
 
-.compare-workspace { --content-max: 1440px; padding-top: 8px; padding-bottom: 64px; }
+.compare-workspace { padding-top: 8px; padding-bottom: 64px; }
 
 /* PageHeader refinements (toolbar header replaces the old hero header) */
 .compare-workspace .compare-header { flex-wrap: wrap; row-gap: 6px; margin-bottom: 14px; }

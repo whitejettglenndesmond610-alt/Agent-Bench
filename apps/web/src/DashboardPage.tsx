@@ -183,40 +183,8 @@ export function DashboardPage() {
         )}
       />
 
-      <section className="dashboard-kpi-grid stagger-in" aria-label="评测关键指标">
-        <article className={`kpi-card ${profile.ready ? "is-ready" : "is-blocked"}`}>
-          <span>当前评测档案</span>
-          <strong>{profile.ready ? "就绪" : "未就绪"}</strong>
-          <small>{profile.name} · {profile.key}</small>
-        </article>
-        <article className="kpi-card">
-          <span>题目规模</span>
-          <strong><CountUp value={profile.question_count} /></strong>
-          <small>{profile.dataset_version_count} 个数据集版本</small>
-          <KpiSpark values={abilityDistribution} ariaLabel="各能力维度的题目数量分布" />
-        </article>
-        <article className="kpi-card">
-          <span>执行中运行</span>
-          <strong>{runsQuery.isPending ? "—" : <CountUp value={activeRuns.length} />}</strong>
-          <small>排队、运行、暂停或评分</small>
-          <KpiSpark values={activeRunTrend} ariaLabel="执行中运行随时间的累计数量" />
-        </article>
-        <article className="kpi-card">
-          <span>已发布运行</span>
-          <strong>{runsQuery.isPending ? "—" : <CountUp value={publishedRuns.length} />}</strong>
-          <small>正式结果记录</small>
-          <KpiSpark values={publishedRunTrend} ariaLabel="已发布运行随时间的累计数量" />
-        </article>
-        <article className="kpi-card">
-          <span>能力评测覆盖</span>
-          <strong>{statusesQuery.isPending ? "—" : <CountUp value={coverage} format={(current) => `${Math.round(current)}%`} />}</strong>
-          <small>{evaluatedMetrics} / {totalMetrics || 0} 项有效</small>
-          <KpiSpark values={evaluatedMetricTrend} ariaLabel="已评测能力项随时间的累计数量" />
-        </article>
-      </section>
-
-      <section className="dashboard-profile-grid">
-        <article className="dashboard-profile-card grain">
+      <div className="dashboard-bento stagger-in">
+        <article className="dashboard-profile-card grain bento-profile">
           <header>
             <div>
               <h2>评测档案</h2>
@@ -236,33 +204,7 @@ export function DashboardPage() {
           <footer>裁判模型：{summary.judge_model ?? "尚未配置"}</footer>
         </article>
 
-        <article className="dashboard-ability-card">
-          <header>
-            <div>
-              <h2>能力题目与权重</h2>
-              <p>{abilityMetrics.length} 个能力维度 · 按题目数占比</p>
-            </div>
-          </header>
-          <div>
-            {abilityMetrics.map((metric) => {
-              const count = profile.ability_counts[metric.key] ?? 0;
-              const width = profile.question_count ? count * 100 / profile.question_count : 0;
-              return (
-                <div className="dashboard-ability-row" key={metric.key}>
-                  <span>{metric.shortLabel}</span>
-                  {/* metric.color 是 metrics.ts 数据驱动的能力色，保留内联 style。 */}
-                  <div aria-hidden="true"><i style={{ width: `${width}%`, background: metric.color }} /></div>
-                  <strong>{count} 题</strong>
-                  <small>{profile.ability_weights[metric.key] ?? 0}%</small>
-                </div>
-              );
-            })}
-          </div>
-        </article>
-      </section>
-
-      <section className="dashboard-activity-grid">
-        <article className="dashboard-recent-runs">
+        <article className="dashboard-recent-runs grain bento-runs">
           <header>
             <div>
               <h2>最近评测运行</h2>
@@ -299,7 +241,61 @@ export function DashboardPage() {
           )}
         </article>
 
-        <article className="dashboard-agent-readiness">
+        <article className={`kpi-card bento-kpi-a ${profile.ready ? "is-ready" : "is-blocked"}`}>
+          <span>当前评测档案</span>
+          <strong>{profile.ready ? "就绪" : "未就绪"}</strong>
+          <small>{profile.name} · {profile.key}</small>
+        </article>
+        <article className="kpi-card bento-kpi-b">
+          <span>题目规模</span>
+          <strong><CountUp value={profile.question_count} /></strong>
+          <small>{profile.dataset_version_count} 个数据集版本</small>
+          <KpiSpark values={abilityDistribution} ariaLabel="各能力维度的题目数量分布" />
+        </article>
+        <article className="kpi-card bento-kpi-c">
+          <span>执行中运行</span>
+          <strong>{runsQuery.isPending ? "—" : <CountUp value={activeRuns.length} />}</strong>
+          <small>排队、运行、暂停或评分</small>
+          <KpiSpark values={activeRunTrend} ariaLabel="执行中运行随时间的累计数量" />
+        </article>
+        <article className="kpi-card bento-kpi-d">
+          <span>已发布运行</span>
+          <strong>{runsQuery.isPending ? "—" : <CountUp value={publishedRuns.length} />}</strong>
+          <small>正式结果记录</small>
+          <KpiSpark values={publishedRunTrend} ariaLabel="已发布运行随时间的累计数量" />
+        </article>
+        <article className="kpi-card bento-kpi-e">
+          <span>能力评测覆盖</span>
+          <strong>{statusesQuery.isPending ? "—" : <CountUp value={coverage} format={(current) => `${Math.round(current)}%`} />}</strong>
+          <small>{evaluatedMetrics} / {totalMetrics || 0} 项有效</small>
+          <KpiSpark values={evaluatedMetricTrend} ariaLabel="已评测能力项随时间的累计数量" />
+        </article>
+
+        <article className="dashboard-ability-card bento-ability">
+          <header>
+            <div>
+              <h2>能力题目与权重</h2>
+              <p>{abilityMetrics.length} 个能力维度 · 按题目数占比</p>
+            </div>
+          </header>
+          <div>
+            {abilityMetrics.map((metric) => {
+              const count = profile.ability_counts[metric.key] ?? 0;
+              const width = profile.question_count ? count * 100 / profile.question_count : 0;
+              return (
+                <div className="dashboard-ability-row" key={metric.key}>
+                  <span>{metric.shortLabel}</span>
+                  {/* metric.color 是 metrics.ts 数据驱动的能力色，保留内联 style。 */}
+                  <div aria-hidden="true"><i style={{ width: `${width}%`, background: metric.color }} /></div>
+                  <strong>{count} 题</strong>
+                  <small>{profile.ability_weights[metric.key] ?? 0}%</small>
+                </div>
+              );
+            })}
+          </div>
+        </article>
+
+        <article className="dashboard-agent-readiness bento-readiness">
           <header>
             <div>
               <h2>Agent 评测状态</h2>
@@ -333,14 +329,14 @@ export function DashboardPage() {
             />
           )}
         </article>
-      </section>
 
-      <section className="dashboard-cta-strip grain" aria-label="快捷操作">
-        <Link to="/agents"><span>01</span><strong>管理 Agent</strong><small>版本、预检与配置</small></Link>
-        <Link to="/compare"><span>02</span><strong>并行在线对比</strong><small>同一问题，多 Agent 作答</small></Link>
-        <Link to="/experiments"><span>03</span><strong>查看评测实验</strong><small>聚合进度与能力矩阵</small></Link>
-        <Link to="/leaderboard"><span>04</span><strong>查看排行榜</strong><small>正式发布成绩</small></Link>
-      </section>
+        <section className="dashboard-cta-strip grain bento-cta" aria-label="快捷操作">
+          <Link to="/agents"><span>01</span><strong>管理 Agent</strong><small>版本、预检与配置</small></Link>
+          <Link to="/compare"><span>02</span><strong>并行在线对比</strong><small>同一问题，多 Agent 作答</small></Link>
+          <Link to="/experiments"><span>03</span><strong>查看评测实验</strong><small>聚合进度与能力矩阵</small></Link>
+          <Link to="/leaderboard"><span>04</span><strong>查看排行榜</strong><small>正式发布成绩</small></Link>
+        </section>
+      </div>
     </main>
   );
 }

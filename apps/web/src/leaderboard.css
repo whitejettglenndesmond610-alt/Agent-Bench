@@ -134,6 +134,20 @@
 .metric-cell.is-running small, .metric-cell.is-queued small { color: var(--cyan); }
 .metric-cell.is-failed small, .metric-cell.is-invalid small { color: var(--rose); }
 
+/* In-cell mini bar: thin fill proportional to the column's max score,
+   rendered as a pure-CSS gradient (no chart library). Cool cyan only —
+   the scarce amber accent stays reserved for CTA/active/focus. */
+.leaderboard-table td.metric-cell.has-meter {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--cyan) 26%, transparent) var(--metric-fill, 0%), transparent var(--metric-fill, 0%)) left bottom / 100% 3px no-repeat,
+    linear-gradient(90deg, color-mix(in srgb, var(--cyan) 7%, transparent) var(--metric-fill, 0%), transparent var(--metric-fill, 0%));
+}
+.leaderboard-table tbody tr:hover td.metric-cell.has-meter {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--cyan) 30%, transparent) var(--metric-fill, 0%), transparent var(--metric-fill, 0%)) left bottom / 100% 3px no-repeat,
+    linear-gradient(90deg, color-mix(in srgb, var(--cyan) 9%, var(--surface-raised)) var(--metric-fill, 0%), var(--surface-raised) var(--metric-fill, 0%));
+}
+
 /* Specialist board: fewer columns than the overview matrix. */
 .leaderboard-table.specialist-table table { min-width: 1080px; }
 

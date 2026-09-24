@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { CSSProperties, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import {
@@ -13,6 +13,7 @@ import { EmptyState, Input, LoadingState, PageHeader, Select, Table, Tabs } from
 import { abilityRadarOption } from "./chartOptions";
 import { EChart } from "./EChart";
 import { abilityMetrics, leaderboardMetrics, metricByKey, profileKeyForMetric, formatCostUsd, formatScoreWithCi } from "./metrics";
+import { runWithViewTransition } from "./viewTransitions";
 import "./leaderboard.css";
 
 type BoardView = "overview" | GlobalLeaderboardMetric;
@@ -102,7 +103,13 @@ function MetricTableCell({
   const result = agent.metrics[metric];
   const missing = result.score === null || result.rank === null;
   return (
-    <td className={`metric-cell is-${result.status}`} data-numeric title={result.message ?? undefined}>
+    <td
+      className={`metric-cell is-${result.status}${missing ? "" : " has-meter"}`}
+      data-numeric
+      title={result.message ?? undefined}
+      /* 数据驱动的单元格迷你条形底纹（该列满分比例），纯 CSS 渐变渲染。 */
+      style={missing ? undefined : { "--metric-fill": `${Math.max(0, Math.min(100, result.score ?? 0))}%` } as CSSProperties}
+    >
       <MetricValue result={result} />
       {missing && isOperator && result.status === "not_evaluated" && (
         <Link to={evaluationLink(agent, metric)} onClick={(event) => event.stopPropagation()}>开始评测</Link>
@@ -138,15 +145,17 @@ function CompareCheckbox({
 
 function AgentIdentityCell({
   agent,
+  nameActive,
   onOpenDetail
 }: {
   agent: GlobalOverviewAgent;
+  nameActive: boolean;
   onOpenDetail: () => void;
 }) {
   return (
     <td className="agent-cell">
       <Link to={`/plaza/${agent.agent_id}`} onClick={(event) => event.stopPropagation()}>
-        <strong>{agent.agent_name}</strong>
+        <strong style={nameActive ? { viewTransitionName: `lb-agent-${agent.agent_id}` } as CSSProperties : undefined}>{agent.agent_name}</strong>
       </Link>
       <small>{agent.provider}{agent.version === null ? "" : ` · V${agent.version}`}</small>
       <button
@@ -204,7 +213,7 @@ function AgentDetail({
     <div className="leaderboard-drawer-backdrop" role="presentation">
       <aside className="leaderboard-drawer" aria-label={`${agent.agent_name} 评测详情`}>
         <header>
-          <div><p className="eyebrow">AGENT EVALUATION</p><h2>{agent.agent_name}</h2><span>{agent.provider}{agent.version === null ? "" : ` · V${agent.version}`}</span></div>
+          <div><p className="eyebrow">AGENT EVALUATION</p><h2 style={{ viewTransitionName: `lb-agent-${agent.agent_id}` } as CSSProperties}>{agent.agent_name}</h2><span>{agent.provider}{agent.version === null ? "" : ` · V${agent.version}`}</span></div>
           <button type="button" aria-label="关闭详情" onClick={onClose}>×</button>
         </header>
         <section className="drawer-metric-grid">
@@ -337,6 +346,14 @@ export function LeaderboardPage({ isOperator = true, workspaceEnabled = true }: 
     setSortDirection("asc");
   }
 
+  function openDetail(agent: GlobalOverviewAgent) {
+    runWithViewTransition(() => setDetailAgent(agent));
+  }
+
+  function closeDetail() {
+    runWithViewTransition(() => setDetailAgent(null));
+  }
+
   function toggleSelected(agentId: string) {
     setSelected((current) => current.includes(agentId)
       ? current.filter((id) => id !== agentId)
@@ -441,10 +458,10 @@ export function LeaderboardPage({ isOperator = true, workspaceEnabled = true }: 
                 const quality = latestResult(agent, activeMetric);
                 const rank = agent.metrics[activeMetric].rank;
                 return (
-                  <tr key={agent.agent_id} className={rank === 1 ? "is-leading" : ""} onClick={() => setDetailAgent(agent)}>
+                  <tr key={agent.agent_id} className={rank === 1 ? "is-leading" : ""} onClick={() => openDetail(agent)}>
                     <CompareCheckbox agent={agent} selected={selected} onToggle={toggleSelected} />
                     <td className="rank-cell" data-numeric>{rank === null ? "—" : `#${String(rank).padStart(2, "0")}`}</td>
-                    <AgentIdentityCell agent={agent} onOpenDetail={() => setDetailAgent(agent)} />
+                    <AgentIdentityCell agent={agent} nameActive={detailAgent === null} onOpenDetail={() => openDetail(agent)} />
                     {leaderboardMetrics.map((metric) => <MetricTableCell key={metric.key} metric={metric.key} agent={agent} isOperator={isOperator} />)}
                     <td data-numeric>{formatPercent(quality?.pass_at_1)}</td>
                     <td data-numeric>{formatPercent(quality?.pass_pow_k)}</td>
@@ -477,11 +494,16 @@ export function LeaderboardPage({ isOperator = true, workspaceEnabled = true }: 
               {ranked.map((agent) => {
                 const result = agent.metrics[view];
                 return (
-                  <tr key={agent.agent_id} className={result.rank === 1 ? "is-leading" : ""} onClick={() => setDetailAgent(agent)}>
+                  <tr key={agent.agent_id} className={result.rank === 1 ? "is-leading" : ""} onClick={() => openDetail(agent)}>
                     <CompareCheckbox agent={agent} selected={selected} onToggle={toggleSelected} />
                     <td className="rank-cell" data-numeric>{result.rank === null ? "—" : `#${String(result.rank).padStart(2, "0")}`}</td>
-                    <AgentIdentityCell agent={agent} onOpenDetail={() => setDetailAgent(agent)} />
-                    <td className={`metric-cell is-${result.status}`} data-numeric title={result.message ?? undefined}>
+                    <AgentIdentityCell agent={agent} nameActive={detailAgent === null} onOpenDetail={() => openDetail(agent)} />
+                    <td
+                      className={`metric-cell is-${result.status}${result.score === null || result.rank === null ? "" : " has-meter"}`}
+                      data-numeric
+                      title={result.message ?? undefined}
+                      style={result.score === null || result.rank === null ? undefined : { "--metric-fill": `${Math.max(0, Math.min(100, result.score))}%` } as CSSProperties}
+                    >
                       <MetricValue result={result} withCi />
                     </td>
                     <td><BenchmarkBreakdown result={result} /></td>
@@ -524,7 +546,7 @@ export function LeaderboardPage({ isOperator = true, workspaceEnabled = true }: 
       </div>
 
       <footer className="leaderboard-footnote"><span>RANKING POLICY</span><p>各维度仅汇总兼容协议下的最新正式成绩。未评测能力显示为空，不按 0 分处理；成功率和 HTTP 调用次数仅用于稳定性观测。</p></footer>
-      {detailAgent && <AgentDetail agent={detailAgent} focusMetric={activeMetric} isOperator={isOperator} workspaceEnabled={workspaceEnabled} onClose={() => setDetailAgent(null)} />}
+      {detailAgent && <AgentDetail agent={detailAgent} focusMetric={activeMetric} isOperator={isOperator} workspaceEnabled={workspaceEnabled} onClose={closeDetail} />}
     </main>
   );
 }

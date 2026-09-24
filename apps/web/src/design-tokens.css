@@ -42,10 +42,9 @@
   --font-mono: "SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", monospace;
 
   /* Layout + density */
-  --rail-width: 56px;
-  --rail-width-expanded: 216px;
   --topbar-h: 48px;
   --content-max: 1480px;
+  --content-max-form: 960px;
   --page-pad: clamp(24px, 3.5vw, 58px);
   --row-h: 32px;
   --control-h: 32px;

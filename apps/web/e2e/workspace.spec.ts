@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAsRole } from "./helpers";
+import { clickNavLeaf, loginAsRole } from "./helpers";
 
 test.describe("在线对话", () => {
   test("发消息并收到 fake Agent 回答", async ({ page }) => {
     await loginAsRole(page, "read_only");
-    await page.getByRole("link", { name: "在线对话", exact: true }).click();
+    await clickNavLeaf(page, "用户工作区", "在线对话");
     await expect(page).toHaveURL(/\/workspace$/);
 
     const composer = page.locator("#workspace-message");

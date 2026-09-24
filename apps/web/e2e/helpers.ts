@@ -15,3 +15,13 @@ export async function loginAsRole(page: Page, role: "read_only" | "operator") {
   await page.getByRole("button", { name: "进入平台" }).click();
   await expect(page.getByRole("link", { name: "排行榜" })).toBeVisible();
 }
+
+/** Navigate via the top navigation: open the group panel, then click the leaf.
+   The dropdown only opens on hover/focus of its trigger, exactly like a real
+   pointer, so tests must open it before the leaf link becomes clickable. */
+export async function clickNavLeaf(page: Page, groupLabel: string, leafName: string) {
+  await page.getByRole("button", { name: groupLabel }).hover();
+  const link = page.getByRole("link", { name: leafName, exact: true });
+  await expect(link).toBeVisible();
+  await link.click();
+}

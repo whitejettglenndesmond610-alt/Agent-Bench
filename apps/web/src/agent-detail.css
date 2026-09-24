@@ -4,7 +4,7 @@
    is scoped under .agent-detail-workspace so the page is self-contained once
    the legacy styles.css rules are removed. */
 
-.agent-detail-workspace { --content-max: 1400px; padding-top: 8px; padding-bottom: 120px; }
+.agent-detail-workspace { padding-top: 8px; padding-bottom: 120px; }
 
 /* Back link + PageHeader meta */
 .agent-detail-workspace > .back-link { margin-bottom: 12px; color: var(--muted); font-size: 10px; }

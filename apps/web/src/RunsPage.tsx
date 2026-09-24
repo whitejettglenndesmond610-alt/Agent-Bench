@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormEvent, useRef, useState } from "react";
+import { CSSProperties, FormEvent, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import {
@@ -36,6 +36,7 @@ import type { StatusTone } from "./components";
 import "./runs.css";
 import { randomId } from "./randomId";
 import { abilityMetrics, metricDefinitionFor, formatCostUsd, leaderboardMetrics } from "./metrics";
+import { runSharedElementTransition, runWithViewTransition, viewTransitionsSupported } from "./viewTransitions";
 
 const terminalStatuses = new Set<RunStatus>([
   "completed",
@@ -149,6 +150,54 @@ function terminalClass(status: RunStatus) {
   if (status === "published" || status === "completed") return "is-success";
   if (status === "system_failed" || status === "canceled") return "is-danger";
   return "";
+}
+
+/* Console stage flow — presentation-only timeline derived from run.stage. */
+const STAGE_FLOW: RunStage[] = [
+  "preparing",
+  "inference",
+  "citation_fetch",
+  "judging",
+  "aggregating",
+  "publishing",
+  "ready_to_publish"
+];
+
+function StageTimeline({ stage }: { stage: RunStage }) {
+  const currentIndex = Math.max(0, STAGE_FLOW.indexOf(stage));
+  return (
+    <ol className="run-stage-timeline" aria-label="阶段时间线">
+      {STAGE_FLOW.map((key, index) => (
+        <li key={key} className={index < currentIndex ? "is-done" : index === currentIndex ? "is-current" : ""} aria-current={index === currentIndex ? "step" : undefined}>
+          <i aria-hidden="true" />
+          <span>{stageLabels[key]}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function RunConsoleLog({ run }: { run: RunProgress }) {
+  const lines: Array<{ time: string; text: string; error?: boolean }> = [
+    { time: formatDate(run.created_at), text: `run created · ${runProfileLabel(run)} · ${run.total} 执行项 · 每题 ${run.trial_count} 次` }
+  ];
+  if (run.started_at) lines.push({ time: formatDate(run.started_at), text: "worker 已接收任务，开始执行矩阵" });
+  lines.push({
+    time: formatDate(run.heartbeat_at),
+    text: `heartbeat · ${stageLabels[run.stage]} · processed ${run.processed}/${run.total} (${run.progress_percent.toFixed(2)}%)`
+  });
+  if (run.failed > 0 || run.retried > 0) {
+    lines.push({ time: formatDate(run.heartbeat_at), text: `${run.failed} 项失败 · ${run.retried} 次重试`, error: run.failed > 0 });
+  }
+  if (run.finished_at) lines.push({ time: formatDate(run.finished_at), text: `run finished · status=${run.status}` });
+  if (run.system_error) lines.push({ time: "-", text: `system_error: ${run.system_error}`, error: true });
+  return (
+    <div className="run-console-log" role="log" aria-label="运行日志">
+      {lines.map((line, index) => (
+        <p key={index} className={line.error ? "is-error" : ""}><time>{line.time}</time><span>{line.text}</span></p>
+      ))}
+    </div>
+  );
 }
 
 function runProfileLabel(run: Pick<RunListItem, "run_scope" | "target_ability">) {
@@ -441,7 +490,10 @@ function LaunchRunModal({
 }
 
 function RunsList() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParameters, setSearchParameters] = useSearchParams();
+  const [transitionRunId, setTransitionRunId] = useState<string | null>(null);
   const [quickSelection, setQuickSelection] = useState(() => searchParameters.get("launch") === "1" ? {
     agentVersion: searchParameters.get("agentVersion") ?? undefined,
     profile: searchParameters.get("profile") ?? undefined
@@ -506,8 +558,8 @@ function RunsList() {
               const processed = run.completed + run.failed;
               const percent = run.total ? Math.round(processed * 100 / run.total) : 0;
               return (
-                <tr key={run.id}>
-                  <td><strong>{run.name}</strong><small>{runProfileLabel(run)} · {run.agent_count} Agent · {run.total} 执行项</small></td>
+                <tr key={run.id} className={activeStatuses.has(run.status) ? "is-active-run" : ""}>
+                  <td><strong style={transitionRunId === run.id ? { viewTransitionName: "run-detail-name" } as CSSProperties : undefined}>{run.name}</strong><small>{runProfileLabel(run)} · {run.agent_count} Agent · {run.total} 执行项</small></td>
                   <td>
                     <StatusPill tone={runStatusTone(run)}>{runStatusLabel(run)}</StatusPill>
                     <small className="stage-copy">{stageLabels[run.stage]}</small>
@@ -520,7 +572,26 @@ function RunsList() {
                   </td>
                   <td data-numeric>{run.failed} / {run.retried}</td>
                   <td data-numeric>{formatDate(run.created_at)}</td>
-                  <td><Link className="row-link" to={`/runs/${run.id}`}>查看详情 →</Link></td>
+                  <td>
+                    <Link
+                      className="row-link"
+                      to={`/runs/${run.id}`}
+                      onMouseEnter={() => queryClient.prefetchQuery({
+                        queryKey: ["run-progress", run.id],
+                        queryFn: () => fetchRunProgress(run.id),
+                        staleTime: 2_000
+                      })}
+                      onClick={(event) => {
+                        if (!viewTransitionsSupported()) return;
+                        event.preventDefault();
+                        runSharedElementTransition(
+                          () => setTransitionRunId(run.id),
+                          () => navigate(`/runs/${run.id}`),
+                          () => setTransitionRunId(null)
+                        );
+                      }}
+                    >查看详情 →</Link>
+                  </td>
                 </tr>
               );
             })}</tbody>
@@ -533,6 +604,7 @@ function RunsList() {
 }
 
 function RunDetail({ runId }: { runId: string }) {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmRetryScoring, setConfirmRetryScoring] = useState(false);
@@ -569,7 +641,15 @@ function RunDetail({ runId }: { runId: string }) {
   return (
     <main className="workspace run-detail-workspace">
       <div className="stagger-in run-detail-body">
-        <Link className="back-link" to="/runs">← 返回任务列表</Link>
+        <Link
+          className="back-link"
+          to="/runs"
+          onClick={(event) => {
+            if (!viewTransitionsSupported()) return;
+            event.preventDefault();
+            runWithViewTransition(() => navigate("/runs"));
+          }}
+        >← 返回任务列表</Link>
         <PageHeader
           className="run-detail-page-header"
           title={run.name}
@@ -602,6 +682,12 @@ function RunDetail({ runId }: { runId: string }) {
           <header><div><span>OVERALL PROGRESS</span><strong>{run.progress_percent.toFixed(2)}%</strong></div><p>{run.processed} / {run.total} 执行项已处理</p></header>
           <ProgressBar className="run-detail-progress" value={run.progress_percent} active={activeStatuses.has(run.status)} label="整体处理进度" />
           <dl><div><dt>成功</dt><dd>{run.completed}</dd></div><div><dt>失败</dt><dd>{run.failed}</dd></div><div><dt>重试</dt><dd>{run.retried}</dd></div><div><dt>心跳</dt><dd>{formatDate(run.heartbeat_at)}</dd></div></dl>
+        </section>
+
+        <section className="run-console" aria-label="运行控制台输出">
+          <header><span>CONSOLE</span><strong>阶段时间线与运行日志</strong></header>
+          <StageTimeline stage={run.stage} />
+          <RunConsoleLog run={run} />
         </section>
 
         <section className="agent-progress-grid stagger-in">

@@ -180,6 +180,24 @@ function AnswerCard({
         <span>{String(item.position).padStart(2, "0")}</span>
         <div><strong>{item.agent.name}{item.agent.visibility === "private" && <b className="private-api-badge">私人 API</b>}</strong><small>{item.agent.provider}{item.agent.model ? ` / ${item.agent.model}` : ""} / V{item.agent.version}</small></div>
         <StatusPill tone={attemptTones[attempt.status]}>{attemptLabels[attempt.status]}</StatusPill>
+        <div className="comparison-answer-meta">
+          <span>LAT {metric(attempt.latency_ms)} MS · TOKEN {metric(attempt.total_tokens)} · HTTP {metric(attempt.last_http_status)}</span>
+          <div className="comparison-answer-ops">
+            {attempt.status === "succeeded" && attempt.assistant_message && <ClipboardButton text={attempt.assistant_message.content}>复制回答</ClipboardButton>}
+            {active && (
+              <button type="button" disabled={canceling || Boolean(attempt.cancel_requested_at)} onClick={onCancel}>
+                {attempt.cancel_requested_at ? "停止中" : canceling ? "停止中" : "停止"}
+              </button>
+            )}
+            {canDraft && item.agent.visibility !== "private" && (item.evaluation_case_id ? (
+                <Link to={`/evaluation-cases/${item.evaluation_case_id}`}>查看评测草稿</Link>
+              ) : attempt.status === "succeeded" ? (
+                <button type="button" disabled={drafting} onClick={onDraft}>
+                  {drafting ? "保存中" : "保存为评测草稿"}
+                </button>
+              ) : null)}
+          </div>
+        </div>
       </header>
       {attempt.status === "succeeded" && attempt.assistant_message ? (
         <>
@@ -198,24 +216,6 @@ function AnswerCard({
           {attempt.error && <small>{attempt.error.category} / {attempt.error.type}</small>}
         </div>
       )}
-      <footer>
-        <span>LAT {metric(attempt.latency_ms)} MS · TOKEN {metric(attempt.total_tokens)} · HTTP {metric(attempt.last_http_status)}</span>
-        <div>
-          {attempt.status === "succeeded" && attempt.assistant_message && <ClipboardButton text={attempt.assistant_message.content}>复制回答</ClipboardButton>}
-          {active && (
-            <button type="button" disabled={canceling || Boolean(attempt.cancel_requested_at)} onClick={onCancel}>
-              {attempt.cancel_requested_at ? "停止中" : canceling ? "停止中" : "停止"}
-            </button>
-          )}
-          {canDraft && item.agent.visibility !== "private" && (item.evaluation_case_id ? (
-              <Link to={`/evaluation-cases/${item.evaluation_case_id}`}>查看评测草稿</Link>
-            ) : attempt.status === "succeeded" ? (
-              <button type="button" disabled={drafting} onClick={onDraft}>
-                {drafting ? "保存中" : "保存为评测草稿"}
-              </button>
-            ) : null)}
-        </div>
-      </footer>
     </article>
   );
 }
@@ -230,6 +230,8 @@ export function WorkspaceComparePage({ userId, canDraft }: { userId: string; can
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [prompt, setPrompt] = useState("");
+  const [promptBarCollapsed, setPromptBarCollapsed] = useState(false);
+  const [promptReadonlyExpanded, setPromptReadonlyExpanded] = useState(false);
   const [selectedVersionIds, setSelectedVersionIds] = useState<string[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -534,21 +536,38 @@ export function WorkspaceComparePage({ userId, canDraft }: { userId: string; can
                 setPrompt(task.prompt);
               }}><option value="">选择非排名体验任务</option>{tasksQuery.data?.map((task) => <option key={task.slug} value={task.slug}>{task.title}</option>)}</select><Link to="/experience">查看任务</Link></label>
             </div>
-            <label className="comparison-prompt-field">
-              <span>统一提示词</span>
-              <textarea
-                aria-label="统一提示词"
-                rows={8}
-                value={prompt}
-                maxLength={200_000}
-                placeholder="输入将同时发送给所选 Agent 的问题"
-                onChange={(event) => { promptTouchedRef.current = true; setPrompt(event.target.value); }}
-              />
-              <small>{prompt.length} 字 · 选择 2 至 5 个 Agent 后批量提交</small>
-            </label>
-            <button className="button" type="submit" disabled={createMutation.isPending || !prompt.trim() || selectedVersionIds.length < 2}>
-              {createMutation.isPending ? "正在建立对比" : `启动 ${selectedVersionIds.length || "--"} 路并行对比`}
-            </button>
+            <div className={`comparison-prompt-bar ${promptBarCollapsed ? "is-collapsed" : ""}`}>
+              <div className="comparison-prompt-bar-head">
+                <span>统一提示词</span>
+                <small>{prompt.length} 字 · 选择 2 至 5 个 Agent 后批量提交</small>
+                <button
+                  type="button"
+                  className="prompt-bar-toggle"
+                  aria-expanded={!promptBarCollapsed}
+                  onClick={() => setPromptBarCollapsed((current) => !current)}
+                >
+                  {promptBarCollapsed ? "展开编辑" : "收起编辑条"}
+                </button>
+              </div>
+              {promptBarCollapsed ? (
+                <p className="comparison-prompt-summary">{prompt.trim() ? prompt.trim() : "尚未输入提示词，展开编辑条开始输入。"}</p>
+              ) : (
+                <label className="comparison-prompt-field">
+                  <span className="sr-only">统一提示词</span>
+                  <textarea
+                    aria-label="统一提示词"
+                    rows={6}
+                    value={prompt}
+                    maxLength={200_000}
+                    placeholder="输入将同时发送给所选 Agent 的问题"
+                    onChange={(event) => { promptTouchedRef.current = true; setPrompt(event.target.value); }}
+                  />
+                </label>
+              )}
+              <button className="button" type="submit" disabled={createMutation.isPending || !prompt.trim() || selectedVersionIds.length < 2}>
+                {createMutation.isPending ? "正在建立对比" : `启动 ${selectedVersionIds.length || "--"} 路并行对比`}
+              </button>
+            </div>
           </form>
         ) : comparisonQuery.isPending ? (
           <LoadingState label="正在装载对比账本" />
@@ -586,9 +605,17 @@ export function WorkspaceComparePage({ userId, canDraft }: { userId: string; can
                 </button>
               )}
             </header>
-            <section className="comparison-prompt-readonly">
+            <section className={`comparison-prompt-readonly ${promptReadonlyExpanded ? "" : "is-collapsed"}`}>
               <span>PROMPT / IMMUTABLE</span>
               <p>{comparison.prompt}</p>
+              <button
+                type="button"
+                className="prompt-readonly-toggle"
+                aria-expanded={promptReadonlyExpanded}
+                onClick={() => setPromptReadonlyExpanded((current) => !current)}
+              >
+                {promptReadonlyExpanded ? "收起" : "展开全文"}
+              </button>
             </section>
             <MetricsMatrix items={sortedItems} />
             <div className="comparison-answer-grid">

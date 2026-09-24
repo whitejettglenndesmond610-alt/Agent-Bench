@@ -108,45 +108,122 @@ function NavigationIcon({ name }: { name: NavigationIconName }) {
   );
 }
 
-function AppNavigation({ session, onLogout, loggingOut }: { session: SessionInfo; onLogout: () => void; loggingOut: boolean }) {
+type NavLeaf = { to: string; label: string; icon: NavigationIconName; end?: boolean };
+type NavGroupDef = { id: string; label: string; items: NavLeaf[] };
+
+function buildNavModel(session: SessionInfo): { groups: NavGroupDef[]; direct: NavLeaf[] } {
   const operator = session.role === "operator";
   const workspaceEnabled = session.workspace_enabled ?? operator;
-  const displayName = session.display_name || (operator ? "评测管理员" : "普通用户");
+  const groups: NavGroupDef[] = [];
+  if (operator) {
+    groups.push({
+      id: "console",
+      label: "管理台",
+      items: [
+        { to: "/", label: "评测总览", icon: "overview", end: true },
+        { to: "/agents", label: "Agent 中心", icon: "agents" },
+        { to: "/experiments", label: "评测实验", icon: "experiments" },
+        { to: "/runs", label: "评测运行", icon: "runs" },
+        { to: "/quality", label: "质量闭环", icon: "quality" }
+      ]
+    });
+    groups.push({
+      id: "curation",
+      label: "数据与策展",
+      items: [
+        { to: "/evaluation-cases", label: "案例策展", icon: "cases" },
+        { to: "/dataset-releases", label: "数据集发布", icon: "datasets" }
+      ]
+    });
+  }
+  if (workspaceEnabled) {
+    groups.push({
+      id: "workspace",
+      label: operator ? "用户体验" : "用户工作区",
+      items: [
+        { to: "/home", label: "首页", icon: "home" },
+        { to: "/plaza", label: "Agent 广场", icon: "plaza" },
+        { to: "/my-api", label: "我的 API", icon: "api" },
+        { to: "/workspace", label: "在线对话", icon: "workspace" },
+        { to: "/compare", label: "多 Agent 对比", icon: "compare" },
+        { to: "/records", label: "我的记录", icon: "records" },
+        { to: "/templates", label: "Prompt 模板", icon: "templates" },
+        { to: "/experience", label: "体验任务", icon: "experience" }
+      ]
+    });
+  }
+  return { groups, direct: [{ to: "/leaderboard", label: "排行榜", icon: "leaderboard" }] };
+}
+
+function isLeafActive(pathname: string, leaf: NavLeaf) {
+  return leaf.end ? pathname === leaf.to : pathname.startsWith(leaf.to);
+}
+
+function TopNav({ session, menuOpen }: { session: SessionInfo; menuOpen: boolean }) {
+  const location = useLocation();
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const { groups, direct } = useMemo(() => buildNavModel(session), [session]);
+
+  useEffect(() => {
+    setOpenGroup(null);
+  }, [location.pathname]);
+
   return (
-    <aside className="sidebar">
-      <div className="brand">
-        <span className="brand-glyph">AB</span>
-        <div><strong>Agent Bench</strong><small>Agent evaluation</small></div>
-      </div>
-      <nav className="primary-nav" aria-label="主导航">
-        {operator && <span className="nav-section-label">管理台</span>}
-        {operator && <NavLink to="/" end><NavigationIcon name="overview" /><span>评测总览</span></NavLink>}
-        {operator && <NavLink to="/agents"><NavigationIcon name="agents" /><span>Agent 中心</span></NavLink>}
-        {operator && <NavLink to="/experiments"><NavigationIcon name="experiments" /><span>评测实验</span></NavLink>}
-        {operator && <NavLink to="/runs"><NavigationIcon name="runs" /><span>评测运行</span></NavLink>}
-        {operator && <NavLink to="/quality"><NavigationIcon name="quality" /><span>质量闭环</span></NavLink>}
-        {operator && <span className="nav-section-label">数据与策展</span>}
-        {operator && <NavLink to="/evaluation-cases"><NavigationIcon name="cases" /><span>案例策展</span></NavLink>}
-        {operator && <NavLink to="/dataset-releases"><NavigationIcon name="datasets" /><span>数据集发布</span></NavLink>}
-        {workspaceEnabled && <span className="nav-section-label">{operator ? "用户体验" : "用户工作区"}</span>}
-        {workspaceEnabled && <NavLink to="/home"><NavigationIcon name="home" /><span>首页</span></NavLink>}
-        {workspaceEnabled && <NavLink to="/plaza"><NavigationIcon name="plaza" /><span>Agent 广场</span></NavLink>}
-        {workspaceEnabled && <NavLink to="/my-api"><NavigationIcon name="api" /><span>我的 API</span></NavLink>}
-        {workspaceEnabled && <NavLink to="/workspace"><NavigationIcon name="workspace" /><span>在线对话</span></NavLink>}
-        {workspaceEnabled && <NavLink to="/compare"><NavigationIcon name="compare" /><span>多 Agent 对比</span></NavLink>}
-        <NavLink to="/leaderboard"><NavigationIcon name="leaderboard" /><span>排行榜</span></NavLink>
-        {workspaceEnabled && <NavLink to="/records"><NavigationIcon name="records" /><span>我的记录</span></NavLink>}
-        {workspaceEnabled && <NavLink to="/templates"><NavigationIcon name="templates" /><span>Prompt 模板</span></NavLink>}
-        {workspaceEnabled && <NavLink to="/experience"><NavigationIcon name="experience" /><span>体验任务</span></NavLink>}
-      </nav>
-      <footer>
-        <div className="session-role">
-          <span>{displayName}</span>
-          <small>{(session.is_shared ?? true) ? "共享会话" : "个人账号"} · V0.1</small>
-        </div>
-        <button type="button" className="logout-button" disabled={loggingOut} onClick={onLogout}>{loggingOut ? "退出中" : "退出"}</button>
-      </footer>
-    </aside>
+    <nav
+      className={menuOpen ? "primary-nav is-open" : "primary-nav"}
+      aria-label="主导航"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") setOpenGroup(null);
+      }}
+    >
+      {groups.map((group) => {
+        const open = openGroup === group.id;
+        const active = group.items.some((item) => isLeafActive(location.pathname, item));
+        return (
+          <div
+            key={group.id}
+            className={active ? "nav-group is-active" : "nav-group"}
+            onMouseEnter={() => setOpenGroup(group.id)}
+            onMouseLeave={() => setOpenGroup(null)}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpenGroup(null);
+            }}
+          >
+            <button
+              type="button"
+              className="nav-group-trigger"
+              aria-expanded={open}
+              aria-haspopup="true"
+              aria-controls={`nav-panel-${group.id}`}
+              onClick={() => setOpenGroup(open ? null : group.id)}
+            >
+              {group.label}
+              <svg className="nav-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+            </button>
+            <span className="nav-group-label" aria-hidden="true">{group.label}</span>
+            <div
+              id={`nav-panel-${group.id}`}
+              className={open ? "nav-group-panel is-open" : "nav-group-panel"}
+              role="group"
+              aria-label={group.label}
+            >
+              {group.items.map((item) => (
+                <NavLink key={item.to} to={item.to} end={item.end} onClick={() => setOpenGroup(null)}>
+                  <NavigationIcon name={item.icon} />
+                  <span>{item.label}</span>
+                </NavLink>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+      {direct.map((item) => (
+        <NavLink key={item.to} to={item.to} className="nav-direct">
+          <NavigationIcon name={item.icon} />
+          <span>{item.label}</span>
+        </NavLink>
+      ))}
+    </nav>
   );
 }
 
@@ -172,27 +249,33 @@ function ShellTopbar({
   session,
   theme,
   onToggleTheme,
-  onOpenPalette
+  onOpenPalette,
+  onLogout,
+  loggingOut
 }: {
   session: SessionInfo;
   theme: Theme;
   onToggleTheme: () => void;
   onOpenPalette: () => void;
+  onLogout: () => void;
+  loggingOut: boolean;
 }) {
   const location = useLocation();
-  const section = shellSections.find((item) => location.pathname.startsWith(item.prefix))
-    ?? { label: "评测总览", code: "OVERVIEW" };
+  const [menuOpen, setMenuOpen] = useState(false);
   const displayName = session.display_name || (session.role === "operator" ? "评测管理员" : "普通用户");
   const avatarLabel = displayName.trim().slice(0, 1).toUpperCase() || "A";
 
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
+
   return (
     <header className="shell-topbar">
-      <div className="shell-breadcrumb">
-          <span>AGENT BENCH</span>
-        <i aria-hidden="true" />
-        <strong>{section.label}</strong>
-        <small>{section.code}</small>
+      <div className="brand">
+        <span className="brand-glyph">AB</span>
+        <div><strong>Agent Bench</strong><small>Agent evaluation</small></div>
       </div>
+      <TopNav session={session} menuOpen={menuOpen} />
       <div className="shell-topbar-meta">
         <div className="shell-environment"><i aria-hidden="true" /><span>Agent 评测</span><small>{session.role === "operator" ? "OPERATOR" : "USER"}</small></div>
         <button type="button" className="shell-command-hint" onClick={onOpenPalette} aria-label="打开命令面板">
@@ -217,8 +300,20 @@ function ShellTopbar({
         </button>
         <div className="shell-account">
           <span aria-hidden="true">{avatarLabel}</span>
-          <div><strong>{session.role === "operator" ? "评测管理台" : "用户工作区"}</strong><small>{session.is_shared ?? true ? "SHARED SESSION" : "NAMED SESSION"}</small></div>
+          <div><strong>{displayName}</strong><small>{session.is_shared ?? true ? "共享会话" : "个人账号"}</small></div>
         </div>
+        <button type="button" className="logout-button" disabled={loggingOut} onClick={onLogout}>{loggingOut ? "退出中" : "退出"}</button>
+        <button
+          type="button"
+          className="nav-menu-button"
+          aria-expanded={menuOpen}
+          aria-label={menuOpen ? "关闭导航菜单" : "打开导航菜单"}
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            {menuOpen ? <path d="M6 6l12 12M18 6 6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
+          </svg>
+        </button>
       </div>
     </header>
   );
@@ -274,9 +369,15 @@ function AuthenticatedApp({ session }: { session: SessionInfo }) {
 
   return (
     <div className="app-shell">
-      <AppNavigation session={session} loggingOut={logoutMutation.isPending} onLogout={() => logoutMutation.mutate()} />
+      <ShellTopbar
+        session={session}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        onOpenPalette={() => setPaletteOpen(true)}
+        onLogout={() => logoutMutation.mutate()}
+        loggingOut={logoutMutation.isPending}
+      />
       <div className="shell-content">
-        <ShellTopbar session={session} theme={theme} onToggleTheme={toggleTheme} onOpenPalette={() => setPaletteOpen(true)} />
         <div className="shell-route"><div key={location.pathname} className="route-transition"><Suspense fallback={pageFallback}><Routes>
         <Route path="/" element={operator ? <DashboardPage /> : <Navigate to={workspaceEnabled ? "/home" : "/leaderboard"} replace />} />
         <Route path="/agents" element={operator ? <AgentsPage /> : <Navigate to="/" replace />} />

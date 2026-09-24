@@ -2,7 +2,7 @@
    Loaded after styles.css / product-system.css (lazy route chunk), so equal
    specificity overrides win. Colors come from design tokens only. */
 
-.records-page { --content-max: 1400px; padding-top: 8px; padding-bottom: 120px; }
+.records-page { padding-top: 8px; padding-bottom: 120px; }
 .records-page .page-header-meta p { margin: 0; }
 
 /* Single-row filter toolbar (32px controls) */

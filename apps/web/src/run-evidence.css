@@ -55,11 +55,12 @@
   letter-spacing: .08em;
 }
 
-/* Split layout: dense item rail + detail pane, each scrolling on its own. */
+/* Three-column layout: 300px item rail + replay canvas + 280px sticky
+   metrics/score panel. Rail and panes scroll independently. */
 .evidence-split {
   flex: 1;
   display: grid;
-  grid-template-columns: clamp(280px, 24vw, 320px) minmax(0, 1fr);
+  grid-template-columns: 300px minmax(0, 1fr);
   gap: 14px;
   min-height: 0;
 }
@@ -172,25 +173,29 @@
 .evidence-pagination button:disabled { cursor: not-allowed; opacity: .5; }
 .evidence-pagination span { color: var(--muted); font: 10px var(--font-mono); }
 
-/* Detail pane — compact header + score grid. */
-.evidence-detail { display: grid; gap: 12px; align-content: start; padding-bottom: 24px; }
+/* Detail pane — replay column + sticky 280px metrics/score side panel. */
+.evidence-detail { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 12px; align-items: start; padding-bottom: 24px; }
+.evidence-detail-main { display: grid; gap: 12px; align-content: start; min-width: 0; }
+.evidence-side { position: sticky; top: 0; display: grid; gap: 12px; align-content: start; min-width: 0; }
 .evidence-detail-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin: 0; }
 .evidence-detail-header h2 { margin: 0; color: var(--ink); font-size: 16px; font-weight: 650; letter-spacing: -.01em; overflow-wrap: anywhere; }
 .evidence-detail-header > div > p:last-child { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
 .evidence-score-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin: 0;
   overflow: hidden;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
 }
-.evidence-score-grid > div { display: grid; gap: 3px; min-width: 0; padding: 10px 12px; border-right: 1px solid var(--line); }
-.evidence-score-grid > div:last-child { border-right: 0; }
+.evidence-score-grid > div { display: grid; gap: 3px; min-width: 0; padding: 10px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.evidence-score-grid > div:nth-child(2n) { border-right: 0; }
+.evidence-score-grid > div:nth-last-child(-n+2) { border-bottom: 0; }
+.evidence-score-grid > div:first-child { grid-column: 1 / -1; border-right: 0; }
 .evidence-score-grid dt { color: var(--muted); font-size: 10px; }
-.evidence-score-grid dd { overflow: hidden; margin: 0; color: var(--ink); font: 600 14px var(--font-mono); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
-.evidence-score-grid dd.is-hero { color: var(--ink); font-size: 20px; font-weight: 650; }
+.evidence-score-grid dd { overflow: hidden; margin: 0; color: var(--ink); font: 600 13px var(--font-mono); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.evidence-score-grid dd.is-hero { color: var(--ink); font-size: 24px; font-weight: 650; }
 .evidence-agent-line { margin: 0; color: var(--muted); font-size: 11px; }
 
 /* Content panels — thin-border token surfaces. */
@@ -378,37 +383,33 @@
 .trajectory-panel .workspace-markdown th { color: var(--muted); background: var(--surface-raised); }
 
 @media (max-width: 1250px) {
-  .evidence-score-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .evidence-score-grid > div:nth-child(3n) { border-right: 0; }
-  .evidence-score-grid > div:nth-child(n+4) { border-top: 1px solid var(--line); }
   .trajectory-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .trajectory-stats > div:nth-child(3n) { border-right: 0; }
   .trajectory-stats > div:nth-child(n+4) { border-top: 1px solid var(--line); }
 }
 
 @media (max-width: 900px) {
+  /* 三栏退化为上下分栏：列表在上，回放在中，指标面板改为静态块。 */
   .run-evidence-workspace { height: auto; padding: 16px; overflow: visible; }
   .evidence-split { grid-template-columns: 1fr; }
   .evidence-rail, .evidence-detail-pane { max-height: none; overflow: visible; }
+  .evidence-detail { grid-template-columns: 1fr; }
+  .evidence-side { position: static; }
   .evidence-content-grid { grid-template-columns: 1fr; }
   .evidence-question-panel { grid-column: auto; }
   .evidence-citation-panel > div { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 620px) {
-  .evidence-score-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .evidence-score-grid > div, .evidence-score-grid > div:nth-child(3n) { border-right: 1px solid var(--line); border-top: 1px solid var(--line); }
-  .evidence-score-grid > div:nth-child(2n) { border-right: 0; }
-  .evidence-score-grid > div:nth-child(-n+2) { border-top: 0; }
-  .trajectory-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .trajectory-stats > div, .trajectory-stats > div:nth-child(3n) { border-right: 1px solid var(--line); border-top: 1px solid var(--line); }
-  .trajectory-stats > div:nth-child(2n) { border-right: 0; }
-  .trajectory-stats > div:nth-child(-n+2) { border-top: 0; }
   .evidence-attempt-panel li { grid-template-columns: 10px 1fr; }
   .evidence-attempt-panel li dl { grid-column: 2; }
   .evidence-artifact dl { grid-template-columns: 1fr; }
   .evidence-artifact dl div { border-right: 0; border-bottom: 1px solid var(--line); }
   .evidence-artifact dl div:last-child { grid-column: auto; border-top: 0; border-bottom: 0; }
+  .trajectory-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .trajectory-stats > div, .trajectory-stats > div:nth-child(3n) { border-right: 1px solid var(--line); border-top: 1px solid var(--line); }
+  .trajectory-stats > div:nth-child(2n) { border-right: 0; }
+  .trajectory-stats > div:nth-child(-n+2) { border-top: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {

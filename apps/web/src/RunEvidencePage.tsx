@@ -147,68 +147,73 @@ function EvidenceDetail({ runId, executionItemId }: { runId: string; executionIt
   const item = detailQuery.data;
   return (
     <div className="evidence-detail stagger-in">
-      <header className="evidence-detail-header">
-        <div>
-          <h2>{item.question_external_id}</h2>
-          <p>{item.benchmark_name} · {metricDefinitionFor(item.ability)?.label ?? item.ability} · {item.language.toUpperCase()} · 创建于 {formatDate(item.created_at)}</p>
-        </div>
-        <StatusPill tone={evidenceStatusTones[item.status]}>{evidenceStatusLabels[item.status]}</StatusPill>
-      </header>
+      <div className="evidence-detail-main">
+        <header className="evidence-detail-header">
+          <div>
+            <h2>{item.question_external_id}</h2>
+            <p>{item.benchmark_name} · {metricDefinitionFor(item.ability)?.label ?? item.ability} · {item.language.toUpperCase()} · 创建于 {formatDate(item.created_at)}</p>
+          </div>
+          <StatusPill tone={evidenceStatusTones[item.status]}>{evidenceStatusLabels[item.status]}</StatusPill>
+        </header>
 
-      <dl className="evidence-score-grid">
-        <div><dt>最终分</dt><dd className="is-hero">{item.score ? item.score.final_score.toFixed(2) : "—"}</dd></div>
-        <div><dt>答案分</dt><dd>{item.score ? item.score.answer_score.toFixed(2) : "—"}</dd></div>
-        <div><dt>引用分</dt><dd>{item.score?.citation_score?.toFixed(2) ?? "—"}</dd></div>
-        <div><dt>尝试次数</dt><dd>{item.attempt_count}</dd></div>
-        <div><dt>延迟</dt><dd>{item.latency_ms == null ? "—" : `${item.latency_ms} ms`}</dd></div>
-        <div><dt>回答留存</dt><dd>{candidateStatusLabels[item.candidate_answer_status]}</dd></div>
-      </dl>
-      <p className="evidence-agent-line">
-        {item.agent_name} · {item.provider} V{item.version} · {item.response_artifact?.retained ? "Artifact 已标记保留" : "遵循 Artifact 到期策略"}
-      </p>
+        <p className="evidence-agent-line">
+          {item.agent_name} · {item.provider} V{item.version} · {item.response_artifact?.retained ? "Artifact 已标记保留" : "遵循 Artifact 到期策略"}
+        </p>
 
-      <section className="evidence-content-grid">
-        <article className="evidence-question-panel">
-          <header><span>QUESTION</span><strong>评测问题</strong></header>
-          <p>{item.prompt ?? "held-out 私有题，原文已遮蔽"}</p>
-          {item.choices && <ol className="evidence-choices">{item.choices.map((choice) => <li key={choice.label}><b>{choice.label}</b><span>{choice.text}</span></li>)}</ol>}
-          <footer><span>{item.question_type}</span><span>{item.requires_citations ? "要求引用" : "无需引用"}</span>{item.domain && <span>{item.domain}</span>}{item.difficulty && <span>{item.difficulty}</span>}</footer>
-        </article>
-        <article className="evidence-answer-panel is-reference">
-          <header><span>REFERENCE</span><strong>参考答案</strong></header>
-          <p>{item.reference_answer ?? (item.held_out ? "held-out 私有题，参考答案已遮蔽" : "未提供参考答案")}</p>
-        </article>
-        <article className="evidence-answer-panel is-candidate">
-          <header><span>CANDIDATE</span><strong>Agent 回答</strong><small>{candidateStatusLabels[item.candidate_answer_status]}</small></header>
-          {item.candidate_answer ? (
-            <p>{item.candidate_answer}</p>
-          ) : item.answer_preview ? (
-            <><p>{item.answer_preview}</p><small className="evidence-preview-note">完整回答{candidateStatusLabels[item.candidate_answer_status]}，当前显示数据库保留的截断预览。</small></>
-          ) : (
-            <div className="evidence-unavailable">回答内容{candidateStatusLabels[item.candidate_answer_status]}，不以空文本代替。</div>
-          )}
-        </article>
-      </section>
+        <section className="evidence-content-grid">
+          <article className="evidence-question-panel">
+            <header><span>QUESTION</span><strong>评测问题</strong></header>
+            <p>{item.prompt ?? "held-out 私有题，原文已遮蔽"}</p>
+            {item.choices && <ol className="evidence-choices">{item.choices.map((choice) => <li key={choice.label}><b>{choice.label}</b><span>{choice.text}</span></li>)}</ol>}
+            <footer><span>{item.question_type}</span><span>{item.requires_citations ? "要求引用" : "无需引用"}</span>{item.domain && <span>{item.domain}</span>}{item.difficulty && <span>{item.difficulty}</span>}</footer>
+          </article>
+          <article className="evidence-answer-panel is-reference">
+            <header><span>REFERENCE</span><strong>参考答案</strong></header>
+            <p>{item.reference_answer ?? (item.held_out ? "held-out 私有题，参考答案已遮蔽" : "未提供参考答案")}</p>
+          </article>
+          <article className="evidence-answer-panel is-candidate">
+            <header><span>CANDIDATE</span><strong>Agent 回答</strong><small>{candidateStatusLabels[item.candidate_answer_status]}</small></header>
+            {item.candidate_answer ? (
+              <p>{item.candidate_answer}</p>
+            ) : item.answer_preview ? (
+              <><p>{item.answer_preview}</p><small className="evidence-preview-note">完整回答{candidateStatusLabels[item.candidate_answer_status]}，当前显示数据库保留的截断预览。</small></>
+            ) : (
+              <div className="evidence-unavailable">回答内容{candidateStatusLabels[item.candidate_answer_status]}，不以空文本代替。</div>
+            )}
+          </article>
+        </section>
 
-      {item.trajectory && <TrajectoryView trajectory={item.trajectory} />}
+        {item.trajectory && <TrajectoryView trajectory={item.trajectory} />}
 
-      <section className="evidence-judge-panel">
-        <header><h2>评分与裁判理由</h2>{item.score && <strong>{item.score.final_score.toFixed(2)}</strong>}</header>
-        {item.score ? (
-          <>
-            <blockquote>{item.score.judge_reason || "裁判未提供文字理由。"}</blockquote>
-            <ArtifactMetadata artifact={item.score.judge_artifact} label="裁判响应留存" />
-          </>
-        ) : <p className="evidence-empty-copy">当前执行项尚未完成评分，分数与理由不可用。</p>}
-      </section>
+        <section className="evidence-attempt-panel">
+          <header><h2>请求尝试</h2></header>
+          {item.attempts.length ? <ol>{item.attempts.map((attempt) => <li className={`is-${attempt.status}`} key={attempt.attempt_id}><i /><div><strong>尝试 {attempt.attempt_no} · {attempt.status}</strong><span>{formatDate(attempt.started_at)} → {formatDate(attempt.finished_at)}</span>{attempt.error_type && <small>{attempt.error_type}</small>}</div><dl><div><dt>HTTP</dt><dd>{attempt.status_code ?? "—"}</dd></div><div><dt>延迟</dt><dd>{attempt.latency_ms == null ? "—" : `${attempt.latency_ms} ms`}</dd></div><div><dt>Token</dt><dd>{attempt.total_tokens ?? "—"}</dd></div></dl></li>)}</ol> : <p className="evidence-empty-copy">尚无请求尝试记录。</p>}
+        </section>
 
-      <section className="evidence-attempt-panel">
-        <header><h2>请求尝试</h2></header>
-        {item.attempts.length ? <ol>{item.attempts.map((attempt) => <li className={`is-${attempt.status}`} key={attempt.attempt_id}><i /><div><strong>尝试 {attempt.attempt_no} · {attempt.status}</strong><span>{formatDate(attempt.started_at)} → {formatDate(attempt.finished_at)}</span>{attempt.error_type && <small>{attempt.error_type}</small>}</div><dl><div><dt>HTTP</dt><dd>{attempt.status_code ?? "—"}</dd></div><div><dt>延迟</dt><dd>{attempt.latency_ms == null ? "—" : `${attempt.latency_ms} ms`}</dd></div><div><dt>Token</dt><dd>{attempt.total_tokens ?? "—"}</dd></div></dl></li>)}</ol> : <p className="evidence-empty-copy">尚无请求尝试记录。</p>}
-      </section>
+        {item.citations.length > 0 && <section className="evidence-citation-panel"><header><h2>引用验证</h2></header><div>{item.citations.map((citation) => <CitationCard citation={citation} key={citation.citation_id} />)}</div></section>}
+        <section className="evidence-retention-panel"><header><h2>Artifact 留存</h2></header><p>此处仅显示不可执行的留存元数据，不直接加载或渲染 Artifact 内容。</p><ArtifactMetadata artifact={item.response_artifact} label="Agent 响应留存" /></section>
+      </div>
 
-      {item.citations.length > 0 && <section className="evidence-citation-panel"><header><h2>引用验证</h2></header><div>{item.citations.map((citation) => <CitationCard citation={citation} key={citation.citation_id} />)}</div></section>}
-      <section className="evidence-retention-panel"><header><h2>Artifact 留存</h2></header><p>此处仅显示不可执行的留存元数据，不直接加载或渲染 Artifact 内容。</p><ArtifactMetadata artifact={item.response_artifact} label="Agent 响应留存" /></section>
+      <aside className="evidence-side" aria-label="指标与评分">
+        <dl className="evidence-score-grid">
+          <div><dt>最终分</dt><dd className="is-hero">{item.score ? item.score.final_score.toFixed(2) : "—"}</dd></div>
+          <div><dt>答案分</dt><dd>{item.score ? item.score.answer_score.toFixed(2) : "—"}</dd></div>
+          <div><dt>引用分</dt><dd>{item.score?.citation_score?.toFixed(2) ?? "—"}</dd></div>
+          <div><dt>尝试次数</dt><dd>{item.attempt_count}</dd></div>
+          <div><dt>延迟</dt><dd>{item.latency_ms == null ? "—" : `${item.latency_ms} ms`}</dd></div>
+          <div><dt>回答留存</dt><dd>{candidateStatusLabels[item.candidate_answer_status]}</dd></div>
+        </dl>
+
+        <section className="evidence-judge-panel">
+          <header><h2>评分与裁判理由</h2>{item.score && <strong>{item.score.final_score.toFixed(2)}</strong>}</header>
+          {item.score ? (
+            <>
+              <blockquote>{item.score.judge_reason || "裁判未提供文字理由。"}</blockquote>
+              <ArtifactMetadata artifact={item.score.judge_artifact} label="裁判响应留存" />
+            </>
+          ) : <p className="evidence-empty-copy">当前执行项尚未完成评分，分数与理由不可用。</p>}
+        </section>
+      </aside>
     </div>
   );
 }

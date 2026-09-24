@@ -4,7 +4,7 @@
    responsive behavior for every page-scoped class live here. Colors come
    from design tokens only. */
 
-.experience-page { --content-max: 1400px; padding-top: 8px; padding-bottom: 80px; }
+.experience-page { padding-top: 8px; padding-bottom: 80px; }
 .experience-page .page-header-meta p { margin: 0; }
 
 /* Practice-isolation notice */
@@ -121,7 +121,7 @@
 
 /* Task detail */
 .experience-page .experience-detail {
-  max-width: 980px;
+  max-width: var(--content-max-form);
   margin: 0 auto;
   padding: clamp(18px, 3vw, 30px);
   background: var(--surface);

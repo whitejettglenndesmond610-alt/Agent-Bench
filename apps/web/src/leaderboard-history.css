@@ -4,6 +4,7 @@
    leaderboard-timeline / snapshot-protocol / snapshot-ranking-table /
    snapshot-trend-panel rules removed from styles.css. Tokens only. */
 
+.leaderboard-history-page { --content-max: var(--content-max-form); }
 .leaderboard-history-page, .leaderboard-snapshot-page { padding-top: 8px; padding-bottom: 120px; }
 
 /* Back link — compact mono breadcrumb */
@@ -17,7 +18,7 @@
 .leaderboard-history-page .back-link:hover, .leaderboard-snapshot-page .back-link:hover { color: var(--ink); }
 
 /* Publication timeline — accent nodes over a thin connector line */
-.leaderboard-timeline { max-width: 1040px; margin: 0; padding: 0; list-style: none; }
+.leaderboard-timeline { margin: 0; padding: 0; list-style: none; }
 .leaderboard-timeline > li { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 14px; }
 .leaderboard-timeline > li > div {
   position: relative;

@@ -3,7 +3,6 @@
    specificity overrides win. Colors come from design tokens only. */
 
 .agent-plaza-page, .plaza-detail-page {
-  --content-max: 1450px;
   padding-top: 8px;
   padding-bottom: 120px;
 }
