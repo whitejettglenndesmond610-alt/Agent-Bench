@@ -138,14 +138,10 @@
    rendered as a pure-CSS gradient (no chart library). Cool cyan only —
    the scarce amber accent stays reserved for CTA/active/focus. */
 .leaderboard-table td.metric-cell.has-meter {
-  background:
-    linear-gradient(90deg, color-mix(in srgb, var(--cyan) 26%, transparent) var(--metric-fill, 0%), transparent var(--metric-fill, 0%)) left bottom / 100% 3px no-repeat,
-    linear-gradient(90deg, color-mix(in srgb, var(--cyan) 7%, transparent) var(--metric-fill, 0%), transparent var(--metric-fill, 0%));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--cyan) 45%, transparent) var(--metric-fill, 0%), color-mix(in srgb, var(--cyan) 12%, transparent) var(--metric-fill, 0%), transparent var(--metric-fill, 0%)) left bottom / 100% 3px no-repeat;
 }
 .leaderboard-table tbody tr:hover td.metric-cell.has-meter {
-  background:
-    linear-gradient(90deg, color-mix(in srgb, var(--cyan) 30%, transparent) var(--metric-fill, 0%), transparent var(--metric-fill, 0%)) left bottom / 100% 3px no-repeat,
-    linear-gradient(90deg, color-mix(in srgb, var(--cyan) 9%, var(--surface-raised)) var(--metric-fill, 0%), var(--surface-raised) var(--metric-fill, 0%));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--cyan) 60%, transparent) var(--metric-fill, 0%), color-mix(in srgb, var(--cyan) 18%, transparent) var(--metric-fill, 0%), transparent var(--metric-fill, 0%)) left bottom / 100% 3px no-repeat;
 }
 
 /* Specialist board: fewer columns than the overview matrix. */
