@@ -312,6 +312,20 @@ A from-zero third-party deployment guide lives in [`deploy/QUICKSTART.md`](deplo
 Verification, dataset licenses, production TLS, and backup procedure live in
 [`deploy/runbook.md`](deploy/runbook.md) and [`AGENTS.md`](AGENTS.md).
 
+### License
+
+Source code is released under the [MIT License](LICENSE). Benchmark corpora are **not** part of
+the open-source grant: `data/` is excluded because BrowseComp forbids publishing decrypted
+samples, CMMLU/C-Eval/BizFinBench carry non-commercial terms, and HLE is gated with a canary.
+
+## 许可证
+
+代码以 [MIT](LICENSE) 协议开源，可自由使用、修改、商用和分发，保留版权声明即可。
+
+**题库不在开源范围内。** `data/` 下的评测数据受各自上游协议约束，不随本仓库分发：
+BrowseComp 作者要求不得公开解密样本；CMMLU、C-Eval、BizFinBench 含非商业条款；
+HLE 是 gated 数据集且带 canary。自建题库请遵守上游条款，不要转存或再分发。
+
 ---
 
 <div align="center">
